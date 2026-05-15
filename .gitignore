@@ -23,6 +23,8 @@ data/chunks/**/*.jsonl
 data/extracted/**/*.jsonl
 data/extracted/**/*.csv
 data/extracted/**/*.log
+data/rag/**/*.jsonl
+data/rag/**/*.json
 
 # Keep reproducible metadata under version control
 !data/metadata/
@@ -31,6 +33,7 @@ data/extracted/**/*.log
 !data/parsed_text/**/.gitkeep
 !data/chunks/**/.gitkeep
 !data/extracted/**/.gitkeep
+!data/rag/**/.gitkeep
 !data/verified/
 !data/verified/*.csv
 !data/verified/**/.gitkeep

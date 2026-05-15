@@ -5,10 +5,10 @@ import streamlit as st
 from src.frontend_data import (
     LocalKnowledgeGraph,
     RELATION_LABELS,
-    infer_question,
     render_svg_graph,
     subgraph_edges,
 )
+from src.qa_engine import QAEngine
 
 
 st.set_page_config(page_title="AI算力产业链知识图谱问答系统", layout="wide")
@@ -17,6 +17,11 @@ st.set_page_config(page_title="AI算力产业链知识图谱问答系统", layou
 @st.cache_data(show_spinner=False)
 def load_graph() -> LocalKnowledgeGraph:
     return LocalKnowledgeGraph.from_csvs()
+
+
+@st.cache_resource(show_spinner=False)
+def load_qa_engine() -> QAEngine:
+    return QAEngine.from_env()
 
 
 def relation_label_options() -> dict[str, str]:
@@ -50,9 +55,26 @@ def page_overview(graph: LocalKnowledgeGraph) -> None:
     st.write(" / ".join(f"`{item}`" for item in examples))
 
 
-def page_qa(graph: LocalKnowledgeGraph) -> None:
-    question = st.text_input("问题", value="哪些公司涉及AI服务器？", placeholder="输入公司、技术、产品、风险等问题")
-    result = infer_question(graph, question) if question.strip() else None
+def page_qa(engine: QAEngine) -> None:
+    status = engine.status
+    status_cols = st.columns(3)
+    status_cols[0].metric("Neo4j", "启用" if status.neo4j_enabled else "未启用")
+    status_cols[1].metric("本地 RAG", "就绪" if status.rag_enabled else "未构建")
+    status_cols[2].metric("LLM", "就绪" if status.llm_enabled else "未配置")
+    if status.rag_error:
+        st.caption(f"RAG：{status.rag_error}")
+    if status.llm_error:
+        st.caption(f"LLM：{status.llm_error}")
+
+    with st.form("qa_form"):
+        question = st.text_input("问题", value="哪些公司涉及AI服务器？", placeholder="输入公司、技术、产品、风险等问题")
+        submitted = st.form_submit_button("提问")
+
+    if submitted and question.strip():
+        with st.spinner("正在检索 Neo4j 与本地文档..."):
+            st.session_state["qa_result"] = engine.answer_question(question)
+
+    result = st.session_state.get("qa_result")
     if not result:
         return
 
@@ -61,6 +83,8 @@ def page_qa(graph: LocalKnowledgeGraph) -> None:
 
     st.subheader("Cypher")
     st.code(result["cypher"], language="cypher")
+    if result.get("cypher_params"):
+        st.json(result["cypher_params"])
 
     st.subheader("证据链")
     evidence = result["evidence"]
@@ -69,14 +93,25 @@ def page_qa(graph: LocalKnowledgeGraph) -> None:
     else:
         st.info("当前知识图谱中未找到相关证据。")
 
-    st.subheader("查询结果")
-    if result["records"]:
-        st.dataframe(result["records"], width="stretch", hide_index=True)
+    st.subheader("Neo4j 查询结果")
+    if result["graph_records"]:
+        st.dataframe(result["graph_records"], width="stretch", hide_index=True)
     else:
-        st.info("records 为空。")
+        st.info("graph_records 为空。")
+
+    st.subheader("本地 RAG 命中")
+    if result["rag_hits"]:
+        st.dataframe(result["rag_hits"], width="stretch", hide_index=True)
+    else:
+        st.info("rag_hits 为空。")
 
     st.subheader("子图")
     st.html(render_svg_graph(result["subgraph"], height=480))
+
+    if result["errors"]:
+        st.subheader("运行状态")
+        for error in result["errors"]:
+            st.warning(error)
 
 
 def page_graph(graph: LocalKnowledgeGraph) -> None:
@@ -110,6 +145,7 @@ def page_graph(graph: LocalKnowledgeGraph) -> None:
 
 def main() -> None:
     graph = load_graph()
+    qa_engine = load_qa_engine()
     st.title("AI算力产业链知识图谱问答系统")
 
     if not graph.entities or not graph.relations:
@@ -120,7 +156,7 @@ def main() -> None:
     with tab_overview:
         page_overview(graph)
     with tab_qa:
-        page_qa(graph)
+        page_qa(qa_engine)
     with tab_graph:
         page_graph(graph)
 

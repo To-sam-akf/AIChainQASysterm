@@ -88,6 +88,30 @@ class OpenAICompatibleClient:
                     time.sleep(1.5 * (attempt + 1))
         raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_error}")
 
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": temperature,
+            "max_tokens": self.max_tokens,
+        }
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        last_error: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                response = requests.post(self.chat_url, headers=headers, json=payload, timeout=self.timeout)
+                response.raise_for_status()
+                data = response.json()
+                return str(data["choices"][0]["message"]["content"]).strip()
+            except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
+                last_error = exc
+                if attempt + 1 < self.max_retries:
+                    time.sleep(1.5 * (attempt + 1))
+        raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_error}")
+
 
 class MockLLMClient:
     """Deterministic client for local integration tests and demos without API keys."""
@@ -123,3 +147,9 @@ class MockLLMClient:
                 }
             ],
         }
+
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
+        del system_prompt, temperature
+        if "当前知识库中未找到相关证据" in user_prompt:
+            return "当前知识库中未找到相关证据。"
+        return "基于检索证据，当前知识库中找到了相关事实，具体请查看证据链。"

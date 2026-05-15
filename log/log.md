@@ -9,3 +9,7 @@ PDF 数据准备
 PDF/图谱/向量库
 -> Neo4j + RAG + LLM
 -> 智能问答系统
+
+云端 LLM API + 本地 RAG
+最推荐。实现快，效果好。项目现在已经有 OpenAICompatibleClient，可以继续复用。
+
