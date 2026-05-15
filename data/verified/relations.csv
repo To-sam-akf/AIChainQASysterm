@@ -1,0 +1,477 @@
+relation_id,head_type,head_name,relation,tail_type,tail_name,evidence,source_report_id,source_title,page,section,confidence,review_status
+relation_0074cff1594b57ee,Company,英伟达,DISCLOSES_RISK,Risk,GPU成本优势,成本在AI芯片中具有优势,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.60,auto
+relation_00d4e223ab779107,Company,英伟达,HAS_METRIC,Metric,AI芯片市场份额,GPU是AI服务器的核心，约占近90%AI芯片市场份额,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_0179d6c84a903390,Company,壁仞科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_0197d95400ce443f,Company,光迅科技,USES_TECHNOLOGY,Technology,硅光,公司于CPO、硅光方面的布局较早，各项技术均有所突破,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.90,auto
+relation_02467018e1c87e2a,Company,欧陆通,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_02551b394129f8b5,Product,电源,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_0303daee5ce68046,Company,生益科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_032e0bfed02be79d,Company,沪电股份,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_035076e3d188683e,Company,长江存储,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_044a026411b4450f,Company,新易盛,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_055984a4d889eb9f,Company,浪潮信息,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_06864ca960e2bb6c,Technology,5G,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_06c59180c047d091,Company,天孚通信,USES_TECHNOLOGY,Technology,AI技术,AI技术迭代升级带动对算力网络的高增长需求，同步推动公司高速光器件市场持续增长。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_07407dcc6a9a7af5,Product,传统服务器,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_075b3e00c8321cf4,Company,寒武纪,HAS_METRIC,Metric,净利润,净利润（百万元）,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_0796316f9cb8a9a8,Product,AI芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_07bc9a2caf3b6535,Product,云服务器,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_0825e43393e6b0de,Company,通义千问,HAS_PRODUCT,Product,AI芯片,用于AI训练和推理的智能算力缺口与日俱增，AI芯片需求持续旺盛,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.70,auto
+relation_09345db6795bbbbe,IndustryChain,AI服务器与光模块产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_098fa21da4e09fb1,Technology,多模态,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_0a0e1f421563be76,Product,文心一言,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_0a6db92e82019a9b,Company,英伟达,HAS_PRODUCT,Product,AI服务器,高性能GPU的制造工艺在英伟达和台积电等企业的领导下已趋向成熟,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.70,auto
+relation_0b679817b152cd5b,Metric,AMD全球GPU市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_0c1c798f6cd459d7,Company,文心一言,HAS_METRIC,Metric,AI芯片市场规模,根据Frost&Sullivan，2022年我国AI芯片市场规模达到368亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_0c40dcae11b5d8ab,Company,光迅科技,HAS_METRIC,Metric,800G多模研发进展,公司800G多模和单模的研发进展都比较顺利,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.80,auto
+relation_0d1d86d8d4bdb14d,Company,天孚通信,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_0dce13e9e91e75cf,Company,中际旭创,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_0ee4540ef313a761,Company,讯飞星火,HAS_PRODUCT,Product,AI芯片,用于AI训练和推理的智能算力缺口与日俱增，AI芯片需求持续旺盛,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.70,auto
+relation_0f63151cea34b52a,Company,腾讯,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：腾讯2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_11bd0eb3ca32b2f7,Company,LSI,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_11c29550296771a3,Product,B端垂直大模型解决方案,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_125043bcda711329,Technology,NPU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,1.00,auto
+relation_12d58837a84d2f88,Company,中际旭创,HAS_METRIC,Metric,订单,公司800G等高端产品取得了良好的订单和市场份额,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_144600f49783fb9f,Company,源杰科技,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_1477c35006411f5a,Technology,COB封装,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_1548d6dede277f65,Company,天孚通信,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_15a804123d3700d3,Company,光迅科技,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_15dd12df14ce233e,Company,天孚通信,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_1772e647f60fb85e,Metric,数据,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_1784c5be52266dc9,Company,佰维存储,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_188258ae092ef515,Company,新易盛,HAS_PRODUCT,Product,光模块,光模块：中际旭创、新易盛、天孚通信,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_191538ed05b76c10,Company,戴尔,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_19c8fe9ecd32f259,Company,浪潮信息,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,服务器品牌厂商：浪潮信息、中科曙光、新华三、华为、联想、HPE、戴尔、谷歌、亚马逊、微软、脸书、IBM、阿里巴巴、百度、腾讯、中国移动、中国电信、中国联通、广电国网、政府市场、工业/金融/医疗/能源等大客户、中小企业客户、科研机构和教育机构,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.80,auto
+relation_1b38b6831ff9ef8e,Technology,深度学习,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_1b41f23f797128c9,Company,阿里巴巴,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：阿里巴巴2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_1b4995473f7bb854,Company,坤前,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：坤前6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_1be4fc30eebf1b03,Company,天孚通信,USES_TECHNOLOGY,Technology,OSA封装,已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_1bfe6dff0d67ad20,Company,光迅科技,HAS_METRIC,Metric,800G单模研发进展,公司800G多模和单模的研发进展都比较顺利,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.80,auto
+relation_1c1240b8152d5313,Product,800G光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_1c4b7f6000e84de0,Company,宁畅,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：宁畅9%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_1d94cddbb7a8acf6,Metric,净利率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_1e95d5b5aa859048,Technology,ASIC,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_1f80d1f96eadfa4d,Company,SK海力士,HAS_PRODUCT,Product,DRAM内存及模组,DRAM内存及模组：三星、SK海力士、美光、长鑫存储、长江存储、深科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_1fc22713b2df77c7,Risk,AI需求不及预期风险,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_20772ec2c446d8ea,Metric,800G多模研发进展,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_2083cf5dfbd7cb8b,Product,200G光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_20a9793ea25a8120,Company,海光信息,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_20bf9ed504e21183,Company,腾讯,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：腾讯2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_21c6ddb2c74f3919,Metric,全球AI服务器数量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_23682895ae8cff51,Company,光迅科技,USES_TECHNOLOGY,Technology,CPO,公司于CPO、硅光方面的布局较早，各项技术均有所突破,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.90,auto
+relation_23ed96ca4d0d8be1,Company,英特尔,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_24ae371de2206064,Product,Lensed FAU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_25a267023375da98,Company,天孚通信,HAS_PRODUCT,Product,高速光引擎,公司稳步推进高速光引擎募投项目建设，同时加速高速光器件的研发和规模量产。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_266f28b4614f0053,Company,天孚通信,USES_TECHNOLOGY,Technology,先进光学技术,公司具备多个光模块技术与先进光学技术。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.70,auto
+relation_26e36c231f5adfe9,Product,智能计算集群系统,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_27edbb69ee4ce27c,Technology,人工智能核心芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_288baaaf66b84912,Product,边缘端智能芯片及加速卡,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_291af79b64d85497,Metric,硅光量产阶段,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_2a242c5004840b48,Company,英伟达,HAS_METRIC,Metric,GPU占AI芯片市场份额,GPU是AI服务器的核心，约占近90%AI芯片市场份额,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_2a57bb7a5978a4e0,Company,通义千问,HAS_METRIC,Metric,AI芯片市场规模,根据Frost&Sullivan，2022年我国AI芯片市场规模达到368亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_2bf2a9a3631b858d,Company,海光信息,HAS_PRODUCT,Product,海光DCU深算系列,海光DCU深算系列属于GPGPU的一种,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_2d3504351b315ef0,Company,AMD,HAS_PRODUCT,Product,GPU,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_2d4689de81a3c845,Company,谷歌,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_2dd28a8fe40df30c,Company,亚马逊,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_2e6ef66f0a1f082b,Product,GPT,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_2f864f5ee8e8658f,Company,广电国网,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_30d0611162f639f7,Company,百度,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：百度2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_3208d1811b45ddc0,Company,字节跳动,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：字节跳动6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_33a7e44a602f208f,Metric,2.5G光芯片国产化率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_34ddce52893a2867,Product,5G前传光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_34eccd6c4e99bb23,Company,东海证券,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI服务器与光模块产业链专题,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.80,auto
+relation_34fec4577cb171ca,Company,新华三,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：新华三11%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_351d446091bebe14,Company,西部数据,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_374c52cb55c259aa,Product,数据服务商,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_385f932d80670acd,Company,中际旭创,HAS_PRODUCT,Product,城域网传输光模块,应用于城域网、骨干网和核心网传输光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_38816d1f7871247c,Company,文心一言,HAS_PRODUCT,Product,AI芯片,用于AI训练和推理的智能算力缺口与日俱增，AI芯片需求持续旺盛,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.70,auto
+relation_38e1cb2245e64165,Company,腾讯,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：腾讯2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_39a678eaa83724bf,Company,中际旭创,HAS_PRODUCT,Product,1.6T光模块,1.6T光模块产品预计于2024年下半年有相关重点客户导入,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_39daaacf59dc5515,Company,Lightcounting,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_3a263989eb5942ac,Product,存储芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_3a5845ab90513053,Company,通义千问,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_3a6c0a11c9e92beb,Metric,年复合增长率11%,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_3ca841bec2b7f82c,Product,处理器IP授权及软件,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_3d0bcbf69233d3fd,Company,中际旭创,HAS_PRODUCT,Product,800G光模块,公司为云数据中心客户提供100G、200G、400G和800G的高速光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_3d0d9f0751e09786,IndustryChain,AI芯片产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,1.00,auto
+relation_3d20f49d84052866,Company,英伟达,USES_TECHNOLOGY,Technology,GPU,高性能GPU的制造工艺在英伟达和台积电等企业的领导下已趋向成熟,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_3d6bb594d5d1fe27,Metric,800G单模研发进展,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_3d744eccf9654f07,Product,云端智能芯片及加速卡,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_3f281306113e25c5,Company,海光信息,HAS_METRIC,Metric,营收,图表显示营业收入（百万元）及增速,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_411bb8ee7f12250f,Company,东海证券,HAS_METRIC,Metric,数据,人工智能具有算力、算法、数据三大要素，其中场景化应用挖掘数据价值,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_4178262b8eb47dd4,Company,中际旭创,HAS_PRODUCT,Product,100G光模块,公司为云数据中心客户提供100G、200G、400G和800G的高速光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_42a87d29326341f8,Product,固网FTTX光纤接入光器件,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_42ec836d40bade1e,Product,算力芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_431687f6570cbc91,Company,华为,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：华为6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_437c1117c34e3596,Company,源杰科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_438c1c53f2953993,Company,中际旭创,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_445248f19627b5d6,Company,天孚通信,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_4513cce86710ae4e,Company,Meta,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_46378843fe9d54f4,Technology,CPU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_479aa27686a1b6a6,Company,寒武纪,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_48163f0a2e107993,Company,宝德,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：宝德5%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_486f70249e948ddc,Company,海光信息,HAS_PRODUCT,Product,海光通用处理器（CPU）,产品主要包括海光通用处理器（CPU）和海光协处理器（DCU）,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_495948fa0db15934,Company,文心一言,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI大模型的迅速崛起带来了巨大的AI算力需求,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.80,auto
+relation_49a81680039c7963,Metric,训练次数,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_49a9867f6d8c6b65,Technology,BOX封装,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_49cfd7628bd8e924,Metric,全球算力总规模,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,1.00,auto
+relation_4a4eb1e7ad2167f8,Company,中际旭创,HAS_PRODUCT,Product,核心网传输光模块,应用于城域网、骨干网和核心网传输光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_4a72691d6a266f7f,Company,中际旭创,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_4ad3b1a3b3cb5eb5,Technology,CPO,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_4ada273e5f4e4a76,Company,台达电子,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_4bac369c01672b74,Company,中际旭创,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_4ca9d192f7cbdc8f,Company,微软,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：微软19%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_4cbb154ada2492d8,Company,微软,BELONGS_TO_CHAIN,IndustryChain,模型层,中游：模型层：包括开发和训练各类AI大模型的算法和技术，主要为中美互联网科技巨头如OpenAI、微软、谷歌、百度、阿里等。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_4cbdb159bc7fc6e7,Technology,HBM,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_4d3c91792ec463d2,Company,寒武纪,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_4d42ac5e053afc21,Product,BERT,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_4d72b7caa91f6ae3,Company,希捷科技,HAS_PRODUCT,Product,HDD/SSD,HDD/SSD：西部数据、希捷科技、东艺、三星、SK海力士、美光，江波龙，佰维存储、德明利、朗科科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_4e498add64ad8517,Product,云计算,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_4f3709e9f3bf6845,Company,通义千问,USES_TECHNOLOGY,Technology,AI大模型,文心一言、讯飞星火、通义千问等上百家国产大模型争相涌现,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_4f5a38809cdd7af3,Company,三星,HAS_PRODUCT,Product,DRAM内存及模组,DRAM内存及模组：三星、SK海力士、美光、长鑫存储、长江存储、深科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_4f751516be7ec7af,Technology,AI大模型,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_4f9e92b971d72219,IndustryChain,基础设施层,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_4fedaab1670c1753,Company,东海证券,USES_TECHNOLOGY,Technology,机器学习,常见的AI研究包括机器学习、机器视觉、自然语言处理和专家系统等。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_504dfc0109c5d32c,Product,Mux TOSA,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_509931bf10f93973,Product,数据集提供商,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_50cfa7dc5fe2bd62,Product,PCB,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_51b05c779abab8b4,Metric,2027年突破200亿美元,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_51c7ff98695fa426,Product,400G光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_51f60697fb6e45bd,Company,海光信息,BELONGS_TO_CHAIN,IndustryChain,AI服务器与光模块产业链,报告标题为AI服务器与光模块产业链专题，海光信息作为国产CPU/DCU龙头被提及,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,0.90,auto
+relation_522a5cfcb1a839b4,Company,寒武纪,HAS_METRIC,Metric,营收,营业收入（百万元）,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_5266f3a5593323a1,Company,飞荣达,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_52bac6d4cc7aeffa,Company,SK海力士,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_54873210567b4122,Company,中科曙光,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_54c24ab225e35cd9,Product,边缘服务器,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_5541ad2ed4ae1274,Company,思腾合力,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：思腾合力2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_5586f91ac1cf4d72,Company,谷歌,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：谷歌17%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_56940858188ab4d6,Company,光迅科技,HAS_PRODUCT,Product,100G光模块,硅光方面从100G、200G开始便进行了相关研发投入,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.70,auto
+relation_56c94ab93d1a4d3d,Product,服务器品牌厂商,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_56dc4da7b1ff6163,Product,高速光引擎,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_575d8f2abeddf23c,Company,海光信息,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_582c05fc9607979e,IndustryChain,光模块产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,3,AI,1.00,auto
+relation_58366b95251b4944,Company,澜起科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_585f68368853604e,Metric,订单,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_5927538693919143,Company,通义千问,HAS_METRIC,Metric,AI芯片市场规模预测,预计到2027年，市场规模将进一步扩大至3400亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_59b342b0785ee105,Technology,OSA封装,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_5a8e9cbc7188075b,Company,昆仑芯,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_5a98b1198986049b,Metric,HBM带宽,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_5ae66a87a61d041a,Company,寒武纪,USES_TECHNOLOGY,Technology,人工智能核心芯片,主要从事应用于各类云服务器、边缘计算设备、终端设备中人工智能核心芯片的研发、设计和销售。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_5b267cdf7508b192,Technology,光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,3,AI,1.00,auto
+relation_5b3d7ff8a9d22bf6,Company,光迅科技,HAS_METRIC,Metric,硅光量产阶段,目前进展较为顺利，已进入量产阶段,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.90,auto
+relation_5b6878b2f19d9391,Company,海光信息,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_5c1f4a054e26f6d6,Company,微软,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_5cbc447aff51be29,Company,浪潮信息,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：浪潮信息47%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_5da8933853c6e912,Company,英伟达,HAS_METRIC,Metric,AI芯片市场规模,2022-2027E全球AI芯片市场规模及预测（亿美元）,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,0.70,auto
+relation_5de1079f0dd032d1,Company,阿里巴巴,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：阿里巴巴2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_5e0135286ee887ce,IndustryChain,模型层,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_5e993d94aeddcb8b,Risk,GPU成本优势,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,1.00,auto
+relation_5eb5529ec4744f42,IndustryChain,AIGC产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_5f983796a27d7104,Metric,全球AI服务器采购量占比,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_5fbcd384c662d660,Company,光迅科技,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_60e35572c23d08e5,Company,宝德,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：宝德5%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_61676800eea3d214,Metric,毛利率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_61ef129c9cfa30e4,Company,台积电,USES_TECHNOLOGY,Technology,GPU,高性能GPU的制造工艺在英伟达和台积电等企业的领导下已趋向成熟,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_621bd22024181780,Metric,GPU占AI芯片市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_62f2b05186a1bbf7,Metric,项目研发投入,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_63a6c97c56a90541,Company,阿里,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_63fd67f2e8c474ce,Technology,自然语言处理,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_640d9e4d844e2709,Company,宝德,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_656f16463493dc72,Company,华为,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：华为6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_67b073b52ae6242d,Product,骨干网传输光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_6842bbb6bf15f997,Metric,HBM体积减小比例,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_685fb25b002f1c3b,Company,海光信息,HAS_METRIC,Metric,毛利率,图表显示毛利率(%),research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_68a5abbbbe6e4bff,Technology,类脑芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_69cd7e96c5f7ac9a,Company,天孚通信,USES_TECHNOLOGY,Technology,先进光学封装制造,其次是先进光学封装制造，已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_6afefe574dd76bd1,Metric,2026年突破30亿美元,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_6b7adae091b24ba9,Company,寒武纪,HAS_PRODUCT,Product,云端智能芯片及加速卡,2023年上半年云端智能芯片及加速卡营收占比95%,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_6bbcb37a65311e16,Company,三星,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_6bfe92396409fca0,Company,讯飞星火,HAS_METRIC,Metric,AI芯片市场规模预测,预计到2027年，市场规模将进一步扩大至3400亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_6c1dd352884f84cd,Metric,2028年中国光模块市场规模35亿美元,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_6c60b04925ee3b57,Risk,国际贸易政策变化风险,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_6cb43c304eaf7fd8,Metric,算力,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_6cec8c92bed9a323,Metric,FLOPs,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_6d2567273f78e532,Metric,25G以上光芯片国产化率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_6df3937f42051c47,Technology,光波分复用技术（DWM）,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_6e31ae970c28ea83,Product,城域网传输光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_6e8b123ce19c9595,Company,天孚通信,USES_TECHNOLOGY,Technology,BOX封装,已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_6ef1edaeee2dee5e,Company,宁畅,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：宁畅9%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_6f36a7a57b6f2f30,Company,英伟达,HAS_METRIC,Metric,英伟达全球GPU市场份额,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_6f83ef7e88ca70e1,Technology,TO封装,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_6f8af28d5e5f3ff0,Company,美光,HAS_PRODUCT,Product,DRAM内存及模组,DRAM内存及模组：三星、SK海力士、美光、长鑫存储、长江存储、深科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_722f2365019f2c83,Metric,参数量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_728242ec758be77b,Company,中际旭创,HAS_PRODUCT,Product,200G光模块,公司为云数据中心客户提供100G、200G、400G和800G的高速光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_72b2d9076afdccc1,Technology,先进光学技术,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_745b210bbee2f94b,Technology,模型训练,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_75621a7b7538a960,Company,HPE,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_758df3493d0e8b06,Technology,类CUDA通用并行计算架构,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_769496f0026cbe48,Technology,云计算,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_773be081d8c94e1c,Product,Demux POSA,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_7743ff6662f5481d,Company,天孚通信,BELONGS_TO_CHAIN,IndustryChain,光模块产业链,公司为400G、800G等高速光模块提供一站式产品解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_7796abfbf287f769,Metric,营收,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_788a78f709a4bce1,Technology,跨领域整合,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_79d927f6ffcf91a6,Company,天孚通信,USES_TECHNOLOGY,Technology,高速光器件技术,全球数据中心建设对光器件产品需求的持续稳定增长，公司为400G、800G等高速光模块提供一站式产品解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.80,auto
+relation_7b90899c566eb2c0,Company,ADl,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_7c524cae334a2ef9,Company,新易盛,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_7c6bf0551d1cee3c,Company,AMD,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_7c91f73eb370fe51,Company,华为,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：华为6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_7dac59afe7870ee4,Company,思腾合力,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：思腾合力2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_7f6aa9b937b3d991,Company,讯飞星火,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI大模型的迅速崛起带来了巨大的AI算力需求,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.80,auto
+relation_80f7c25c550bd1f4,Risk,行业竞争过度风险,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_80faf4cf181b1b9a,Product,5G中传光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_81090ebdda83ce4d,Company,英特尔,HAS_PRODUCT,Product,GPU,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_8156188cb4eafc5f,Product,1.6T光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_8165306033666696,Company,裕太微,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_8181fde203147928,Company,亚马逊,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：亚马逊14%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_82f60596a36edae5,Metric,25G光芯片国产化率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_84dd25f25861e804,Product,RAID芯片/板卡,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_84fd9634691a11e0,IndustryChain,AI算力产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_851f8ed61320d47c,Company,中际旭创,HAS_PRODUCT,Product,光模块,光模块：中际旭创、新易盛、天孚通信,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_85a84eae1dd84d96,Company,东海证券,USES_TECHNOLOGY,Technology,自然语言处理,常见的AI研究包括机器学习、机器视觉、自然语言处理和专家系统等。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_85d17e22b0cbeda7,Company,南亚新材,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_863f4fe9fcfc2b7b,Technology,机器视觉,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_871c9f69ba08bd15,Company,Lightcounting,HAS_METRIC,Metric,2026年突破30亿美元,2023年开始，800G有望拉动新一轮增长，预计在2026年突破30亿美元大关,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_872149325c85af63,Company,坤前,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：坤前6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_8728041d02076f26,Company,天孚通信,HAS_PRODUCT,Product,光模块,光模块：中际旭创、新易盛、天孚通信,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_87ccfeeeeacd957a,Company,光迅科技,HAS_PRODUCT,Product,1.6T光模块,1.6T光模块方面公司已在OFC2023上推出了demo版本,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.80,auto
+relation_884a0109abbb3862,Company,英伟达,HAS_METRIC,Metric,全球算力总规模,2020-2025E全球算力总规模及预测(EFLOPS),research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,0.70,auto
+relation_8851a1e1414835a3,Company,英特尔,HAS_METRIC,Metric,英特尔全球GPU市场份额,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_8864217209dc2469,Company,安擎,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_88c8f7626000d6b4,Company,兴森科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_89063df21f7dbc12,Company,联想,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_89d05a6d134ce3cd,Company,Lightcounting,HAS_METRIC,Metric,2027年突破200亿美元,Lightcounting预测，全球光模块的市场规模在未来5年将以11%的年复合增长率持续上升，2027年将突破200亿美元,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_8a60bfe48f8ee00c,Company,天孚通信,HAS_PRODUCT,Product,高速光器件,公司稳步推进高速光引擎募投项目建设，同时加速高速光器件的研发和规模量产。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_8a66512bbc084862,Company,OpenAI,BELONGS_TO_CHAIN,IndustryChain,模型层,中游：模型层：包括开发和训练各类AI大模型的算法和技术，主要为中美互联网科技巨头如OpenAI、微软、谷歌、百度、阿里等。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_8b4dd2a8c272e8d4,Company,安擎,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：安擎7%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_8c3c5d6bfa251b9c,Product,AI大语言模型,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_8cc4b5a9dc30a156,Metric,单用户数据量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_8cd084fe2597c59e,Company,东海证券,USES_TECHNOLOGY,Technology,机器视觉,常见的AI研究包括机器学习、机器视觉、自然语言处理和专家系统等。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_8cfd263c64ef47da,Company,谱瑞,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_8d107ff1c701b65d,Metric,英伟达全球GPU市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_8d2868f04faeb0ca,Company,OpenAI,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_8d84691fa0a03e59,Technology,x86指令集,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_8d88e0d6245bd64d,Company,百度,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：百度2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_8dcfddf48577acb2,Company,天孚通信,HAS_PRODUCT,Product,1.6T光模块,公司宣布将于2024年3月26日至28日在美国加州圣地亚哥会展中心举办的第49届光网络与通信研讨会及博览会（OFC2024）重点展示为1.6T/800G光模块配套应用的Mux TOSA、Demux POSA、Lensed FAU等光引擎产品和解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_8dd7122c0d2a0163,Company,天孚通信,USES_TECHNOLOGY,Technology,TO封装,已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_8e1d30ad8a64d217,Company,坤前,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_8e38205e380a3396,Metric,模型数量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_8eac95b0dc032dee,Company,光迅科技,HAS_PRODUCT,Product,800G光模块,公司800G多模和单模的研发进展都比较顺利，送样后陆续获得了订单,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.90,auto
+relation_8ec6e3782e07c376,Company,阿里巴巴,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：阿里巴巴2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_8f71b022614dd1e4,Product,散热,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_909cb90f8fb44320,Company,新华三,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：新华三11%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_90a969626919dcb3,Company,天孚通信,HAS_METRIC,Metric,项目研发投入,天孚通信项目研发投入情况,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.70,auto
+relation_915544c1abe846eb,Company,安擎,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：安擎7%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_917bf3d644519848,Company,新易盛,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_91a4f4e4f1364b5e,Company,Lightcounting,HAS_METRIC,Metric,以太网占比28%,Lightcounting预计2028年中国光模块市场规模有望达35亿美元，其中光波分复用技术（DWM）占比32%，以太网占比28%,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_91aab3d64d442a0a,Company,天孚通信,USES_TECHNOLOGY,Technology,硅光封装,已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_925f85e99e636620,Company,寒武纪,HAS_METRIC,Metric,净利率,净利率(%),research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_92c3280cdd32b276,Company,英伟达,BELONGS_TO_CHAIN,IndustryChain,AI芯片产业链,2.1、AI芯片：算力需求驱动AI芯片高增长，英伟达独霸鳌头,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,0.90,auto
+relation_9309b8a0db84a147,Company,德明利,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_940b708d9065a2f8,Company,亚马逊,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：亚马逊14%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_94ca3ff2de8dcea0,Technology,高速光器件技术,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_94fb6b44f7dca067,Company,浪潮信息,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：浪潮信息47%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_9614cea7c708dd4f,Company,海光信息,USES_TECHNOLOGY,Technology,x86指令集,海光CPU兼容市场主流的x86指令集,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_9626a97b673248a0,Company,Meta,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：Meta16%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_9628a7d8e2087928,Company,海光信息,HAS_PRODUCT,Product,海光协处理器（DCU）,产品主要包括海光通用处理器（CPU）和海光协处理器（DCU）,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_97b9f79cc08387ea,Company,光迅科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_97f98e222e569cfb,Product,海光DCU深算系列,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_9806c5176d4fcd90,Company,东海证券,USES_TECHNOLOGY,Technology,深度学习,从传统逻辑到机器学习再到深度学习，算法的演变极大的提高了AI的应用维度和效率。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_980cf3f123010f79,Company,通义千问,HAS_METRIC,Metric,CAGR,2022-2027E CAGR将有望达到39.98%,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_9ab663a7905b7e95,Company,文心一言,USES_TECHNOLOGY,Technology,AI大模型,文心一言、讯飞星火、通义千问等上百家国产大模型争相涌现,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_9ac95783c5f2050b,Company,工业富联,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_9b2b320d06504dcf,Company,Meta,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：Meta16%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_9b4f121351629c33,Product,CPU/GPU/AI加速芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_9bf0ea2dd8989197,Company,海光信息,HAS_METRIC,Metric,净利率,图表显示净利率(%),research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_9d38be50918661f2,Company,腾讯,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_9d4f5c2a9247e042,Company,英伟达,HAS_METRIC,Metric,GPU价值量占AI服务器比例,其价值量占AI服务器高达70-75%,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_9dc5429e6d4867ea,Metric,多模态应用场景,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_9dccb1b4a46530e2,Company,天孚通信,HAS_PRODUCT,Product,Mux TOSA,重点展示为1.6T/800G光模块配套应用的Mux TOSA、Demux POSA、Lensed FAU等光引擎产品和解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_9f35c7c1f4531292,Company,源杰科技,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_9f9751e9417d48e7,Metric,AI芯片市场规模预测,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_9fa0be5c078687d9,Company,Intel,HAS_PRODUCT,Product,CPU/GPU/AI加速芯片,CPU/GPU/AI加速芯片：英伟达、AMD、Intel寒武纪、海光信息、昆仑芯、华为鲲鹏、壁仞科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_9fc559ff625ef8ed,Company,澜起科技,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_a028dc7ef37e1f5f,Company,光宝科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a02b2d8c50d365ab,Company,安擎,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：安擎7%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_a03e09c00e8d8d52,Company,英维克,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a114ae94e64006b4,Company,讯飞星火,HAS_METRIC,Metric,AI芯片市场规模,根据Frost&Sullivan，2022年我国AI芯片市场规模达到368亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_a11ef5950b5460ce,Company,寒武纪,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,面向互联网、金融、交通、能源、电力和制造等领域的复杂AI应用场景提供充裕算力，推动AI赋能产业升级。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,0.90,auto
+relation_a17621d4410ae35c,Company,寒武纪,HAS_PRODUCT,Product,边缘产品线,主要产品包括云端产品线、边缘产品线、处理器IP授权及软件,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_a1d1a0f50cba1e41,Company,中国移动,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a21bb78e1e4e4b48,Company,新易盛,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_a26b5602d731754e,Company,思腾合力,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：思腾合力2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_a3344a47357c44e4,Company,中际旭创,HAS_PRODUCT,Product,固网FTTX光纤接入光器件,应用于固网FTTX光纤接入的光器件等高端整体解决方案,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_a3759dedd6f8ca41,Company,Meta,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：Meta16%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_a376595cfeb5d8d6,Product,100G光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_a42b91067595d8a0,Company,Intel,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a4bb45962466a6c9,Company,英伟达,HAS_PRODUCT,Product,GPU,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_a4ca633efb56191a,Company,长鑫存储,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a5de66916f4aae84,Company,德州仪器,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a5e2410a992203a5,Product,大数据解决方案,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_a62f5b7d72f0478b,Company,谷歌,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：谷歌17%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_a6317f3efff1b91b,Company,通义千问,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI大模型的迅速崛起带来了巨大的AI算力需求,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.80,auto
+relation_a65b6e7fc2a765ee,Company,中际旭创,HAS_METRIC,Metric,市场份额,公司800G等高端产品取得了良好的订单和市场份额,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_a6db9370c23cdddb,Technology,DRAM,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_a7786052c5edc639,Company,光迅科技,USES_TECHNOLOGY,Technology,LPO,LPO已进入客户测试阶段,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.80,auto
+relation_a794bfcefdb900b1,Metric,英特尔全球GPU市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_a7ea646c4d1912f9,Product,HDD/SSD,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_a885568250cb7d74,Company,英伟达,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_ab4b1bbb8f9f14cf,Company,寒武纪,HAS_PRODUCT,Product,云端产品线,主要产品包括云端产品线、边缘产品线、处理器IP授权及软件,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_acda6e8950ecceac,Company,Rambus,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_ad106984abeaa650,Company,思腾合力,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_ad694bdda5c9ba42,Company,海光信息,HAS_METRIC,Metric,净利润,图表显示净利润（百万元）及增速,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_ad7b5acef758e2db,Company,讯飞星火,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_ada47e90c2a5c0a4,Metric,净利润,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_add2ab9e4b66ade9,Technology,GPU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_ae90212a000ac24d,Company,新易盛,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_aff191b8536831d2,Metric,AI芯片占AI服务器成本比例,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_b01c89ca68de3c52,Company,宝德,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：宝德5%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_b07520ff46f5b81c,Company,字节跳动,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_b19f0f28f7877032,Company,宁畅,HAS_METRIC,Metric,中国AI服务器市场份额,2022中国AI服务器市场份额构成：宁畅9%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_b26a6ab387f2b025,Technology,算力芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,3,AI,1.00,auto
+relation_b31edde2340db85f,Company,东海证券,USES_TECHNOLOGY,Technology,专家系统,常见的AI研究包括机器学习、机器视觉、自然语言处理和专家系统等。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_b3d963f9f2617c40,Product,C端通用生成式AI,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_b47194fe65d20010,Company,中国电信,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_b63c56b77e5c8459,Metric,AI芯片市场规模,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,1.00,auto
+relation_b680a1e6ec5de119,Metric,市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_b6c99127c72b015f,Product,主板/系统集成商(ODM)厂商,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_b817d9d57069e349,Metric,光波分复用技术占比32%,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_b84a00db6c465b5b,Company,台积电,HAS_PRODUCT,Product,AI服务器,高性能GPU的制造工艺在英伟达和台积电等企业的领导下已趋向成熟,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.70,auto
+relation_b8653fa436a7d0cd,Company,澜起科技,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_b8b8af7b3d904daf,Company,新雷能,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_b8e4dad7c70581fb,Metric,10G光芯片国产化率,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_b921f060cf5a62db,Company,天孚通信,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI技术迭代升级带动对算力网络的高增长需求，同步推动公司高速光器件市场持续增长。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.80,auto
+relation_b9e9f7fa7921d56e,Company,阿里巴巴,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_ba1f00b983c8d400,Company,源杰科技,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_baf5baa1128d93f4,Company,讯飞星火,HAS_METRIC,Metric,CAGR,2022-2027E CAGR将有望达到39.98%,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_bb5d0f64ab2f7547,Company,Lightcounting,HAS_METRIC,Metric,2028年中国光模块市场规模35亿美元,Lightcounting预计2028年中国光模块市场规模有望达35亿美元,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_bbcfeabc29865fc7,Metric,全球AI服务器出货量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_bc4404c902bc7d69,Product,光芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_bc495002bf75b5dd,Technology,GPGPU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,16,6%,1.00,auto
+relation_bcb067f4fd7cd892,Company,天孚通信,HAS_PRODUCT,Product,800G光模块,公司为400G、800G等高速光模块提供一站式产品解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_bcc30398433f05db,Product,AI算法框架,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_bcc6b36f0b037d13,Company,寒武纪,HAS_PRODUCT,Product,边缘端智能芯片及加速卡,边缘端智能芯片及加速卡,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_bd9c308394d16668,Company,百度,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_bdf80c4cc57e330e,Company,聚力,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_be36ee6c6f41a064,Technology,硅光封装,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_be49eb7353f48c7b,Company,光迅科技,HAS_PRODUCT,Product,400G光模块,400G、800G已经开始陆续出货,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.90,auto
+relation_bea1cdce2a620e49,Company,宁畅,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_bebc70e11b425770,Company,中国联通,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_bf36480502e4d78b,Metric,算法,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_c04336e4778eadab,Company,美光,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_c0880285a0e77c5e,Company,天孚通信,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_c0dadf667e87a4d5,Company,天孚通信,USES_TECHNOLOGY,Technology,COB封装,已经完成了OSA、BOX、COB、TO、硅光等多种光器件封装平台的光引擎、高速光器件的ODM/OEM业务。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_c13dc286f0d766d2,Company,寒武纪,HAS_METRIC,Metric,毛利率,毛利率(%),research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_c1dfb5932bec0d23,Company,澜起科技,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_c2d88cf00d925b17,Product,互联网接口,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_c3125b65a03b876a,Company,字节跳动,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：字节跳动6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_c3d17c5819f88ac8,Company,寒武纪,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_c43e671aea624e47,Company,天孚通信,HAS_PRODUCT,Product,Lensed FAU,重点展示为1.6T/800G光模块配套应用的Mux TOSA、Demux POSA、Lensed FAU等光引擎产品和解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_c4a9bf094d3995cb,Company,百度,BELONGS_TO_CHAIN,IndustryChain,模型层,中游：模型层：包括开发和训练各类AI大模型的算法和技术，主要为中美互联网科技巨头如OpenAI、微软、谷歌、百度、阿里等。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_c4ea74e882bfd031,Company,亚马逊,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：亚马逊14%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_c589382d41e3f25e,Company,艾默生,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_c5f05003a8fdd2c2,Company,国芯科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_c61f2e0995b274fe,Metric,以太网占比28%,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,1.00,auto
+relation_c631612c416ff56f,Company,AMD,HAS_METRIC,Metric,AMD全球GPU市场份额,2023Q4英伟达、AMD、英特尔分别占据全球GPU市场份额是80%、19%、1%。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_c6963feda7912d85,Company,源杰科技,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_c7166e6f979c4b64,Technology,先进光学封装制造,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_c76b3506237f940c,Company,海光信息,USES_TECHNOLOGY,Technology,类CUDA通用并行计算架构,海光DCU深算系列属于GPGPU的一种，采用“类CUDA” 通用并行计算架构,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_c81295b7fbcd9ecc,Company,寒武纪,HAS_PRODUCT,Product,处理器IP授权及软件,主要产品包括云端产品线、边缘产品线、处理器IP授权及软件,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_c94bad64abf020ef,Metric,GPU占中国AI运算市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_c95b5e3925f1031a,Product,海光协处理器（DCU）,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_ca0206b26831233a,Company,中际旭创,HAS_PRODUCT,Product,骨干网传输光模块,应用于城域网、骨干网和核心网传输光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_ca3988f80501f69e,Technology,LPO,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_cbb6a781477736e2,Metric,训练数据量,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_cc61e62cc6c85d27,IndustryChain,AI算力及零部件,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_cc92a95a9741b8b3,Company,瑞萨,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_cd4c670909e43c01,Technology,AI算力,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_ce3aab979c686d04,Company,华为鲲鹏,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_cec46dd5a33b3b07,Metric,用户日活,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_cedd02b6fdd61559,Company,朗科科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_cf03dbdd36c29cf0,Technology,边缘计算,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_cfff57a452b6aaf9,Company,谷歌,BELONGS_TO_CHAIN,IndustryChain,模型层,中游：模型层：包括开发和训练各类AI大模型的算法和技术，主要为中美互联网科技巨头如OpenAI、微软、谷歌、百度、阿里等。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_d003c1a1322514e6,Company,文心一言,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,1.00,auto
+relation_d018fe2196cab3ca,Company,浪潮信息,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：浪潮信息47%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_d0afb014ec3ef94a,Company,英伟达,HAS_METRIC,Metric,AI芯片占AI服务器成本比例,AI芯片占AI服务器成本约70-75%,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.90,auto
+relation_d17af43f0aa326e0,Company,微软,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：微软19%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_d1feddf2bde2b61b,Technology,专家系统,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_d23f8eee3af00594,IndustryChain,应用层,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_d37f490c5d19808a,Metric,AI芯片市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,1.00,auto
+relation_d47505f421548767,Technology,人工智能,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,10,AI服务器：全球服务器行业的演进历程,1.00,auto
+relation_d486576dc132eefe,Company,阿里,BELONGS_TO_CHAIN,IndustryChain,模型层,中游：模型层：包括开发和训练各类AI大模型的算法和技术，主要为中美互联网科技巨头如OpenAI、微软、谷歌、百度、阿里等。,research_AP202403141626724087,AI服务器与光模块产业链专题,6,AIGC产业链：基础设施是AI算力之源，下游应用前景广阔,1.00,auto
+relation_d4b314142b887b86,Product,ChatGPT,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_d5842de3a4e36a88,Product,电芯片,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_d5cdf7b37ee67737,Company,天孚通信,HAS_PRODUCT,Product,Demux POSA,重点展示为1.6T/800G光模块配套应用的Mux TOSA、Demux POSA、Lensed FAU等光引擎产品和解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_d712cc8db75f85a2,Product,边缘产品线,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_d7a1ab9c39d00970,Company,中际旭创,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_d967712742941539,Company,坤前,HAS_PRODUCT,Product,AI服务器,2022中国AI服务器市场份额构成：坤前6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_d9926768ac6c7d06,Technology,硅光,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,1.00,auto
+relation_d9dc5eef853bf55c,Company,光迅科技,DISCLOSES_RISK,Risk,国际贸易政策变化风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_da1f2dcae856be34,Company,英伟达,HAS_PRODUCT,Product,CPU/GPU/AI加速芯片,CPU/GPU/AI加速芯片：英伟达、AMD、Intel寒武纪、海光信息、昆仑芯、华为鲲鹏、壁仞科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_da46189a73dfbfcf,Company,东海证券,HAS_METRIC,Metric,算法,人工智能具有算力、算法、数据三大要素，其中通用技术平台解决算法问题,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_da68afbaf983f5ad,Company,新华三,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_dab02dcd06139c1c,Company,海光信息,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_dbf4f472a6bb61e2,Metric,应用时间,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_dc6ea09e65164f00,Company,寒武纪,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,建议关注海光信息、寒武纪、澜起科技、中际旭创、光迅科技、天孚通信、新易盛、源杰科技等优质算力芯片与光器件相关企业。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_dc9c03d311479689,Company,字节跳动,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：字节跳动6%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_deb4ec8ead093ef0,Metric,光模块器件占光模块成本比例,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_dec6ad4ee1cffaf3,Technology,大模型,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,3,AI,1.00,auto
+relation_df45e91ea1023857,Company,东海证券,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_e1248b83916af3bd,Metric,中国AI服务器市场份额,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_e15d7e5a7a5af6fd,Company,中际旭创,HAS_PRODUCT,Product,5G前传光模块,为电信设备商客户提供5G前传、中传和回传光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_e19d39b9a03289b3,Company,华为,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,1.00,auto
+relation_e3d17b6f84368aa4,Product,AI服务器,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_e41ff9365bcf8b22,Product,5G回传光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_e421425219547e5a,Company,曙光数创,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_e4264edfacdb8e78,Company,中际旭创,HAS_PRODUCT,Product,5G回传光模块,为电信设备商客户提供5G前传、中传和回传光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_e4c35690fc965366,Company,新华三,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022中国AI服务器市场份额构成：新华三11%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_e59abf71d09396cf,Company,Lightcounting,HAS_METRIC,Metric,年复合增长率11%,Lightcounting预测，全球光模块的市场规模在未来5年将以11%的年复合增长率持续上升,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_e616768b562029de,Company,深南电路,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_e6a1575fd556db25,Company,东海证券,HAS_PRODUCT,Product,AI芯片,具有超高运算能力、符合市场需求的AI芯片，是人工智能领域可持续发展的重要因素。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_e6d448da4ac9a6ed,Technology,模型推理,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,9,算力需求激增： AI大模型的训练和推理均离不开强大算力支撑,1.00,auto
+relation_e7086fa7a69a8995,Company,中际旭创,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI大模型催生了公司800G以及以上高速光模块业务高增长。2023年以来，随着ChatGPT为代表的生成式人工智能大语言模型的发布，催生了AI算力需求的激增,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,0.90,auto
+relation_e74d41d3bb9d7143,Company,IBM,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_e7663e2637458047,Company,谷歌,HAS_METRIC,Metric,全球AI服务器采购量占比,2022年全球AI服务器采购量占比：谷歌17%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_e80193857ec1120c,Company,海光信息,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_e8afd8c52e3665c8,Company,光迅科技,HAS_PRODUCT,Product,200G光模块,硅光方面从100G、200G开始便进行了相关研发投入,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.70,auto
+relation_e99ade763d52ee77,Company,中际旭创,HAS_PRODUCT,Product,5G中传光模块,为电信设备商客户提供5G前传、中传和回传光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_ea01460db7d8623f,Technology,AI技术,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_eacdcb837a0d6760,Product,DRAM内存及模组,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_ed5d1f33d2ae6d6d,Company,光迅科技,DISCLOSES_RISK,Risk,AI需求不及预期风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto
+relation_edb5e4200dab63dc,Metric,GPU价值量占AI服务器比例,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_ee1771266a53536c,Product,云端产品线,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_ee9d8cd3d037b4c8,Company,中国长城,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_ef210a8c8337f97f,Technology,机器学习,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,1.00,auto
+relation_ef78e5be47ab41dc,Company,英伟达,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI服务器与光模块产业链专题,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.80,auto
+relation_ef8978d0eb3d3b1c,Product,核心网传输光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_efb9fe3e02455444,Company,台积电,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,AI服务器与光模块产业链专题,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,0.80,auto
+relation_efde542a8e18af15,Company,寒武纪,HAS_PRODUCT,Product,智能计算集群系统,云端产品线与智能计算集群系统为营收主要组成部分,research_AP202403141626724087,AI服务器与光模块产业链专题,34,寒武纪：AI芯片国内领先，云端、边缘、IP授权及软件三位协同发展,1.00,auto
+relation_f07f118fdfb5ce90,Product,Sora,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_f0cf2bc35844d62d,Company,江波龙,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_f250e825df669958,Product,高速光器件,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,1.00,auto
+relation_f25c5c25c90fdf30,Company,Lightcounting,HAS_METRIC,Metric,光波分复用技术占比32%,Lightcounting预计2028年中国光模块市场规模有望达35亿美元，其中光波分复用技术（DWM）占比32%,research_AP202403141626724087,AI服务器与光模块产业链专题,26,光模块：AI驱动光模块市场高速扩张，高传输速率光模块成主流,0.90,auto
+relation_f274668502ebf2fe,Company,天孚通信,HAS_PRODUCT,Product,400G光模块,公司为400G、800G等高速光模块提供一站式产品解决方案。,research_AP202403141626724087,AI服务器与光模块产业链专题,41,天孚通信：AI持续拉动需求，高速光引擎业务构筑长期成长曲线,0.90,auto
+relation_f33cec45b66433d8,Company,百度,HAS_PRODUCT,Product,AI服务器,2022年全球AI服务器采购量占比：百度2%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.80,auto
+relation_f33d57c8015ef76b,Product,GPU,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_f3f8fb59f9d6ea7a,Company,AMD,HAS_PRODUCT,Product,CPU/GPU/AI加速芯片,CPU/GPU/AI加速芯片：英伟达、AMD、Intel寒武纪、海光信息、昆仑芯、华为鲲鹏、壁仞科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_f4a7fdeefd50686b,Company,深科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_f56ee66b0fabc0a6,Company,华正新材,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_f5e0dda0f482dc77,Company,文心一言,HAS_METRIC,Metric,CAGR,2022-2027E CAGR将有望达到39.98%,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_f699125b4ce02cec,Company,讯飞星火,USES_TECHNOLOGY,Technology,AI大模型,文心一言、讯飞星火、通义千问等上百家国产大模型争相涌现,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_f6aaf16b5cc0cd6b,Company,文心一言,HAS_METRIC,Metric,AI芯片市场规模预测,预计到2027年，市场规模将进一步扩大至3400亿元,research_AP202403141626724087,AI服务器与光模块产业链专题,17,AI芯片： 我国AI芯片需求有望迎来爆发增长,0.90,auto
+relation_f728a5f49eff1b3a,Metric,CAGR,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_f72fdf892a876ae6,Product,海光通用处理器（CPU）,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,32,海光信息：深耕CPU、DCU领域，国产龙头持续受益于AI产业浪潮,1.00,auto
+relation_f76e250a083ae849,Product,光模块,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_f91218d85c8c68d5,Company,光迅科技,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,算力需求爆发拉动光模块业务更新迭代高速发展,research_AP202403141626724087,AI服务器与光模块产业链专题,45,光迅科技：CPO、硅光技术先发布局，800G研发和市场均有突破,0.80,auto
+relation_f9168f7bb39133e2,Company,西部数据,HAS_PRODUCT,Product,HDD/SSD,HDD/SSD：西部数据、希捷科技、东艺、三星、SK海力士、美光，江波龙，佰维存储、德明利、朗科科技,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,0.90,auto
+relation_f94619443b8b4e6a,Company,希捷科技,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_fa18ec8fa2967f09,Company,东艺,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_fa6f9d26f95a51c0,Technology,FPGA,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_fae5d199684c80ea,Company,微软,BELONGS_TO_CHAIN,IndustryChain,AI服务器产业链,2022年全球AI服务器采购量占比：微软19%,research_AP202403141626724087,AI服务器与光模块产业链专题,11,AI服务器： AI服务器是大模型算力之源，中美科技巨头是主要买家,0.90,auto
+relation_fbe0de6b9b66603d,Company,东海证券,HAS_METRIC,Metric,算力,人工智能具有算力、算法、数据三大要素，其中基础层提供算力支持,research_AP202403141626724087,AI服务器与光模块产业链专题,5,通用AI概念：人工智能的分类和三大要素,0.90,auto
+relation_fc07062e287b03b5,Company,脸书,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,12,AI服务器： AI服务器产业链解析,1.00,auto
+relation_fc32a66fc0b8d961,Company,台积电,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,15,AI芯片：GPU是AI芯片主流，AI芯片占AI服务器成本约70-75%,1.00,auto
+relation_fcfc472845898960,Company,寒武纪,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,1.00,auto
+relation_fd69ddbcc82ff8fd,Company,中际旭创,HAS_PRODUCT,Product,400G光模块,公司为云数据中心客户提供100G、200G、400G和800G的高速光模块,research_AP202403141626724087,AI服务器与光模块产业链专题,39,中际旭创：800G光模块业务稳步爬坡，1.6T光模块进展国内领先,1.00,auto
+relation_fdbc75c103eac6df,IndustryChain,AI服务器产业链,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,3,AI,1.00,auto
+relation_fe7a93f99d9c4859,Metric,训练算力需求,MENTIONED_IN,Report,research_AP202403141626724087,实体在报告《AI服务器与光模块产业链专题》中被抽取。,research_AP202403141626724087,AI服务器与光模块产业链专题,8,算力需求激增：AI大模型的性能和训练算力需求呈显著正相关,1.00,auto
+relation_ff1adf411dc2c6fb,Company,澜起科技,DISCLOSES_RISK,Risk,行业竞争过度风险,风险提示：AI需求不及预期风险，行业竞争过度风险，国际贸易政策变化风险。,research_AP202403141626724087,AI服务器与光模块产业链专题,2,产业链,0.90,auto

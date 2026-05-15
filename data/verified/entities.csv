@@ -1,0 +1,272 @@
+entity_id,type,name,normalized_name,properties,source_report_ids,review_status
+entity_f887973b456332c7,Company,ADl,adl,{},"[""research_AP202403141626724087""]",auto
+entity_f9f7dd8a043cb4ea,Company,AMD,amd,{},"[""research_AP202403141626724087""]",auto
+entity_bf00586586228667,Company,HPE,hpe,{},"[""research_AP202403141626724087""]",auto
+entity_6e065a1e3e33e702,Company,IBM,ibm,{},"[""research_AP202403141626724087""]",auto
+entity_06d5e05b8b9fe409,Company,Intel,intel,{},"[""research_AP202403141626724087""]",auto
+entity_f0731d8871e7824d,Company,Lightcounting,lightcounting,{},"[""research_AP202403141626724087""]",auto
+entity_a4b7b152772e3011,Company,LSI,lsi,{},"[""research_AP202403141626724087""]",auto
+entity_6bee9f0f4e164b84,Company,Meta,meta,{},"[""research_AP202403141626724087""]",auto
+entity_3a455a87dcd5d51d,Company,OpenAI,openai,{},"[""research_AP202403141626724087""]",auto
+entity_e215793043515bdb,Company,Rambus,rambus,{},"[""research_AP202403141626724087""]",auto
+entity_3d0e1353ad18d1ae,Company,SK海力士,sk海力士,{},"[""research_AP202403141626724087""]",auto
+entity_6b07313c176eea19,Company,三星,三星,{},"[""research_AP202403141626724087""]",auto
+entity_d08d2012e31bf7fc,Company,东海证券,东海证券,{},"[""research_AP202403141626724087""]",auto
+entity_b9b367021307d534,Company,东艺,东艺,{},"[""research_AP202403141626724087""]",auto
+entity_05cfcf5b12fc6340,Company,中国电信,中国电信,{},"[""research_AP202403141626724087""]",auto
+entity_2c59754f5fd6fc1b,Company,中国移动,中国移动,{},"[""research_AP202403141626724087""]",auto
+entity_47b1e62bc7571958,Company,中国联通,中国联通,{},"[""research_AP202403141626724087""]",auto
+entity_2cf8658dd9280d75,Company,中国长城,中国长城,{},"[""research_AP202403141626724087""]",auto
+entity_02fbef8942483b57,Company,中科曙光,中科曙光,{},"[""research_AP202403141626724087""]",auto
+entity_be76d69af27d8e0a,Company,中际旭创,中际旭创,{},"[""research_AP202403141626724087""]",auto
+entity_a2c7d04a93db25dc,Company,亚马逊,亚马逊,{},"[""research_AP202403141626724087""]",auto
+entity_09cd46311324d935,Company,佰维存储,佰维存储,{},"[""research_AP202403141626724087""]",auto
+entity_0c21e323f5e43c9b,Company,光宝科技,光宝科技,{},"[""research_AP202403141626724087""]",auto
+entity_e5e80ef751ed255e,Company,光迅科技,光迅科技,{},"[""research_AP202403141626724087""]",auto
+entity_c4914180486bb488,Company,兴森科技,兴森科技,{},"[""research_AP202403141626724087""]",auto
+entity_d198cfdc0cf0bc26,Company,华为,华为,{},"[""research_AP202403141626724087""]",auto
+entity_d10ce536601ad85e,Company,华为鲲鹏,华为鲲鹏,{},"[""research_AP202403141626724087""]",auto
+entity_998789d380adabdc,Company,华正新材,华正新材,{},"[""research_AP202403141626724087""]",auto
+entity_31a11e18d964f3db,Company,南亚新材,南亚新材,{},"[""research_AP202403141626724087""]",auto
+entity_31903d0129f1e39a,Company,台积电,台积电,{},"[""research_AP202403141626724087""]",auto
+entity_6e4488b1155359f9,Company,台达电子,台达电子,{},"[""research_AP202403141626724087""]",auto
+entity_1bd48e048f4bafc6,Company,国芯科技,国芯科技,{},"[""research_AP202403141626724087""]",auto
+entity_6143d53f4f38ffd6,Company,坤前,坤前,{},"[""research_AP202403141626724087""]",auto
+entity_7c90f2c52d73268e,Company,壁仞科技,壁仞科技,{},"[""research_AP202403141626724087""]",auto
+entity_e5e4b6f2243a1158,Company,天孚通信,天孚通信,{},"[""research_AP202403141626724087""]",auto
+entity_732a585a3bc8a2f0,Company,字节跳动,字节跳动,{},"[""research_AP202403141626724087""]",auto
+entity_00b5873a749b89d1,Company,宁畅,宁畅,{},"[""research_AP202403141626724087""]",auto
+entity_90a69b762e6b0a7b,Company,安擎,安擎,{},"[""research_AP202403141626724087""]",auto
+entity_633a41e0885e0515,Company,宝德,宝德,{},"[""research_AP202403141626724087""]",auto
+entity_1a4d6fcc8a400dd2,Company,寒武纪,寒武纪,{},"[""research_AP202403141626724087""]",auto
+entity_eaf379967bb13222,Company,工业富联,工业富联,{},"[""research_AP202403141626724087""]",auto
+entity_7b734dac7854e884,Company,希捷科技,希捷科技,{},"[""research_AP202403141626724087""]",auto
+entity_cf5fa1da819b1cf7,Company,广电国网,广电国网,{},"[""research_AP202403141626724087""]",auto
+entity_46c692ed181f55d2,Company,微软,微软,{},"[""research_AP202403141626724087""]",auto
+entity_1140344612ab0f5f,Company,德州仪器,德州仪器,{},"[""research_AP202403141626724087""]",auto
+entity_beba389f71c2f030,Company,德明利,德明利,{},"[""research_AP202403141626724087""]",auto
+entity_b65f929af48e5bb3,Company,思腾合力,思腾合力,{},"[""research_AP202403141626724087""]",auto
+entity_c437234e57f9f7ff,Company,戴尔,戴尔,{},"[""research_AP202403141626724087""]",auto
+entity_721e10743fad4305,Company,文心一言,文心一言,{},"[""research_AP202403141626724087""]",auto
+entity_64fbb623e821049e,Company,新华三,新华三,{},"[""research_AP202403141626724087""]",auto
+entity_bd2f36e699f613f4,Company,新易盛,新易盛,{},"[""research_AP202403141626724087""]",auto
+entity_0474826ecf235675,Company,新雷能,新雷能,{},"[""research_AP202403141626724087""]",auto
+entity_23126f89b39ef2f7,Company,昆仑芯,昆仑芯,{},"[""research_AP202403141626724087""]",auto
+entity_6853efb3a4f89114,Company,曙光数创,曙光数创,{},"[""research_AP202403141626724087""]",auto
+entity_add5b48f3bb51148,Company,朗科科技,朗科科技,{},"[""research_AP202403141626724087""]",auto
+entity_eb74c6e5379a8ce6,Company,欧陆通,欧陆通,{},"[""research_AP202403141626724087""]",auto
+entity_26714270fa6effa1,Company,江波龙,江波龙,{},"[""research_AP202403141626724087""]",auto
+entity_ae7ef1fc443c8f76,Company,沪电股份,沪电,{},"[""research_AP202403141626724087""]",auto
+entity_2b0c59d21f865e60,Company,浪潮信息,浪潮信息,{},"[""research_AP202403141626724087""]",auto
+entity_fc5bcf27c8985bce,Company,海光信息,海光信息,{},"[""research_AP202403141626724087""]",auto
+entity_39afa9bb2c190d56,Company,深南电路,深南电路,{},"[""research_AP202403141626724087""]",auto
+entity_758e531faf1fa191,Company,深科技,深科技,{},"[""research_AP202403141626724087""]",auto
+entity_63cc95f7cba3e9d7,Company,源杰科技,源杰科技,{},"[""research_AP202403141626724087""]",auto
+entity_dd46a86584255c22,Company,澜起科技,澜起科技,{},"[""research_AP202403141626724087""]",auto
+entity_287a4902aaaa5970,Company,瑞萨,瑞萨,{},"[""research_AP202403141626724087""]",auto
+entity_9b0965185ce8f9d2,Company,生益科技,生益科技,{},"[""research_AP202403141626724087""]",auto
+entity_536d4d15f21d5e18,Company,百度,百度,{},"[""research_AP202403141626724087""]",auto
+entity_5285eeead5dc999b,Company,美光,美光,{},"[""research_AP202403141626724087""]",auto
+entity_1e2609fcd9fe07ce,Company,联想,联想,{},"[""research_AP202403141626724087""]",auto
+entity_886e2c02cc69aa76,Company,聚力,聚力,{},"[""research_AP202403141626724087""]",auto
+entity_c39d9e8d3ccaba30,Company,脸书,脸书,{},"[""research_AP202403141626724087""]",auto
+entity_59a56bad96f58a47,Company,腾讯,腾讯,{},"[""research_AP202403141626724087""]",auto
+entity_7281202e7ac2e99e,Company,艾默生,艾默生,{},"[""research_AP202403141626724087""]",auto
+entity_09270df77e9e841f,Company,英伟达,英伟达,{},"[""research_AP202403141626724087""]",auto
+entity_4e1d96d105d3eccb,Company,英特尔,英特尔,{},"[""research_AP202403141626724087""]",auto
+entity_c25297ea1bb3113b,Company,英维克,英维克,{},"[""research_AP202403141626724087""]",auto
+entity_aa06805ed346f7da,Company,裕太微,裕太微,{},"[""research_AP202403141626724087""]",auto
+entity_4a22d164fd8bf400,Company,西部数据,西部数据,{},"[""research_AP202403141626724087""]",auto
+entity_5ee14d9d177fd94b,Company,讯飞星火,讯飞星火,{},"[""research_AP202403141626724087""]",auto
+entity_651326cdefa947a9,Company,谱瑞,谱瑞,{},"[""research_AP202403141626724087""]",auto
+entity_06205fb25c78638b,Company,谷歌,谷歌,{},"[""research_AP202403141626724087""]",auto
+entity_9b0b579a262d077a,Company,通义千问,通义千问,{},"[""research_AP202403141626724087""]",auto
+entity_991ea2dd7fc86aa6,Company,长江存储,长江存储,{},"[""research_AP202403141626724087""]",auto
+entity_7686c98bab1f7975,Company,长鑫存储,长鑫存储,{},"[""research_AP202403141626724087""]",auto
+entity_0cc01328942edc8b,Company,阿里,阿里,{},"[""research_AP202403141626724087""]",auto
+entity_7e411d9ede0defa9,Company,阿里巴巴,阿里巴巴,{},"[""research_AP202403141626724087""]",auto
+entity_b92040c945d3eade,Company,飞荣达,飞荣达,{},"[""research_AP202403141626724087""]",auto
+entity_a5c0abfa114cee47,IndustryChain,AIGC产业链,aigc产业链,{},"[""research_AP202403141626724087""]",auto
+entity_c8caf83456427f29,IndustryChain,AI服务器与光模块产业链,ai服务器与光模块产业链,{},"[""research_AP202403141626724087""]",auto
+entity_9f292c15eb252585,IndustryChain,AI服务器产业链,ai服务器产业链,{},"[""research_AP202403141626724087""]",auto
+entity_c24eb920eb924a52,IndustryChain,AI算力产业链,ai算力产业链,{},"[""research_AP202403141626724087""]",auto
+entity_796960378280160c,IndustryChain,AI算力及零部件,ai算力及零部件,{},"[""research_AP202403141626724087""]",auto
+entity_c06e355b80d1e29c,IndustryChain,AI芯片产业链,ai芯片产业链,{},"[""research_AP202403141626724087""]",auto
+entity_ff3e0083fe22cb14,IndustryChain,光模块产业链,光模块产业链,{},"[""research_AP202403141626724087""]",auto
+entity_cb264d84959ec363,IndustryChain,基础设施层,基础设施层,{},"[""research_AP202403141626724087""]",auto
+entity_9994d2308c6c8b8e,IndustryChain,应用层,应用层,{},"[""research_AP202403141626724087""]",auto
+entity_d18b241e366d0252,IndustryChain,模型层,模型层,{},"[""research_AP202403141626724087""]",auto
+entity_b87d831f4214fa86,Metric,10G光芯片国产化率,10g光芯片国产化率,"{""value"": ""60%""}","[""research_AP202403141626724087""]",auto
+entity_4d1201a8a44f6dd4,Metric,2.5G光芯片国产化率,2.5g光芯片国产化率,"{""value"": ""90%""}","[""research_AP202403141626724087""]",auto
+entity_2273b11b39729bba,Metric,2026年突破30亿美元,2026年突破30亿美元,{},"[""research_AP202403141626724087""]",auto
+entity_70faf1ad98403524,Metric,2027年突破200亿美元,2027年突破200亿美元,{},"[""research_AP202403141626724087""]",auto
+entity_a9e38c78e8ff10d1,Metric,2028年中国光模块市场规模35亿美元,2028年中国光模块市场规模35亿美元,{},"[""research_AP202403141626724087""]",auto
+entity_dce4b9e6969aaa64,Metric,25G以上光芯片国产化率,25g以上光芯片国产化率,"{""value"": ""5%""}","[""research_AP202403141626724087""]",auto
+entity_7e352c58545f2760,Metric,25G光芯片国产化率,25g光芯片国产化率,"{""value"": ""20%""}","[""research_AP202403141626724087""]",auto
+entity_94a4035d1041352d,Metric,800G单模研发进展,800g单模研发进展,{},"[""research_AP202403141626724087""]",auto
+entity_658d6ea5e3cdbdc9,Metric,800G多模研发进展,800g多模研发进展,{},"[""research_AP202403141626724087""]",auto
+entity_404206b2c0cb29e6,Metric,AI芯片占AI服务器成本比例,ai芯片占ai服务器成本比例,"{""value"": ""70%左右""}","[""research_AP202403141626724087""]",auto
+entity_23f381950e44b71d,Metric,AI芯片市场份额,ai芯片市场份额,{},"[""research_AP202403141626724087""]",auto
+entity_2efe821ddb473ffe,Metric,AI芯片市场规模,ai芯片市场规模,{},"[""research_AP202403141626724087""]",auto
+entity_33c8d7e65331aecc,Metric,AI芯片市场规模预测,ai芯片市场规模预测,"{""value"": ""3400亿元"", ""year"": ""2027""}","[""research_AP202403141626724087""]",auto
+entity_2c7de3612c1492a4,Metric,AMD全球GPU市场份额,amd全球gpu市场份额,"{""value"": ""19%""}","[""research_AP202403141626724087""]",auto
+entity_7b26641ad709c085,Metric,CAGR,cagr,"{""value"": ""29.02%""}","[""research_AP202403141626724087""]",auto
+entity_04070b21476504b2,Metric,FLOPs,flops,{},"[""research_AP202403141626724087""]",auto
+entity_2e038d04a89d4eb4,Metric,GPU价值量占AI服务器比例,gpu价值量占ai服务器比例,"{""value"": ""70-75%""}","[""research_AP202403141626724087""]",auto
+entity_f6632ef2ba47cb05,Metric,GPU占AI芯片市场份额,gpu占ai芯片市场份额,"{""value"": ""近90%""}","[""research_AP202403141626724087""]",auto
+entity_549634ed1839d5fb,Metric,GPU占中国AI运算市场份额,gpu占中国ai运算市场份额,"{""value"": ""约89%""}","[""research_AP202403141626724087""]",auto
+entity_a069b85d33e346f3,Metric,HBM体积减小比例,hbm体积减小比例,"{""value"": ""比GDDR降低94%""}","[""research_AP202403141626724087""]",auto
+entity_62d1c8102da3c55c,Metric,HBM带宽,hbm带宽,"{""value"": ""1T/s""}","[""research_AP202403141626724087""]",auto
+entity_f5da92928d9867d4,Metric,中国AI服务器市场份额,中国ai服务器市场份额,{},"[""research_AP202403141626724087""]",auto
+entity_762bd6b09b01b0fe,Metric,以太网占比28%,以太网占比28%,{},"[""research_AP202403141626724087""]",auto
+entity_33a38ebc0419f323,Metric,光模块器件占光模块成本比例,光模块器件占光模块成本比例,"{""value"": ""73%""}","[""research_AP202403141626724087""]",auto
+entity_bbb3f64a67c14d1d,Metric,光波分复用技术占比32%,光波分复用技术占比32%,{},"[""research_AP202403141626724087""]",auto
+entity_a8f630659923983c,Metric,全球AI服务器出货量,全球ai服务器出货量,{},"[""research_AP202403141626724087""]",auto
+entity_e9a4b6247dc9fc95,Metric,全球AI服务器数量,全球ai服务器数量,"{""value"": ""85.5万台（2023年）""}","[""research_AP202403141626724087""]",auto
+entity_36c8c546633b72b7,Metric,全球AI服务器采购量占比,全球ai服务器采购量占比,{},"[""research_AP202403141626724087""]",auto
+entity_aa2a01fb85c8cfcc,Metric,全球算力总规模,全球算力总规模,{},"[""research_AP202403141626724087""]",auto
+entity_53c069314ca8400b,Metric,净利润,净利润,{},"[""research_AP202403141626724087""]",auto
+entity_1a3bad6f13669b9a,Metric,净利率,净利率,{},"[""research_AP202403141626724087""]",auto
+entity_a33ed7d2a16f315c,Metric,单用户数据量,单用户数据量,{},"[""research_AP202403141626724087""]",auto
+entity_6be2605f9daa8239,Metric,参数量,参数量,{},"[""research_AP202403141626724087""]",auto
+entity_53bb361cdd357e9a,Metric,多模态应用场景,多模态应用场景,{},"[""research_AP202403141626724087""]",auto
+entity_468a1a3423a35703,Metric,市场份额,市场份额,{},"[""research_AP202403141626724087""]",auto
+entity_e9a788d32b962dc6,Metric,年复合增长率11%,年复合增长率11%,{},"[""research_AP202403141626724087""]",auto
+entity_e4fb0d0087aefebf,Metric,应用时间,应用时间,{},"[""research_AP202403141626724087""]",auto
+entity_13041cc6c95ed7a3,Metric,数据,数据,{},"[""research_AP202403141626724087""]",auto
+entity_6cb65efb097c534b,Metric,模型数量,模型数量,{},"[""research_AP202403141626724087""]",auto
+entity_60d96f3ff5a4823f,Metric,毛利率,毛利率,{},"[""research_AP202403141626724087""]",auto
+entity_fddb1239287a7f03,Metric,用户日活,用户日活,{},"[""research_AP202403141626724087""]",auto
+entity_faae25ae6c09b101,Metric,硅光量产阶段,硅光量产阶段,{},"[""research_AP202403141626724087""]",auto
+entity_8388b67de4d00d25,Metric,算力,算力,{},"[""research_AP202403141626724087""]",auto
+entity_c732be7ff3c29f3d,Metric,算法,算法,{},"[""research_AP202403141626724087""]",auto
+entity_8202c1322fe955b9,Metric,英伟达全球GPU市场份额,英伟达全球gpu市场份额,"{""value"": ""80%""}","[""research_AP202403141626724087""]",auto
+entity_a33bae63531d17fa,Metric,英特尔全球GPU市场份额,英特尔全球gpu市场份额,"{""value"": ""1%""}","[""research_AP202403141626724087""]",auto
+entity_22136f956836e877,Metric,营收,营收,{},"[""research_AP202403141626724087""]",auto
+entity_e1a0811da37dc456,Metric,订单,订单,{},"[""research_AP202403141626724087""]",auto
+entity_5c56275d22e9c2a2,Metric,训练数据量,训练数据量,{},"[""research_AP202403141626724087""]",auto
+entity_c3d07f3fcd63968d,Metric,训练次数,训练次数,{},"[""research_AP202403141626724087""]",auto
+entity_a88cec49236d4dc7,Metric,训练算力需求,训练算力需求,{},"[""research_AP202403141626724087""]",auto
+entity_7403e712b01663e2,Metric,项目研发投入,项目研发投入,{},"[""research_AP202403141626724087""]",auto
+entity_957606c54b9e0d27,Product,1.6T光模块,1.6t光模块,{},"[""research_AP202403141626724087""]",auto
+entity_2c132a999015b0f7,Product,100G光模块,100g光模块,{},"[""research_AP202403141626724087""]",auto
+entity_921122510d20af4b,Product,200G光模块,200g光模块,{},"[""research_AP202403141626724087""]",auto
+entity_afaeb527ba0abbcc,Product,400G光模块,400g光模块,{},"[""research_AP202403141626724087""]",auto
+entity_dc07040f04869b1a,Product,5G中传光模块,5g中传光模块,{},"[""research_AP202403141626724087""]",auto
+entity_638d47182925697c,Product,5G前传光模块,5g前传光模块,{},"[""research_AP202403141626724087""]",auto
+entity_190acc01c6cbf19c,Product,5G回传光模块,5g回传光模块,{},"[""research_AP202403141626724087""]",auto
+entity_6c652f9294e1df34,Product,800G光模块,800g光模块,{},"[""research_AP202403141626724087""]",auto
+entity_558f1235fe9638f0,Product,AI大语言模型,ai大语言模型,{},"[""research_AP202403141626724087""]",auto
+entity_e1537b64b076e009,Product,AI服务器,ai服务器,{},"[""research_AP202403141626724087""]",auto
+entity_925e5f737763a791,Product,AI算法框架,ai算法框架,{},"[""research_AP202403141626724087""]",auto
+entity_eff7601551e1fd80,Product,AI芯片,ai芯片,{},"[""research_AP202403141626724087""]",auto
+entity_8c7dfb43fafbf7be,Product,BERT,bert,{},"[""research_AP202403141626724087""]",auto
+entity_97140182d53bc68a,Product,B端垂直大模型解决方案,b端垂直大模型解决方案,{},"[""research_AP202403141626724087""]",auto
+entity_05d37db0f3a3e484,Product,ChatGPT,chatgpt,{},"[""research_AP202403141626724087""]",auto
+entity_0b6d4d0bd722c36a,Product,CPU/GPU/AI加速芯片,cpu/gpu/ai加速芯片,{},"[""research_AP202403141626724087""]",auto
+entity_a5cb52b0ef5884dc,Product,C端通用生成式AI,c端通用生成式ai,{},"[""research_AP202403141626724087""]",auto
+entity_3930e5d585d755bd,Product,Demux POSA,demuxposa,{},"[""research_AP202403141626724087""]",auto
+entity_611c442bcea6e6eb,Product,DRAM内存及模组,dram内存及模组,{},"[""research_AP202403141626724087""]",auto
+entity_450e2d3e79fb000a,Product,GPT,gpt,{},"[""research_AP202403141626724087""]",auto
+entity_8ad0eec6beee9dc6,Product,GPU,gpu,{},"[""research_AP202403141626724087""]",auto
+entity_458c24f1f4187005,Product,HDD/SSD,hdd/ssd,{},"[""research_AP202403141626724087""]",auto
+entity_5a245867d3b50430,Product,Lensed FAU,lensedfau,{},"[""research_AP202403141626724087""]",auto
+entity_88b73bfa0b35b8fa,Product,Mux TOSA,muxtosa,{},"[""research_AP202403141626724087""]",auto
+entity_deb96d34204a9ec6,Product,PCB,pcb,{},"[""research_AP202403141626724087""]",auto
+entity_a84a497a8425f5b7,Product,RAID芯片/板卡,raid芯片/板卡,{},"[""research_AP202403141626724087""]",auto
+entity_a60d583ada1b9fe1,Product,Sora,sora,{},"[""research_AP202403141626724087""]",auto
+entity_122e60c9e4948746,Product,主板/系统集成商(ODM)厂商,主板/系统集成商(odm)厂商,{},"[""research_AP202403141626724087""]",auto
+entity_94aa4027d027842a,Product,云服务器,云服务器,{},"[""research_AP202403141626724087""]",auto
+entity_8ea4d281ae492bb7,Product,云端产品线,云端产品线,{},"[""research_AP202403141626724087""]",auto
+entity_e786adb475dafc66,Product,云端智能芯片及加速卡,云端智能芯片及加速卡,{},"[""research_AP202403141626724087""]",auto
+entity_88a31ffcddf76fa3,Product,云计算,云计算,{},"[""research_AP202403141626724087""]",auto
+entity_c9bba0efa15705ab,Product,互联网接口,互联网接口,{},"[""research_AP202403141626724087""]",auto
+entity_85dbbaa0b01df870,Product,传统服务器,传统服务器,{},"[""research_AP202403141626724087""]",auto
+entity_897a05e18fc7bd8c,Product,光模块,光模块,{},"[""research_AP202403141626724087""]",auto
+entity_007ee9724da4643a,Product,光芯片,光芯片,{},"[""research_AP202403141626724087""]",auto
+entity_78cf3440d839f372,Product,固网FTTX光纤接入光器件,固网fttx光纤接入光器件,{},"[""research_AP202403141626724087""]",auto
+entity_ef28b41b30392acf,Product,城域网传输光模块,城域网传输光模块,{},"[""research_AP202403141626724087""]",auto
+entity_29dab4af26b8c0e9,Product,处理器IP授权及软件,处理器ip授权及软件,{},"[""research_AP202403141626724087""]",auto
+entity_206df54827ca2e0f,Product,大数据解决方案,大数据解决方案,{},"[""research_AP202403141626724087""]",auto
+entity_41089d9e2fbeb2d5,Product,存储芯片,存储芯片,{},"[""research_AP202403141626724087""]",auto
+entity_5054d67e8e446061,Product,散热,散热,{},"[""research_AP202403141626724087""]",auto
+entity_bb2dd65aa9baf74a,Product,数据服务商,数据服务商,{},"[""research_AP202403141626724087""]",auto
+entity_76704bc6d30329a5,Product,数据集提供商,数据集提供商,{},"[""research_AP202403141626724087""]",auto
+entity_ccfe175df3edb570,Product,文心一言,文心一言,{},"[""research_AP202403141626724087""]",auto
+entity_2f299ab9ae252995,Product,智能计算集群系统,智能计算集群系统,{},"[""research_AP202403141626724087""]",auto
+entity_e50b2aa2f121571d,Product,服务器品牌厂商,服务器品牌厂商,{},"[""research_AP202403141626724087""]",auto
+entity_3f158f46b119db82,Product,核心网传输光模块,核心网传输光模块,{},"[""research_AP202403141626724087""]",auto
+entity_72e315d3c8a29033,Product,海光DCU深算系列,海光dcu深算系列,{},"[""research_AP202403141626724087""]",auto
+entity_df969da8cf8275e4,Product,海光协处理器（DCU）,海光协处理器(dcu),{},"[""research_AP202403141626724087""]",auto
+entity_ed346823b2e71cdf,Product,海光通用处理器（CPU）,海光通用处理器(cpu),{},"[""research_AP202403141626724087""]",auto
+entity_68e23705b123b636,Product,电源,电源,{},"[""research_AP202403141626724087""]",auto
+entity_af660c41108899de,Product,电芯片,电芯片,{},"[""research_AP202403141626724087""]",auto
+entity_855fb6352e84638a,Product,算力芯片,算力芯片,{},"[""research_AP202403141626724087""]",auto
+entity_fd2c26fac0492618,Product,边缘产品线,边缘产品线,{},"[""research_AP202403141626724087""]",auto
+entity_ba60a23de87e90aa,Product,边缘服务器,边缘服务器,{},"[""research_AP202403141626724087""]",auto
+entity_f458e4270785a889,Product,边缘端智能芯片及加速卡,边缘端智能芯片及加速卡,{},"[""research_AP202403141626724087""]",auto
+entity_f935c2b2dd2edf55,Product,骨干网传输光模块,骨干网传输光模块,{},"[""research_AP202403141626724087""]",auto
+entity_088eb7ede70ad98d,Product,高速光器件,高速光器件,{},"[""research_AP202403141626724087""]",auto
+entity_36fba5191c74aef3,Product,高速光引擎,高速光引擎,{},"[""research_AP202403141626724087""]",auto
+entity_58c0e3492eeb42f7,Report,2025年年度报告,annual_000977_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/浪潮信息_2025年报.pdf"", ""pages"": ""186"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-11/1225096638.PDF"", ""published_at"": ""2026-04-11"", ""report_id"": ""annual_000977_2025"", ""sha256"": ""a292147237341c5918930d25497ec4db92af13b3991b71ecddea2740886931b0"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=000977&announcementId=1225096638&orgId=gssz0000977&announcementTime=1775836800000"", ""year"": ""2025""}","[""annual_000977_2025""]",auto
+entity_e6124a986bc33104,Report,2025年年度报告,annual_002837_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/英维克_2025年报.pdf"", ""pages"": ""196"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-21/1225131813.PDF"", ""published_at"": ""2026-04-21"", ""report_id"": ""annual_002837_2025"", ""sha256"": ""2cbfc5dc8a60b01212b68d930fb06d0a25bd74563cd1942bd87161246c3a1472"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=002837&announcementId=1225131813&orgId=9900029666&announcementTime=1776700800000"", ""year"": ""2025""}","[""annual_002837_2025""]",auto
+entity_03470c5deabbefbd,Report,2025年年度报告,annual_300308_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/中际旭创_2025年报.pdf"", ""pages"": ""229"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-03-31/1225056459.PDF"", ""published_at"": ""2026-03-31"", ""report_id"": ""annual_300308_2025"", ""sha256"": ""0290f380253dde79613d43a1c6203674ae36cb89f849f063668ccde9a8789b5e"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300308&announcementId=1225056459&orgId=9900022016&announcementTime=1774886400000"", ""year"": ""2025""}","[""annual_300308_2025""]",auto
+entity_021b9caf7bab50ed,Report,2025年年度报告,annual_300394_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/天孚通信_2025年报.pdf"", ""pages"": ""265"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-08/1225082705.PDF"", ""published_at"": ""2026-04-08"", ""report_id"": ""annual_300394_2025"", ""sha256"": ""969e5142ee753b68e1f01c26e25215310d643dda43e4a25ae72bcc01f1265268"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300394&announcementId=1225082705&orgId=9900023911&announcementTime=1775577600000"", ""year"": ""2025""}","[""annual_300394_2025""]",auto
+entity_b0894fba88ede908,Report,2025年年度报告,annual_300502_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/新易盛_2025年报.pdf"", ""pages"": ""170"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-24/1225172598.PDF"", ""published_at"": ""2026-04-24"", ""report_id"": ""annual_300502_2025"", ""sha256"": ""3432905a431a8254c2274c2188269e94cfc5a69e92c7d34332a5a3a7da8b15b6"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=300502&announcementId=1225172598&orgId=9900026455&announcementTime=1776960000000"", ""year"": ""2025""}","[""annual_300502_2025""]",auto
+entity_1299fae7d49fc682,Report,2025年年度报告,annual_301018_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/申菱环境_2025年报.pdf"", ""pages"": ""175"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-27/1225181199.PDF"", ""published_at"": ""2026-04-27"", ""report_id"": ""annual_301018_2025"", ""sha256"": ""9f3e0616759471fab100a768b8cb67c7a6188d0287a5a5ab4c932596ac663e81"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=301018&announcementId=1225181199&orgId=9900035574&announcementTime=1777219200000"", ""year"": ""2025""}","[""annual_301018_2025""]",auto
+entity_acf9644395da5c57,Report,富士康工业互联网股份有限公司2025年年度报告,annual_601138_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/工业富联_2025年报.pdf"", ""pages"": ""270"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-03-11/1225004420.PDF"", ""published_at"": ""2026-03-11"", ""report_id"": ""annual_601138_2025"", ""sha256"": ""21939eda6d98778d2e5bf54cccf82f86d5dd7a127c2a86706bc78d075b19b567"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=601138&announcementId=1225004420&orgId=9900036731&announcementTime=1773158400000"", ""year"": ""2025""}","[""annual_601138_2025""]",auto
+entity_94991917e9a1c459,Report,中科曙光2025年年度报告,annual_603019_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/中科曙光_2025年报.pdf"", ""pages"": ""227"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-15/1225104539.PDF"", ""published_at"": ""2026-04-15"", ""report_id"": ""annual_603019_2025"", ""sha256"": ""96e0142fab587c141645fdb1ef411fc13ae3940bbb7c06eb3831f480d5af7241"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=603019&announcementId=1225104539&orgId=9900023134&announcementTime=1776182400000"", ""year"": ""2025""}","[""annual_603019_2025""]",auto
+entity_a6635d255a4c4afc,Report,海光信息技术股份有限公司2025年年度报告,annual_688041_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/海光信息_2025年报.pdf"", ""pages"": ""231"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-04-08/1225083088.PDF"", ""published_at"": ""2026-04-08"", ""report_id"": ""annual_688041_2025"", ""sha256"": ""abe3c5f80e80e2b6a56d243cfd502cccec715df783b7b9dcf95d3a84b1106c02"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=688041&announcementId=1225083088&orgId=9900048365&announcementTime=1775577600000"", ""year"": ""2025""}","[""annual_688041_2025""]",auto
+entity_cdf97ff2ec47a362,Report,2025年年度报告,annual_688256_2025,"{""kind"": ""annual"", ""local_path"": ""data/raw_pdfs/annual/寒武纪_2025年报.pdf"", ""pages"": ""219"", ""pdf_url"": ""https://static.cninfo.com.cn/finalpage/2026-03-13/1225007336.PDF"", ""published_at"": ""2026-03-13"", ""report_id"": ""annual_688256_2025"", ""sha256"": ""e9360bfb6ad2d66ce7b65da15f8fa2fcdda9fde526e2a76dba3964327507f4ab"", ""source_site"": ""巨潮资讯"", ""source_url"": ""https://www.cninfo.com.cn/new/disclosure/detail?stockCode=688256&announcementId=1225007336&orgId=nssc1000595&announcementTime=1773331200000"", ""year"": ""2025""}","[""annual_688256_2025""]",auto
+entity_b13cd1cc637af386,Report,AI服务器与光模块产业链专题,research_AP202403141626724087,"{""kind"": ""research"", ""local_path"": ""data/raw_pdfs/research/AI算力产业链研报_01_公开研报_20240314_AI服务器与光模块产业链专题.pdf"", ""pages"": ""55"", ""pdf_url"": ""https://pdf.dfcfw.com/pdf/H3_AP202403141626724087_1.pdf"", ""published_at"": ""2024-03-14"", ""report_id"": ""research_AP202403141626724087"", ""sha256"": ""ac2643cc1d37b2867f792de5c9d934f39d214bb0709fccd7ce19af46320e9d2c"", ""source_site"": ""东方财富研报"", ""source_url"": ""https://data.eastmoney.com/report/zw_industry.jshtml?infocode=AP202403141626724087"", ""year"": ""2024""}","[""research_AP202403141626724087""]",auto
+entity_881cd394c1ef1c5a,Report,计算机行业专题研究：DeepSeek算力告急，利好AI应用+AI算力产业链,research_AP202502091642912986,"{""kind"": ""research"", ""local_path"": ""data/raw_pdfs/research/AI算力产业链研报_04_公开研报_20250209_计算机行业专题研究：DeepSeek算力告急，利好AI应用+AI算力产业.pdf"", ""pages"": ""15"", ""pdf_url"": ""https://pdf.dfcfw.com/pdf/H3_AP202502091642912986_1.pdf"", ""published_at"": ""2025-02-09"", ""report_id"": ""research_AP202502091642912986"", ""sha256"": ""e9186ee4149eae40acf4621b66ca93483d13d5230cd4b5013269f8cac767e7dd"", ""source_site"": ""东方财富研报"", ""source_url"": ""https://data.eastmoney.com/report/zw_industry.jshtml?infocode=AP202502091642912986"", ""year"": ""2025""}","[""research_AP202502091642912986""]",auto
+entity_4eee3491bb03ead5,Report,AI产业链业绩兑现，算力投资空间广阔,research_AP202507161709977534,"{""kind"": ""research"", ""local_path"": ""data/raw_pdfs/research/AI算力产业链研报_05_公开研报_20250716_AI产业链业绩兑现，算力投资空间广阔.pdf"", ""pages"": ""12"", ""pdf_url"": ""https://pdf.dfcfw.com/pdf/H3_AP202507161709977534_1.pdf"", ""published_at"": ""2025-07-16"", ""report_id"": ""research_AP202507161709977534"", ""sha256"": ""2fac73105c5d674fc9bdd25b18228c5803e976c30c255c99ff4c08640afb11e9"", ""source_site"": ""东方财富研报"", ""source_url"": ""https://data.eastmoney.com/report/zw_industry.jshtml?infocode=AP202507161709977534"", ""year"": ""2025""}","[""research_AP202507161709977534""]",auto
+entity_af30dc2c7c017989,Report,北交所化工专题报告：AI算力散热革命-关注北交所液冷产业链，三祥科技/利通科技/科隆新材等软管标的,research_AP202605101822123797,"{""kind"": ""research"", ""local_path"": ""data/raw_pdfs/research/AI算力产业链研报_03_开源证券_20260510_北交所化工专题报告：AI算力散热革命-关注北交所液冷产业链，三祥科技_利.pdf"", ""pages"": ""20"", ""pdf_url"": ""https://pdf.dfcfw.com/pdf/H3_AP202605101822123797_1.pdf"", ""published_at"": ""2026-05-10"", ""report_id"": ""research_AP202605101822123797"", ""sha256"": ""7ea5f3c5690041193bf1b46da7c5ad8b25457d3dd9cd1e639170e89b0c32ba35"", ""source_site"": ""东方财富研报"", ""source_url"": ""https://data.eastmoney.com/report/zw_industry.jshtml?infocode=AP202605101822123797"", ""year"": ""2026""}","[""research_AP202605101822123797""]",auto
+entity_ccb7f7948f708142,Report,国产算力系列专题报告：国产算力飞跃启新，AI引领产业链发展变革,research_seed_2,"{""kind"": ""research"", ""local_path"": ""data/raw_pdfs/research/AI算力产业链研报_02_长城证券_20240617_国产算力系列专题报告：国产算力飞跃启新，AI引领产业链发展变革.pdf"", ""pages"": ""63"", ""pdf_url"": ""https://www.cgws.com/cczq/ggdt/ccyj/202406/P020240617315123369639.pdf"", ""published_at"": ""2024-06-17"", ""report_id"": ""research_seed_2"", ""sha256"": ""7c2dcbbef824644487eb0539e87dcf820c00e0c94e3dcc1e3894c63345f69c7b"", ""source_site"": ""长城证券"", ""source_url"": ""https://www.cgws.com/cczq/ggdt/ccyj/202406/t20240617_315123.html"", ""year"": ""2024""}","[""research_seed_2""]",auto
+entity_3d38ae2d7e0f96ee,Risk,AI需求不及预期风险,ai需求不及预期风险,{},"[""research_AP202403141626724087""]",auto
+entity_7fd4e7bd7aac9c42,Risk,GPU成本优势,gpu成本优势,{},"[""research_AP202403141626724087""]",auto
+entity_13eb4f8791ff42af,Risk,国际贸易政策变化风险,国际贸易政策变化风险,{},"[""research_AP202403141626724087""]",auto
+entity_4a514e50b28984f3,Risk,行业竞争过度风险,行业竞争过度风险,{},"[""research_AP202403141626724087""]",auto
+entity_1100fcf8a1a7d299,Technology,5G,5g,{},"[""research_AP202403141626724087""]",auto
+entity_654ffb31a0c93345,Technology,AI大模型,ai大模型,{},"[""research_AP202403141626724087""]",auto
+entity_0d7cf4069ccfda48,Technology,AI技术,ai技术,{},"[""research_AP202403141626724087""]",auto
+entity_ad6421c8e80af412,Technology,AI算力,ai算力,{},"[""research_AP202403141626724087""]",auto
+entity_e3d3af58dfecd6b4,Technology,ASIC,asic,{},"[""research_AP202403141626724087""]",auto
+entity_8e2865758b53b324,Technology,BOX封装,box封装,{},"[""research_AP202403141626724087""]",auto
+entity_bd144ea162a54590,Technology,COB封装,cob封装,{},"[""research_AP202403141626724087""]",auto
+entity_ea43749a2ab47a8d,Technology,CPO,cpo,{},"[""research_AP202403141626724087""]",auto
+entity_034fbffeaad9be48,Technology,CPU,cpu,{},"[""research_AP202403141626724087""]",auto
+entity_91e4c3e97131e091,Technology,DRAM,dram,{},"[""research_AP202403141626724087""]",auto
+entity_57bcbaa4fbc011bb,Technology,FPGA,fpga,{},"[""research_AP202403141626724087""]",auto
+entity_848f1d5900ed6202,Technology,GPGPU,gpgpu,{},"[""research_AP202403141626724087""]",auto
+entity_3e65f238ff8d9529,Technology,GPU,gpu,{},"[""research_AP202403141626724087""]",auto
+entity_8e2901d945b7503e,Technology,HBM,hbm,{},"[""research_AP202403141626724087""]",auto
+entity_351246137bd54c34,Technology,LPO,lpo,{},"[""research_AP202403141626724087""]",auto
+entity_0f92c9726b7b21a7,Technology,NPU,npu,{},"[""research_AP202403141626724087""]",auto
+entity_32aac4d51d3bf1c7,Technology,OSA封装,osa封装,{},"[""research_AP202403141626724087""]",auto
+entity_9c2cfe7b00554f12,Technology,TO封装,to封装,{},"[""research_AP202403141626724087""]",auto
+entity_f8e51dafa8cf2b4a,Technology,x86指令集,x86指令集,{},"[""research_AP202403141626724087""]",auto
+entity_f1ce0f57bab39f68,Technology,专家系统,专家系统,{},"[""research_AP202403141626724087""]",auto
+entity_75791c0149e4f02b,Technology,云计算,云计算,{},"[""research_AP202403141626724087""]",auto
+entity_bcc249c02e1f80a6,Technology,人工智能,人工智能,{},"[""research_AP202403141626724087""]",auto
+entity_7ad5a825a8b2d72d,Technology,人工智能核心芯片,人工智能核心芯片,{},"[""research_AP202403141626724087""]",auto
+entity_ce98ca8b4856c26e,Technology,先进光学封装制造,先进光学封装制造,{},"[""research_AP202403141626724087""]",auto
+entity_860bc1362887da81,Technology,先进光学技术,先进光学技术,{},"[""research_AP202403141626724087""]",auto
+entity_9a118ce422c8ca9b,Technology,光模块,光模块,{},"[""research_AP202403141626724087""]",auto
+entity_9b615cb845f43431,Technology,光波分复用技术（DWM）,光波分复用技术(dwm),{},"[""research_AP202403141626724087""]",auto
+entity_893bf43737eeed83,Technology,多模态,多模态,{},"[""research_AP202403141626724087""]",auto
+entity_e6131ced12af61b5,Technology,大模型,大模型,{},"[""research_AP202403141626724087""]",auto
+entity_9832e442c465bf76,Technology,机器学习,机器学习,{},"[""research_AP202403141626724087""]",auto
+entity_4cc6923197374059,Technology,机器视觉,机器视觉,{},"[""research_AP202403141626724087""]",auto
+entity_af3f8df5ba392720,Technology,模型推理,模型推理,{},"[""research_AP202403141626724087""]",auto
+entity_87495f88399066c4,Technology,模型训练,模型训练,{},"[""research_AP202403141626724087""]",auto
+entity_00705cf898e4ab57,Technology,深度学习,深度学习,{},"[""research_AP202403141626724087""]",auto
+entity_dfb54a6621017827,Technology,硅光,硅光,{},"[""research_AP202403141626724087""]",auto
+entity_4e7e369e00b2ea25,Technology,硅光封装,硅光封装,{},"[""research_AP202403141626724087""]",auto
+entity_54f5786529d834ef,Technology,算力芯片,算力芯片,{},"[""research_AP202403141626724087""]",auto
+entity_8e66344108791521,Technology,类CUDA通用并行计算架构,类cuda通用并行计算架构,{},"[""research_AP202403141626724087""]",auto
+entity_629202db23b36062,Technology,类脑芯片,类脑芯片,{},"[""research_AP202403141626724087""]",auto
+entity_d50f6f99d5e5598b,Technology,自然语言处理,自然语言处理,{},"[""research_AP202403141626724087""]",auto
+entity_19f405a0049adfde,Technology,跨领域整合,跨领域整合,{},"[""research_AP202403141626724087""]",auto
+entity_a94656cdc9090f01,Technology,边缘计算,边缘计算,{},"[""research_AP202403141626724087""]",auto
+entity_bae8ba116f2e8198,Technology,高速光器件技术,高速光器件技术,{},"[""research_AP202403141626724087""]",auto

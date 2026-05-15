@@ -1,0 +1,36 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+.env
+
+# Stage 1 downloaded source documents
+data/raw_pdfs/**/*.pdf
+data/raw_pdfs/**/*.part
+data/raw_pdfs/**/*.tmp
+
+# Generated stage 2 artifacts
+data/parsed_text/**/*.jsonl
+data/parsed_text/**/*.txt
+data/parsed_text/*.csv
+data/chunks/**/*.jsonl
+data/extracted/**/*.jsonl
+data/extracted/**/*.csv
+data/extracted/**/*.log
+
+# Keep reproducible metadata under version control
+!data/metadata/
+!data/metadata/*.csv
+!data/raw_pdfs/**/.gitkeep
+!data/parsed_text/**/.gitkeep
+!data/chunks/**/.gitkeep
+!data/extracted/**/.gitkeep
+!data/verified/
+!data/verified/*.csv
+!data/verified/**/.gitkeep
