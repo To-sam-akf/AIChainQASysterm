@@ -10,6 +10,7 @@ dependencies = [
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
     "requests>=2.31",
+    "streamlit>=1.40",
 ]
 
 [project.optional-dependencies]

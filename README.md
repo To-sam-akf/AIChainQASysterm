@@ -80,3 +80,17 @@ python scripts/load_neo4j.py --dry-run
 - `data/chunks/`：面向 LLM 抽取的文本块。
 - `data/extracted/`：LLM 原始抽取 JSONL 和错误记录。
 - `data/verified/entities.csv`、`data/verified/relations.csv`：可人工校验后导入 Neo4j 的图谱数据。
+
+## 第五阶段：前端展示
+
+启动 Streamlit：
+
+```bash
+streamlit run app.py
+```
+
+前端直接进入系统，不做营销页。页面包括：
+
+- 数据概览：实体、关系、报告数量和分布。
+- 智能问答：展示问题、答案、Cypher、证据链、查询结果和子图。
+- 图谱展示：支持按公司、技术、关系类型筛选子图。
