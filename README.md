@@ -47,12 +47,9 @@ python scripts/extract_knowledge.py --kind research --contains 算力 --limit-ch
 python scripts/extract_knowledge.py --kind annual --contains 服务器 --limit-chunks 50 --resume --sleep 0.3
 ```
 
-没有 API Key 时可以先跑 mock 流程验证管线：
-
+一次性跑完
 ```bash
-python scripts/parse_pdfs.py --max-reports 1 --max-pages 3 --force
-python scripts/extract_knowledge.py --limit-chunks 3 --mock
-python scripts/build_verified_graph.py
+python scripts/extract_knowledge.py --resume --sleep 0.3
 ```
 
 生成可人工校验的实体和关系表：
