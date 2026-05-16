@@ -66,7 +66,10 @@ class OpenAICompatibleClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
-        thinking_default = "deepseek" in self.base_url.casefold()
+        model_name = self.model.casefold()
+        thinking_default = "deepseek" in self.base_url.casefold() and (
+            "reasoner" in model_name or "v4-pro" in model_name
+        )
         self.thinking_enabled = env_bool(("LLM_THINKING_ENABLED", "LLM_ENABLE_THINKING"), thinking_default)
         self.reasoning_effort = os.getenv("LLM_REASONING_EFFORT", "high").strip()
         self._thinking_runtime_disabled = False

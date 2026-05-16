@@ -6,8 +6,8 @@ import csv
 import html
 import math
 import re
-from collections import Counter
-from dataclasses import dataclass
+from collections import Counter, defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +69,26 @@ def unique_sorted(values: list[str]) -> list[str]:
 class LocalKnowledgeGraph:
     entities: list[dict[str, str]]
     relations: list[dict[str, str]]
+    _relations_by_company: dict[str, list[dict[str, str]]] = field(init=False, repr=False)
+    _relations_by_relation: dict[str, list[dict[str, str]]] = field(init=False, repr=False)
+    _relations_by_relation_company: dict[tuple[str, str], list[dict[str, str]]] = field(init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        by_company: dict[str, list[dict[str, str]]] = defaultdict(list)
+        by_relation: dict[str, list[dict[str, str]]] = defaultdict(list)
+        by_relation_company: dict[tuple[str, str], list[dict[str, str]]] = defaultdict(list)
+        for row in self.relations:
+            company = row.get("head_name", "")
+            relation = row.get("relation", "")
+            if company:
+                by_company[company].append(row)
+            if relation:
+                by_relation[relation].append(row)
+            if company and relation:
+                by_relation_company[(relation, company)].append(row)
+        self._relations_by_company = dict(by_company)
+        self._relations_by_relation = dict(by_relation)
+        self._relations_by_relation_company = dict(by_relation_company)
 
     @classmethod
     def from_csvs(
@@ -114,6 +134,35 @@ class LocalKnowledgeGraph:
                 if row["tail_type"] == "Technology" and contains_name(row["tail_name"], technology)
             ]
         return rows[:limit]
+
+    def relation_candidates(
+        self,
+        *,
+        companies: list[str] | set[str] | tuple[str, ...] | None = None,
+        relations: list[str] | set[str] | tuple[str, ...] | None = None,
+        head_type: str = "",
+        exclude_relations: set[str] | None = None,
+    ) -> list[dict[str, str]]:
+        company_values = [company for company in (companies or []) if company]
+        relation_values = [relation for relation in (relations or []) if relation]
+        if company_values and relation_values:
+            rows = [
+                row
+                for relation in relation_values
+                for company in company_values
+                for row in self._relations_by_relation_company.get((relation, company), [])
+            ]
+        elif company_values:
+            rows = [row for company in company_values for row in self._relations_by_company.get(company, [])]
+        elif relation_values:
+            rows = [row for relation in relation_values for row in self._relations_by_relation.get(relation, [])]
+        else:
+            rows = self.relations
+        if head_type:
+            rows = [row for row in rows if row.get("head_type") == head_type]
+        if exclude_relations:
+            rows = [row for row in rows if row.get("relation") not in exclude_relations]
+        return rows
 
     def companies_for_technology(self, technology: str) -> list[dict[str, str]]:
         return [

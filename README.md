@@ -126,18 +126,23 @@ python scripts/build_rag_index.py
 - `QA_EVIDENCE_TOP_N`：最终进入答案的证据卡片数量。
 - `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
+- `RAG_SEARCH_CACHE_SIZE`：本地 RAG 查询结果 LRU 缓存大小，默认 128。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
-- `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；关闭后使用本地启发式查询。
-- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 8。
-- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 16000。
-- `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，默认在 DeepSeek endpoint 下开启。
-- `LLM_REASONING_EFFORT`：DeepSeek 思考强度，默认 `high`。
+- `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
+- `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
+- `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
+- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 3。
+- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 4000。
+- `QA_UI_RENDER_LATEST_ONLY`：前端是否只默认渲染选中轮次的证据详情，默认开启。
+- `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，快问快答默认关闭。
+- `LLM_REASONING_EFFORT`：DeepSeek 思考强度，快问快答默认 `low`。
 
 运行专业问答回归评测：
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/benchmark_qa_speed.py
 ```
 
 如果要让评测也调用已配置的 LLM：

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
-from collections import Counter
+from collections import Counter, OrderedDict, defaultdict
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,24 @@ DEFAULT_RAG_DIR = ROOT_DIR / "data" / "rag"
 DOCUMENTS_FILE = "documents.jsonl"
 METADATA_FILE = "metadata.json"
 MAX_TEXT_CHARS = 1800
+QUERY_STOP_TOKENS = {
+    "哪些",
+    "什么",
+    "上市公司",
+    "公司",
+    "业务",
+    "当前",
+    "各自",
+    "处于",
+    "涉及",
+    "相关",
+    "产业链",
+    "环节",
+    "差异",
+    "区别",
+    "管理",
+    "报告",
+}
 
 DOMAIN_WORDS = (
     "AI服务器",
@@ -52,6 +71,7 @@ DOMAIN_WORDS = (
     "经营现金流",
     "研发投入",
 )
+_JIEBA_WORDS_ADDED = False
 
 
 @dataclass(frozen=True)
@@ -109,8 +129,7 @@ def tokenize(text: str) -> list[str]:
     text = str(text or "").casefold()
     tokens: list[str] = []
     if jieba is not None:
-        for word in DOMAIN_WORDS:
-            jieba.add_word(word)
+        ensure_jieba_words()
         tokens.extend(
             token.strip().casefold()
             for token in jieba.cut(text)
@@ -123,6 +142,16 @@ def tokenize(text: str) -> list[str]:
         for n in range(2, max_n + 1):
             tokens.extend(run[index : index + n] for index in range(0, len(run) - n + 1))
     return [token for token in tokens if token not in {"公司", "报告", "年度报告", "证券研究报告"}]
+
+
+def ensure_jieba_words() -> None:
+    global _JIEBA_WORDS_ADDED
+    if _JIEBA_WORDS_ADDED or jieba is None:
+        return
+    for word in DOMAIN_WORDS:
+        jieba.add_word(word)
+    list(jieba.cut("AI服务器 液冷 光模块 算力"))
+    _JIEBA_WORDS_ADDED = True
 
 
 def iter_chunk_records(chunks_dir: Path = CHUNKS_DIR) -> list[dict[str, Any]]:
@@ -184,12 +213,25 @@ def build_rag_index(
 
 
 class LocalRagIndex:
-    def __init__(self, documents: list[RagDocument], *, index_dir: Path = DEFAULT_RAG_DIR) -> None:
+    def __init__(
+        self,
+        documents: list[RagDocument],
+        *,
+        index_dir: Path = DEFAULT_RAG_DIR,
+        search_cache_size: int | None = None,
+    ) -> None:
         self.documents = documents
         self.index_dir = index_dir
         self.doc_freq = self._build_doc_freq(documents)
+        self.inverted_index = self._build_inverted_index(documents)
+        self.company_index = self._build_field_index(documents, "company")
         self.document_tokens = [list(document.token_counts.keys()) for document in documents]
         self.bm25 = BM25Okapi(self.document_tokens) if BM25Okapi is not None and self.document_tokens else None
+        ensure_jieba_words()
+        if search_cache_size is None:
+            search_cache_size = int(os.getenv("RAG_SEARCH_CACHE_SIZE", "128"))
+        self.search_cache_size = max(search_cache_size, 0)
+        self._search_cache: OrderedDict[tuple[str, int, tuple[tuple[str, str], ...]], list[RagHit]] = OrderedDict()
 
     @classmethod
     def load(cls, index_dir: Path = DEFAULT_RAG_DIR) -> "LocalRagIndex":
@@ -224,6 +266,23 @@ class LocalRagIndex:
             doc_freq.update(document.token_counts.keys())
         return doc_freq
 
+    @staticmethod
+    def _build_inverted_index(documents: list[RagDocument]) -> dict[str, tuple[int, ...]]:
+        index: dict[str, list[int]] = defaultdict(list)
+        for doc_id, document in enumerate(documents):
+            for token in document.token_counts.keys():
+                index[token].append(doc_id)
+        return {token: tuple(doc_ids) for token, doc_ids in index.items()}
+
+    @staticmethod
+    def _build_field_index(documents: list[RagDocument], field: str) -> dict[str, tuple[int, ...]]:
+        index: dict[str, list[int]] = defaultdict(list)
+        for doc_id, document in enumerate(documents):
+            value = str(getattr(document, field, "") or "")
+            if value:
+                index[value].append(doc_id)
+        return {value: tuple(doc_ids) for value, doc_ids in index.items()}
+
     def search(
         self,
         question: str,
@@ -231,22 +290,31 @@ class LocalRagIndex:
         top_k: int = 6,
         filters: dict[str, str] | None = None,
     ) -> list[RagHit]:
+        filters = filters or {}
+        cache_key = self._cache_key(question, top_k, filters)
+        cached = self._get_cached(cache_key)
+        if cached is not None:
+            return cached
+
         expanded_question = expand_query(question)
         query_tokens = Counter(tokenize(expanded_question))
         if not query_tokens:
             return []
-        candidates = self._filter_documents(filters or {})
-        if self.bm25 is not None and len(candidates) == len(self.documents):
+        candidate_indices = self._candidate_indices(query_tokens, filters)
+        if self.bm25 is not None and len(candidate_indices) == len(self.documents):
             scored = self._search_with_rank_bm25(question, query_tokens)
         else:
             scored = [
                 hit
-                for document in candidates
+                for doc_id in candidate_indices
+                for document in (self.documents[doc_id],)
                 if (hit := self._score_document(document, question, query_tokens)).score > 0
             ]
         scored = [hit for hit in scored if not is_low_value_hit(hit)]
         scored.sort(key=lambda hit: (-hit.score, source_priority(hit), hit.source_title, hit.page, hit.chunk_id))
-        return dedupe_hits(scored)[:top_k]
+        hits = dedupe_hits(scored)[:top_k]
+        self._set_cached(cache_key, hits)
+        return hits
 
     def _search_with_rank_bm25(self, question: str, query_tokens: Counter) -> list[RagHit]:
         assert self.bm25 is not None
@@ -277,12 +345,88 @@ class LocalRagIndex:
             )
         return hits
 
-    def _filter_documents(self, filters: dict[str, str]) -> list[RagDocument]:
-        documents = self.documents
+    def _candidate_indices(self, query_tokens: Counter, filters: dict[str, str]) -> list[int]:
+        candidates: set[int] | None = None
+        company = str(filters.get("company") or "")
+        if company:
+            candidates = set(self.company_index.get(company, ()))
+
+        token_candidates: set[int] = set()
+        for token in self._candidate_tokens(query_tokens):
+            token_candidates.update(self.inverted_index.get(token, ()))
+        if token_candidates:
+            candidates = token_candidates if candidates is None else candidates & token_candidates
+
+        if candidates is None:
+            candidates = set(range(len(self.documents)))
+        if not candidates and filters:
+            candidates = set(self._fallback_filter_indices(filters))
+        if not candidates:
+            candidates = set(range(len(self.documents)))
+
+        if filters:
+            candidates = {doc_id for doc_id in candidates if self._matches_filters(self.documents[doc_id], filters)}
+        return sorted(candidates)
+
+    def _candidate_tokens(self, query_tokens: Counter, *, limit: int = 12) -> list[str]:
+        total_docs = max(len(self.documents), 1)
+        scored: list[tuple[float, int, str]] = []
+        for token, query_tf in query_tokens.items():
+            token = str(token)
+            doc_freq = self.doc_freq.get(token, 0)
+            if doc_freq <= 0 or len(token) < 2 or token in QUERY_STOP_TOKENS:
+                continue
+            if doc_freq > total_docs * 0.45:
+                continue
+            idf = math.log((total_docs + 1) / (doc_freq + 1)) + 1.0
+            scored.append((query_tf * idf, doc_freq, token))
+        if not scored:
+            return [token for token in query_tokens.keys() if self.doc_freq.get(token, 0) > 0]
+        scored.sort(key=lambda item: (-item[0], item[1], -len(item[2]), item[2]))
+        return [token for _, _, token in scored[:limit]]
+
+    def _fallback_filter_indices(self, filters: dict[str, str]) -> list[int]:
+        return [
+            doc_id
+            for doc_id, document in enumerate(self.documents)
+            if self._matches_filters(document, filters)
+        ]
+
+    @staticmethod
+    def _matches_filters(document: RagDocument, filters: dict[str, str]) -> bool:
         for key, expected in filters.items():
-            if expected:
-                documents = [doc for doc in documents if str(getattr(doc, key, "")) == expected]
-        return documents
+            if expected and str(getattr(document, key, "")) != expected:
+                return False
+        return True
+
+    def _cache_key(
+        self,
+        question: str,
+        top_k: int,
+        filters: dict[str, str],
+    ) -> tuple[str, int, tuple[tuple[str, str], ...]]:
+        return (
+            normalize_text(question),
+            int(top_k),
+            tuple(sorted((str(key), str(value)) for key, value in filters.items() if value)),
+        )
+
+    def _get_cached(self, key: tuple[str, int, tuple[tuple[str, str], ...]]) -> list[RagHit] | None:
+        if not self.search_cache_size:
+            return None
+        cached = self._search_cache.get(key)
+        if cached is None:
+            return None
+        self._search_cache.move_to_end(key)
+        return list(cached)
+
+    def _set_cached(self, key: tuple[str, int, tuple[tuple[str, str], ...]], hits: list[RagHit]) -> None:
+        if not self.search_cache_size:
+            return
+        self._search_cache[key] = list(hits)
+        self._search_cache.move_to_end(key)
+        while len(self._search_cache) > self.search_cache_size:
+            self._search_cache.popitem(last=False)
 
     def _score_document(self, document: RagDocument, question: str, query_tokens: Counter) -> RagHit:
         score = 0.0

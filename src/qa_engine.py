@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from src.cypher_generator import GeneratedCypher, generate_cypher
 from src.curated_graph import DEFAULT_CURATED_DIR
+from src.extraction_schema import normalize_name
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, subgraph_edges
 from src.llm_client import OpenAICompatibleClient, load_dotenv
 from src.neo4j_client import Neo4jReadClient
@@ -23,7 +25,7 @@ from src.professional_qa import (
     rank_evidence_cards,
     search_csv_graph,
 )
-from src.question_planner import QuestionPlan, extract_companies, plan_question
+from src.question_planner import QuestionPlan, extract_companies, heuristic_plan_question, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
 
 
@@ -37,6 +39,17 @@ ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助�
 CONTEXTUALIZER_SYSTEM_PROMPT = """你是中国 AI 算力产业链问答系统的追问改写器。
 根据历史对话，把用户当前问题改写成可独立检索的中文问题。
 只输出改写后的问题，不解释，不回答问题，不引入历史对话中没有出现的新公司或主题。"""
+
+TEMPLATE_RELATIONS = {
+    "USES_TECHNOLOGY",
+    "HAS_PRODUCT",
+    "BELONGS_TO_CHAIN",
+    "HAS_METRIC",
+    "DISCLOSES_RISK",
+    "SUPPORTED_BY_POLICY",
+    "CONSTRAINS",
+    "ENABLES",
+}
 
 
 @dataclass
@@ -52,6 +65,28 @@ class QAEngineStatus:
     llm_error: str = ""
 
 
+class CountingLLMClient:
+    """Proxy that records remote LLM calls while preserving hasattr behavior."""
+
+    TRACKED_METHODS = {"chat_json", "chat_text", "chat_text_with_metadata", "chat_messages"}
+
+    def __init__(self, client: Any) -> None:
+        self._client = client
+        self.calls: dict[str, int] = {"total": 0}
+
+    def __getattr__(self, name: str) -> Any:
+        attr = getattr(self._client, name)
+        if name not in self.TRACKED_METHODS or not callable(attr):
+            return attr
+
+        def counted(*args: Any, **kwargs: Any) -> Any:
+            self.calls["total"] = self.calls.get("total", 0) + 1
+            self.calls[name] = self.calls.get(name, 0) + 1
+            return attr(*args, **kwargs)
+
+        return counted
+
+
 class QAEngine:
     def __init__(
         self,
@@ -60,14 +95,16 @@ class QAEngine:
         graph_client: Any | None = None,
         csv_graph: LocalKnowledgeGraph | None = None,
         rag_index: LocalRagIndex | None = None,
-        enable_llm_cypher: bool = True,
+        enable_llm_cypher: bool = False,
+        enable_llm_planner: bool = False,
+        contextualizer_mode: str = "auto",
         rag_top_k: int = 6,
         graph_limit: int = 50,
-        rerank_top_n: int = 40,
-        evidence_top_n: int = 10,
+        rerank_top_n: int = 12,
+        evidence_top_n: int = 6,
         core_companies_only: bool = True,
-        history_max_turns: int = 8,
-        history_max_chars: int = 16000,
+        history_max_turns: int = 3,
+        history_max_chars: int = 4000,
         status: QAEngineStatus | None = None,
     ) -> None:
         self.llm_client = llm_client
@@ -75,6 +112,8 @@ class QAEngine:
         self.csv_graph = csv_graph
         self.rag_index = rag_index
         self.enable_llm_cypher = enable_llm_cypher
+        self.enable_llm_planner = enable_llm_planner
+        self.contextualizer_mode = normalize_contextualizer_mode(contextualizer_mode)
         self.rag_top_k = rag_top_k
         self.graph_limit = graph_limit
         self.rerank_top_n = rerank_top_n
@@ -95,12 +134,14 @@ class QAEngine:
         load_dotenv()
         rag_top_k = int(os.getenv("RAG_TOP_K", "6"))
         graph_limit = int(os.getenv("QA_GRAPH_LIMIT", "50"))
-        rerank_top_n = int(os.getenv("QA_RERANK_TOP_N", "40"))
-        evidence_top_n = int(os.getenv("QA_EVIDENCE_TOP_N", "10"))
+        rerank_top_n = int(os.getenv("QA_RERANK_TOP_N", "12"))
+        evidence_top_n = int(os.getenv("QA_EVIDENCE_TOP_N", "6"))
         core_companies_only = os.getenv("QA_CORE_COMPANIES_ONLY", "true").casefold() != "false"
-        enable_llm_cypher = os.getenv("QA_ENABLE_LLM_CYPHER", "true").casefold() != "false"
-        history_max_turns = int(os.getenv("QA_HISTORY_MAX_TURNS", "8"))
-        history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "16000"))
+        enable_llm_cypher = os.getenv("QA_ENABLE_LLM_CYPHER", "false").casefold() != "false"
+        enable_llm_planner = os.getenv("QA_ENABLE_LLM_PLANNER", "false").casefold() != "false"
+        contextualizer_mode = normalize_contextualizer_mode(os.getenv("QA_CONTEXTUALIZER_MODE", "auto"))
+        history_max_turns = int(os.getenv("QA_HISTORY_MAX_TURNS", "3"))
+        history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "4000"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
 
         llm_client = None
@@ -166,6 +207,8 @@ class QAEngine:
             csv_graph=csv_graph,
             rag_index=rag_index,
             enable_llm_cypher=enable_llm_cypher,
+            enable_llm_planner=enable_llm_planner,
+            contextualizer_mode=contextualizer_mode,
             rag_top_k=rag_top_k,
             graph_limit=graph_limit,
             rerank_top_n=rerank_top_n,
@@ -188,31 +231,59 @@ class QAEngine:
         thinking_enabled: bool | None = None,
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
+        total_start = time.perf_counter()
+        timings_ms: dict[str, float] = {}
         question = question.strip()
         errors: list[str] = []
+        llm_client = CountingLLMClient(self.llm_client) if self.llm_client is not None else None
         llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
+        stage_start = time.perf_counter()
         history = normalize_conversation_history(
             conversation_history,
             max_turns=self.history_max_turns,
             max_chars=self.history_max_chars,
         )
-        contextual_question = self._contextualize_question(question, history, errors, llm_options)
-        plan = plan_question(
-            contextual_question,
-            client=self.llm_client,
-            core_companies_only=self.core_companies_only,
-            llm_options=llm_options,
-        )
-        generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options)
+        record_timing(timings_ms, "history", stage_start)
+
+        stage_start = time.perf_counter()
+        contextual_question = self._contextualize_question(question, history, errors, llm_options, llm_client)
+        record_timing(timings_ms, "contextualize", stage_start)
+
+        stage_start = time.perf_counter()
+        plan = heuristic_plan_question(contextual_question, core_companies_only=self.core_companies_only)
+        planner_source = "heuristic"
+        if self._should_use_llm_planner(plan, llm_client):
+            plan = plan_question(
+                contextual_question,
+                client=llm_client,
+                core_companies_only=self.core_companies_only,
+                llm_options=llm_options,
+            )
+            planner_source = "llm"
+        record_timing(timings_ms, "plan", stage_start)
+
+        stage_start = time.perf_counter()
+        generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options, llm_client)
         if generated.error:
             errors.append(generated.error)
+        record_timing(timings_ms, "cypher", stage_start)
+
+        stage_start = time.perf_counter()
         graph_records = self._query_graph(generated, plan, errors)
+        record_timing(timings_ms, "graph", stage_start)
+
+        stage_start = time.perf_counter()
         rag_hits = self._search_rag(contextual_question, plan, errors)
+        record_timing(timings_ms, "rag", stage_start)
+
+        stage_start = time.perf_counter()
         raw_cards = [*cards_from_graph_records(graph_records, plan), *cards_from_rag_hits(rag_hits, plan)]
         evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
-        evidence = legacy_evidence_rows(evidence_cards)
+        record_timing(timings_ms, "evidence", stage_start)
+
+        stage_start = time.perf_counter()
         answer, reasoning_content = self._generate_answer(
             question,
             contextual_question,
@@ -222,7 +293,39 @@ class QAEngine:
             evidence_cards,
             errors,
             llm_options,
+            llm_client,
         )
+        record_timing(timings_ms, "answer", stage_start)
+
+        stage_start = time.perf_counter()
+        evidence = legacy_evidence_rows(evidence_cards)
+        rag_hit_rows = [hit.to_dict() for hit in rag_hits]
+        evidence_card_rows = [card.to_dict() for card in evidence_cards]
+        subgraph = graph_records_to_subgraph(graph_records)
+        record_timing(timings_ms, "render_payload", stage_start)
+
+        diagnostics = {
+            "graph_backend": self.status.graph_backend,
+            "graph_records": len(graph_records),
+            "rag_hits": len(rag_hits),
+            "evidence_cards": len(evidence_cards),
+            "rerank_top_n": self.rerank_top_n,
+            "history_messages": len(history),
+            "contextualized": contextual_question != question,
+            "contextualizer_mode": self.contextualizer_mode,
+            "planner_source": planner_source,
+            "enable_llm_cypher": self.enable_llm_cypher,
+            "enable_llm_planner": self.enable_llm_planner,
+            "thinking_enabled": thinking_enabled,
+            "reasoning_effort": reasoning_effort or "",
+            "graph_error": self.status.graph_error,
+            "rag_error": self.status.rag_error,
+            "llm_error": self.status.llm_error,
+        }
+        timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
+        diagnostics["timings_ms"] = timings_ms
+        diagnostics["llm_calls"] = llm_client.calls if llm_client is not None else {"total": 0}
+
         return {
             "question": question,
             "contextual_question": contextual_question,
@@ -234,26 +337,18 @@ class QAEngine:
             "cypher_params": generated.params,
             "cypher_source": generated.source,
             "graph_records": graph_records,
-            "rag_hits": [hit.to_dict() for hit in rag_hits],
-            "evidence_cards": [card.to_dict() for card in evidence_cards],
+            "rag_hits": rag_hit_rows,
+            "evidence_cards": evidence_card_rows,
             "evidence": evidence,
-            "subgraph": graph_records_to_subgraph(graph_records),
-            "diagnostics": {
-                "graph_backend": self.status.graph_backend,
-                "graph_records": len(graph_records),
-                "rag_hits": len(rag_hits),
-                "evidence_cards": len(evidence_cards),
-                "rerank_top_n": self.rerank_top_n,
-                "history_messages": len(history),
-                "contextualized": contextual_question != question,
-                "thinking_enabled": thinking_enabled,
-                "reasoning_effort": reasoning_effort or "",
-                "graph_error": self.status.graph_error,
-                "rag_error": self.status.rag_error,
-                "llm_error": self.status.llm_error,
-            },
+            "subgraph": subgraph,
+            "diagnostics": diagnostics,
             "errors": errors,
         }
+
+    def _should_use_llm_planner(self, plan: QuestionPlan, llm_client: Any | None) -> bool:
+        if not self.enable_llm_planner or llm_client is None or not hasattr(llm_client, "chat_json"):
+            return False
+        return plan.answer_type == "thematic_research" and not plan.companies and not plan.topics
 
     def _generate_display_cypher(
         self,
@@ -261,6 +356,7 @@ class QAEngine:
         plan: QuestionPlan,
         errors: list[str],
         llm_options: dict[str, Any],
+        llm_client: Any | None,
     ) -> GeneratedCypher:
         if self.status.graph_backend == "csv" or self.graph_client is None:
             return GeneratedCypher(
@@ -271,17 +367,19 @@ class QAEngine:
                 },
                 source="question_plan_csv",
             )
+        if not self.enable_llm_cypher or llm_client is None:
+            return template_cypher_for_plan(plan, limit=self.graph_limit)
         try:
             return generate_cypher(
                 question,
-                client=self.llm_client,
+                client=llm_client,
                 enable_llm=self.enable_llm_cypher,
                 limit=self.graph_limit,
                 llm_options=llm_options,
             )
         except Exception as exc:
             errors.append(f"Cypher generation failed: {exc}")
-            return GeneratedCypher(cypher=pseudo_cypher_for_plan(plan, limit=self.graph_limit), params={}, source="fallback")
+            return template_cypher_for_plan(plan, limit=self.graph_limit, error=str(exc))
 
     def _query_graph(
         self,
@@ -330,14 +428,17 @@ class QAEngine:
         history: list[dict[str, str]],
         errors: list[str],
         llm_options: dict[str, Any],
+        llm_client: Any | None,
     ) -> str:
         fallback = heuristic_contextual_question(question, history)
-        if not history or self.llm_client is None:
+        if not history or llm_client is None or self.contextualizer_mode == "heuristic":
+            return fallback
+        if self.contextualizer_mode == "auto" and not question_needs_context(question):
             return fallback
         prompt = build_contextualizer_prompt(question)
         try:
-            if hasattr(self.llm_client, "chat_messages"):
-                response = self.llm_client.chat_messages(
+            if hasattr(llm_client, "chat_messages"):
+                response = llm_client.chat_messages(
                     messages=[
                         {"role": "system", "content": CONTEXTUALIZER_SYSTEM_PROMPT},
                         *history,
@@ -347,8 +448,8 @@ class QAEngine:
                     **llm_options,
                 )
                 return sanitize_contextual_question(response.content) or fallback
-            if hasattr(self.llm_client, "chat_text"):
-                content = self.llm_client.chat_text(
+            if hasattr(llm_client, "chat_text"):
+                content = llm_client.chat_text(
                     system_prompt=CONTEXTUALIZER_SYSTEM_PROMPT,
                     user_prompt=format_history_for_prompt(history) + "\n\n" + prompt,
                     temperature=0.0,
@@ -369,6 +470,7 @@ class QAEngine:
         evidence_cards: list[Any],
         errors: list[str],
         llm_options: dict[str, Any],
+        llm_client: Any | None,
     ) -> tuple[str, str]:
         if not evidence_cards:
             return NO_EVIDENCE_ANSWER, ""
@@ -376,10 +478,10 @@ class QAEngine:
         if contextual_question != question:
             prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
         user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
-        if self.llm_client is not None and hasattr(self.llm_client, "chat_text"):
+        if llm_client is not None and hasattr(llm_client, "chat_text"):
             try:
-                if history and hasattr(self.llm_client, "chat_messages"):
-                    response = self.llm_client.chat_messages(
+                if history and hasattr(llm_client, "chat_messages"):
+                    response = llm_client.chat_messages(
                         messages=[
                             {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
                             *history,
@@ -389,15 +491,15 @@ class QAEngine:
                         **llm_options,
                     )
                     return response.content, response.reasoning_content
-                if hasattr(self.llm_client, "chat_text_with_metadata"):
-                    response = self.llm_client.chat_text_with_metadata(
+                if hasattr(llm_client, "chat_text_with_metadata"):
+                    response = llm_client.chat_text_with_metadata(
                         system_prompt=ANSWER_SYSTEM_PROMPT,
                         user_prompt=user_prompt,
                         temperature=0.2,
                         **llm_options,
                     )
                     return response.content, response.reasoning_content
-                return self.llm_client.chat_text(
+                return llm_client.chat_text(
                     system_prompt=ANSWER_SYSTEM_PROMPT,
                     user_prompt=user_prompt,
                     temperature=0.2,
@@ -419,6 +521,53 @@ def build_answer_prompt(question: str, graph_records: list[dict[str, Any]], rag_
         ensure_ascii=False,
         indent=2,
     )
+
+
+def normalize_contextualizer_mode(value: str) -> str:
+    mode = str(value or "auto").strip().casefold()
+    if mode not in {"auto", "heuristic", "llm"}:
+        return "auto"
+    return mode
+
+
+def record_timing(timings_ms: dict[str, float], name: str, started_at: float) -> None:
+    timings_ms[name] = round((time.perf_counter() - started_at) * 1000, 2)
+
+
+def template_cypher_for_plan(plan: QuestionPlan, *, limit: int = 50, error: str = "") -> GeneratedCypher:
+    relations = [relation for relation in plan.relations if relation in TEMPLATE_RELATIONS]
+    if plan.answer_type == "industry_bottleneck":
+        for relation in ("CONSTRAINS", "DISCLOSES_RISK", "SUPPORTED_BY_POLICY", "ENABLES"):
+            if relation not in relations:
+                relations.append(relation)
+    if not relations:
+        relations = ["USES_TECHNOLOGY", "HAS_PRODUCT", "BELONGS_TO_CHAIN"]
+    relation_clause = "|".join(relations)
+
+    where: list[str] = ["type(r) <> 'MENTIONED_IN'"]
+    params: dict[str, Any] = {}
+    if plan.companies:
+        params["company_norms"] = [normalize_name(company, "Company") for company in plan.companies]
+        where.append("c.normalized_name IN $company_norms")
+    if plan.expanded_topics:
+        topics = plan.expanded_topics[:12]
+        params["topics"] = topics
+        params["topic_norms"] = [normalize_name(topic) for topic in topics]
+        where.append(
+            "(x.normalized_name IN $topic_norms OR any(topic IN $topics "
+            "WHERE x.name CONTAINS topic OR r.evidence CONTAINS topic OR r.section CONTAINS topic))"
+        )
+
+    cypher = (
+        f"MATCH (c:Company)-[r:{relation_clause}]->(x)\n"
+        f"WHERE {' AND '.join(where)}\n"
+        "RETURN c.name AS company, labels(c) AS company_labels, type(r) AS relation, "
+        "x.name AS target, labels(x) AS target_labels, r.evidence AS evidence, "
+        "r.source_title AS source, r.source_tier AS source_tier, r.page AS page, "
+        "r.section AS section, r.source_report_id AS report_id\n"
+        f"LIMIT {limit}"
+    )
+    return GeneratedCypher(cypher=cypher, params=params, source="template", error=error)
 
 
 def build_llm_options(*, thinking_enabled: bool | None, reasoning_effort: str | None) -> dict[str, Any]:
@@ -489,6 +638,7 @@ def heuristic_contextual_question(question: str, history: list[dict[str, str]]) 
 
 
 def question_needs_context(question: str) -> bool:
+    question = question.strip()
     context_terms = (
         "它",
         "其",
@@ -506,7 +656,14 @@ def question_needs_context(question: str) -> bool:
         "差异呢",
         "还有呢",
     )
-    return len(question.strip()) <= 18 or any(term in question for term in context_terms)
+    if any(term in question for term in context_terms):
+        return True
+    if "主要风险" in question and not extract_companies(question):
+        return True
+    independent_terms = ("哪些公司", "上市公司", "有哪些", "是什么", "为什么", "如何", "多少")
+    if any(term in question for term in independent_terms):
+        return False
+    return len(question) <= 18
 
 
 def sanitize_contextual_question(content: str) -> str:
