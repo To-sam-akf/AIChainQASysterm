@@ -40,6 +40,32 @@ def test_build_rag_index_and_search_hits_relevant_chunk(tmp_path: Path) -> None:
     assert "AI服务器" in hits[0].snippet
 
 
+def test_rag_index_hits_industry_whitepaper_terms(tmp_path: Path) -> None:
+    chunks_dir = tmp_path / "chunks"
+    index_dir = tmp_path / "rag"
+    write_chunk(
+        chunks_dir / "industry.jsonl",
+        chunk_id="chunk_industry_1",
+        report_id="industry_caict_green_compute_2025",
+        kind="industry",
+        company="",
+        source_title="绿色算力发展研究报告（2025年）",
+        source_tier="1",
+        source_type="authority_whitepaper",
+        section="智能算力与液冷",
+        text="智能算力基础设施正在推动AI服务器、液冷和光模块等产业链环节协同发展。",
+    )
+    build_rag_index(chunks_dir, index_dir)
+    index = LocalRagIndex.load(index_dir)
+
+    hits = index.search("智能算力 液冷 光模块", top_k=3)
+
+    assert hits
+    assert hits[0].source_type == "authority_whitepaper"
+    assert hits[0].source_tier == "1"
+    assert "液冷" in hits[0].snippet
+
+
 def test_cypher_guard_allows_read_query_and_rejects_writes() -> None:
     cypher = "MATCH (c:Company)-[r]->(x) RETURN c.name AS company, r.evidence AS evidence"
 

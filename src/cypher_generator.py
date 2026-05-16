@@ -15,6 +15,10 @@ GRAPH_SCHEMA = """节点:
 - Technology(name, normalized_name)
 - Product(name, normalized_name)
 - IndustryChain(name, normalized_name)
+- IndustryConcept(name, normalized_name)
+- Policy(name, normalized_name)
+- Standard(name, normalized_name)
+- ValueChainSegment(name, normalized_name)
 - Metric(name, normalized_name)
 - Risk(name, normalized_name)
 - Report(name, report_id)
@@ -26,6 +30,11 @@ GRAPH_SCHEMA = """节点:
 - (Company)-[:HAS_METRIC]->(Metric)
 - (Company)-[:DISCLOSES_RISK]->(Risk)
 - (任意非 Report 实体)-[:MENTIONED_IN]->(Report)
+- (IndustryConcept|Technology|Product|ValueChainSegment)-[:UPSTREAM_OF|DOWNSTREAM_OF]->(IndustryConcept|Technology|Product|ValueChainSegment)
+- (IndustryConcept|Technology|Product|ValueChainSegment)-[:ENABLES]->(IndustryConcept|Technology|Product|ValueChainSegment)
+- (Risk|Policy|Standard|IndustryConcept)-[:CONSTRAINS]->(任意非 Report 实体)
+- (IndustryConcept|Policy|Standard)-[:DEFINES]->(IndustryConcept|Technology|ValueChainSegment)
+- (Company|IndustryConcept|Technology|Product|ValueChainSegment)-[:SUPPORTED_BY_POLICY]->(Policy)
 
 关系属性:
 evidence, source_report_id, source_title, page, section, confidence
@@ -39,6 +48,10 @@ SYSTEM_PROMPT = """你是 Neo4j Cypher 助手。只生成只读 Cypher，不解�
 
 RELATION_BY_KEYWORD = {
     "风险": "DISCLOSES_RISK",
+    "政策": "SUPPORTED_BY_POLICY",
+    "定义": "DEFINES",
+    "上游": "UPSTREAM_OF",
+    "下游": "DOWNSTREAM_OF",
     "财务": "HAS_METRIC",
     "指标": "HAS_METRIC",
     "产品": "HAS_PRODUCT",
@@ -55,6 +68,10 @@ TAIL_LABEL_BY_RELATION = {
     "BELONGS_TO_CHAIN": "IndustryChain",
     "HAS_METRIC": "Metric",
     "DISCLOSES_RISK": "Risk",
+    "SUPPORTED_BY_POLICY": "Policy",
+    "DEFINES": "IndustryConcept",
+    "UPSTREAM_OF": "ValueChainSegment",
+    "DOWNSTREAM_OF": "ValueChainSegment",
 }
 
 
@@ -84,14 +101,25 @@ def generate_cypher(
     client: Any | None = None,
     enable_llm: bool = True,
     limit: int = 50,
+    llm_options: dict[str, Any] | None = None,
 ) -> GeneratedCypher:
     if client is not None and enable_llm:
         try:
-            payload = client.chat_json(
-                system_prompt=SYSTEM_PROMPT,
-                user_prompt=build_cypher_prompt(question),
-                temperature=0.0,
-            )
+            kwargs = {
+                "system_prompt": SYSTEM_PROMPT,
+                "user_prompt": build_cypher_prompt(question),
+                "temperature": 0.0,
+            }
+            if llm_options:
+                kwargs.update(llm_options)
+            try:
+                payload = client.chat_json(**kwargs)
+            except TypeError:
+                payload = client.chat_json(
+                    system_prompt=SYSTEM_PROMPT,
+                    user_prompt=build_cypher_prompt(question),
+                    temperature=0.0,
+                )
             cypher = ensure_limit(str(payload.get("cypher", "")), limit=limit)
             return GeneratedCypher(cypher=cypher, params={}, source="llm")
         except (CypherSafetyError, Exception) as exc:
@@ -116,7 +144,8 @@ def heuristic_cypher(question: str, *, limit: int = 50) -> GeneratedCypher:
             "WHERE c.name CONTAINS $company OR c.normalized_name CONTAINS $company_norm\n"
             "RETURN c.name AS company, labels(c) AS company_labels, type(r) AS relation, "
             "x.name AS target, labels(x) AS target_labels, r.evidence AS evidence, "
-            "r.source_title AS source, r.page AS page, r.source_report_id AS report_id\n"
+            "r.source_title AS source, r.source_tier AS source_tier, r.page AS page, "
+            "r.source_report_id AS report_id\n"
             f"LIMIT {limit}"
         )
         return GeneratedCypher(
@@ -131,7 +160,8 @@ def heuristic_cypher(question: str, *, limit: int = 50) -> GeneratedCypher:
             "AND (x.name CONTAINS $topic OR r.evidence CONTAINS $topic OR r.section CONTAINS $topic)\n"
             "RETURN c.name AS company, labels(c) AS company_labels, type(r) AS relation, "
             "x.name AS target, labels(x) AS target_labels, r.evidence AS evidence, "
-            "r.source_title AS source, r.page AS page, r.source_report_id AS report_id\n"
+            "r.source_title AS source, r.source_tier AS source_tier, r.page AS page, "
+            "r.source_report_id AS report_id\n"
             f"LIMIT {limit}"
         )
         return GeneratedCypher(cypher=cypher, params={"topic": topic}, source="heuristic")
@@ -140,7 +170,8 @@ def heuristic_cypher(question: str, *, limit: int = 50) -> GeneratedCypher:
         "WHERE type(r) <> 'MENTIONED_IN'\n"
         "RETURN c.name AS company, labels(c) AS company_labels, type(r) AS relation, "
         "x.name AS target, labels(x) AS target_labels, r.evidence AS evidence, "
-        "r.source_title AS source, r.page AS page, r.source_report_id AS report_id\n"
+        "r.source_title AS source, r.source_tier AS source_tier, r.page AS page, "
+        "r.source_report_id AS report_id\n"
         f"LIMIT {limit}"
     )
     return GeneratedCypher(cypher=cypher, params={}, source="heuristic")

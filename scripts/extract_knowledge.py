@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--errors", type=Path, default=DEFAULT_ERRORS)
     parser.add_argument("--limit-chunks", type=int, default=0)
-    parser.add_argument("--kind", choices=("annual", "research"))
+    parser.add_argument("--kind", choices=("annual", "research", "industry"))
     parser.add_argument("--report-id", action="append", help="Only extract chunks from this report_id; can be repeated.")
     parser.add_argument("--contains", action="append", help="Only extract chunks containing this text; can be repeated.")
     parser.add_argument("--sleep", type=float, default=0.0, help="Seconds to sleep between LLM calls.")

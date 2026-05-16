@@ -6,9 +6,12 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "beautifulsoup4>=4.12",
+    "cryptography>=42",
+    "jieba>=0.42.1",
     "neo4j>=5.20",
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
+    "rank-bm25>=0.2.2",
     "requests>=2.31",
     "streamlit>=1.40",
 ]

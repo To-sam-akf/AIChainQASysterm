@@ -25,6 +25,8 @@ data/extracted/**/*.csv
 data/extracted/**/*.log
 data/rag/**/*.jsonl
 data/rag/**/*.json
+data/conversations/**/*.md
+data/conversations/**/*.json
 
 # Keep reproducible metadata under version control
 !data/metadata/
@@ -37,3 +39,6 @@ data/rag/**/*.json
 !data/verified/
 !data/verified/*.csv
 !data/verified/**/.gitkeep
+!data/curated/
+!data/curated/*.csv
+!data/curated/**/.gitkeep

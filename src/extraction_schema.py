@@ -15,6 +15,10 @@ ENTITY_TYPES = (
     "Technology",
     "Product",
     "IndustryChain",
+    "IndustryConcept",
+    "Policy",
+    "Standard",
+    "ValueChainSegment",
     "Metric",
     "Risk",
     "Report",
@@ -27,15 +31,35 @@ RELATION_TYPES = (
     "HAS_METRIC",
     "DISCLOSES_RISK",
     "MENTIONED_IN",
+    "UPSTREAM_OF",
+    "DOWNSTREAM_OF",
+    "ENABLES",
+    "CONSTRAINS",
+    "DEFINES",
+    "SUPPORTED_BY_POLICY",
+)
+
+CHAIN_ENTITY_TYPES = (
+    "IndustryChain",
+    "IndustryConcept",
+    "Technology",
+    "Product",
+    "ValueChainSegment",
 )
 
 RELATION_SIGNATURES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "USES_TECHNOLOGY": (("Company",), ("Technology",)),
     "HAS_PRODUCT": (("Company",), ("Product",)),
-    "BELONGS_TO_CHAIN": (("Company",), ("IndustryChain",)),
+    "BELONGS_TO_CHAIN": (("Company",), ("IndustryChain", "ValueChainSegment")),
     "HAS_METRIC": (("Company",), ("Metric",)),
     "DISCLOSES_RISK": (("Company",), ("Risk",)),
     "MENTIONED_IN": (tuple(t for t in ENTITY_TYPES if t != "Report"), ("Report",)),
+    "UPSTREAM_OF": (CHAIN_ENTITY_TYPES, CHAIN_ENTITY_TYPES),
+    "DOWNSTREAM_OF": (CHAIN_ENTITY_TYPES, CHAIN_ENTITY_TYPES),
+    "ENABLES": (("Technology", "Product", "IndustryConcept", "ValueChainSegment"), CHAIN_ENTITY_TYPES),
+    "CONSTRAINS": (("Risk", "Policy", "Standard", "IndustryConcept"), tuple(t for t in ENTITY_TYPES if t != "Report")),
+    "DEFINES": (("IndustryConcept", "Policy", "Standard"), ("IndustryConcept", "Technology", "ValueChainSegment")),
+    "SUPPORTED_BY_POLICY": (("Company", *CHAIN_ENTITY_TYPES), ("Policy",)),
 }
 
 ENTITY_CSV_FIELDS = [
@@ -46,6 +70,7 @@ ENTITY_CSV_FIELDS = [
     "properties",
     "source_report_ids",
     "review_status",
+    "is_core_company",
 ]
 
 RELATION_CSV_FIELDS = [
@@ -60,6 +85,7 @@ RELATION_CSV_FIELDS = [
     "source_title",
     "page",
     "section",
+    "source_tier",
     "confidence",
     "review_status",
 ]
@@ -150,6 +176,31 @@ def _clean_properties(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
 
+def infer_metric_properties(name: str, evidence: str = "", properties: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Infer minimal structured metric fields from metric text when the LLM omits them."""
+    cleaned = dict(properties or {})
+    text = f"{name} {evidence}"
+    if not cleaned.get("year"):
+        year_match = re.search(r"(20\d{2})\s*年?", text)
+        if year_match:
+            cleaned["year"] = year_match.group(1)
+    if not cleaned.get("value"):
+        value_match = re.search(r"([-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|亿元|万元|千元|亿美元|万台|台|个|EFLOPS|PFLOPS|TFLOPS|EB|GB|bps|G|T)?)", text, flags=re.I)
+        if value_match:
+            cleaned["value"] = value_match.group(1).strip()
+    if not cleaned.get("unit") and cleaned.get("value"):
+        unit_match = re.search(r"(%|亿元|万元|千元|亿美元|万台|台|个|EFLOPS|PFLOPS|TFLOPS|EB|GB|bps|G|T)$", str(cleaned["value"]), flags=re.I)
+        if unit_match:
+            cleaned["unit"] = unit_match.group(1)
+    if not cleaned.get("metric_name"):
+        cleaned["metric_name"] = name
+    return cleaned
+
+
+def metric_has_structured_fields(properties: dict[str, Any]) -> bool:
+    return any(str(properties.get(key, "")).strip() for key in ("year", "value", "unit"))
+
+
 def coerce_entity(entity: dict[str, Any]) -> dict[str, Any]:
     entity_type = str(entity.get("type") or "").strip()
     name = str(entity.get("name") or "").strip()
@@ -158,11 +209,16 @@ def coerce_entity(entity: dict[str, Any]) -> dict[str, Any]:
     if not name:
         raise SchemaError("Entity name is required")
     normalized = str(entity.get("normalized_name") or "").strip() or normalize_name(name, entity_type)
+    properties = _clean_properties(entity.get("properties"))
+    if entity_type == "Metric":
+        properties = infer_metric_properties(name, properties=properties)
+        if not metric_has_structured_fields(properties):
+            raise SchemaError("Metric must include at least one of year, value, or unit")
     return {
         "type": entity_type,
         "name": name,
         "normalized_name": normalized,
-        "properties": _clean_properties(entity.get("properties")),
+        "properties": properties,
     }
 
 
@@ -184,6 +240,10 @@ def coerce_relation(relation: dict[str, Any]) -> dict[str, Any]:
         raise SchemaError("Relation endpoints are required")
     if not evidence:
         raise SchemaError("Relation evidence is required")
+    if tail_type == "Metric":
+        metric_properties = infer_metric_properties(tail_name, evidence)
+        if not metric_has_structured_fields(metric_properties):
+            raise SchemaError("Metric relation tail must include at least one of year, value, or unit")
     confidence = relation.get("confidence", 0.7)
     try:
         confidence_float = float(confidence)
@@ -201,6 +261,7 @@ def coerce_relation(relation: dict[str, Any]) -> dict[str, Any]:
         "source_title": str(relation.get("source_title") or "").strip(),
         "page": str(relation.get("page") or "").strip(),
         "section": str(relation.get("section") or "").strip(),
+        "source_tier": str(relation.get("source_tier") or "").strip(),
         "confidence": f"{confidence_float:.2f}",
     }
 

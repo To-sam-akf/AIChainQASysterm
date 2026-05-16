@@ -52,6 +52,8 @@ def parse_pdf_pages(report: dict[str, str], *, max_pages: int | None = None) -> 
                     "year": report.get("year", ""),
                     "source_title": report.get("title", ""),
                     "source_url": report.get("source_url", ""),
+                    "source_tier": report.get("source_tier", ""),
+                    "source_type": report.get("source_type", ""),
                     "pdf_path": report.get("local_path", ""),
                     "page": index + 1,
                     "total_pages": total_pages,
@@ -73,4 +75,3 @@ def write_parsed_report(report: dict[str, str], pages: list[dict[str, Any]], out
                 file.write(f"\n\n=== page {page['page']} ===\n")
                 file.write(page["text"])
     return jsonl_path, txt_path
-
