@@ -12,7 +12,18 @@ from pathlib import Path
 from typing import Any
 
 from src.extraction_schema import load_jsonl, write_jsonl
+from src.domain_lexicon import DISCLAIMER_TERMS, expanded_terms, is_disclaimer_text, normalize_topic
 from src.text_cleaner import CHUNKS_DIR
+
+try:  # Optional speed/quality dependencies; deterministic fallback below.
+    import jieba
+except Exception:  # pragma: no cover - depends on optional dependency install
+    jieba = None
+
+try:
+    from rank_bm25 import BM25Okapi
+except Exception:  # pragma: no cover - depends on optional dependency install
+    BM25Okapi = None
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -20,6 +31,27 @@ DEFAULT_RAG_DIR = ROOT_DIR / "data" / "rag"
 DOCUMENTS_FILE = "documents.jsonl"
 METADATA_FILE = "metadata.json"
 MAX_TEXT_CHARS = 1800
+
+DOMAIN_WORDS = (
+    "AI服务器",
+    "智算中心",
+    "国产算力",
+    "液冷",
+    "冷板式液冷",
+    "浸没式液冷",
+    "光模块",
+    "高速光模块",
+    "硅光",
+    "CPO",
+    "LPO",
+    "算力网络",
+    "交换机",
+    "服务器电源",
+    "封装基板",
+    "覆铜板",
+    "经营现金流",
+    "研发投入",
+)
 
 
 @dataclass(frozen=True)
@@ -73,16 +105,24 @@ def normalize_text(value: str) -> str:
 
 
 def tokenize(text: str) -> list[str]:
-    """Tokenize mixed Chinese/English financial text without external deps."""
+    """Tokenize mixed Chinese/English financial text with optional jieba support."""
     text = str(text or "").casefold()
     tokens: list[str] = []
+    if jieba is not None:
+        for word in DOMAIN_WORDS:
+            jieba.add_word(word)
+        tokens.extend(
+            token.strip().casefold()
+            for token in jieba.cut(text)
+            if len(token.strip()) >= 2 and not token.isspace()
+        )
     tokens.extend(re.findall(r"[a-z0-9][a-z0-9_\-+.]{1,}", text))
     cjk_runs = re.findall(r"[\u4e00-\u9fff]{2,}", text)
     for run in cjk_runs:
         max_n = 4 if len(run) >= 4 else len(run)
         for n in range(2, max_n + 1):
             tokens.extend(run[index : index + n] for index in range(0, len(run) - n + 1))
-    return tokens
+    return [token for token in tokens if token not in {"公司", "报告", "年度报告", "证券研究报告"}]
 
 
 def iter_chunk_records(chunks_dir: Path = CHUNKS_DIR) -> list[dict[str, Any]]:
@@ -130,7 +170,7 @@ def build_rag_index(
     documents = [doc for chunk in iter_chunk_records(chunks_dir) if (doc := document_from_chunk(chunk))]
     write_jsonl(output_dir / DOCUMENTS_FILE, [asdict(document) for document in documents])
     metadata = RagIndexMetadata(
-        index_version="lexical-v1",
+        index_version="bm25-v2",
         built_at=datetime.now(timezone.utc).isoformat(),
         chunk_count=len(documents),
         source_dir=str(chunks_dir),
@@ -148,6 +188,8 @@ class LocalRagIndex:
         self.documents = documents
         self.index_dir = index_dir
         self.doc_freq = self._build_doc_freq(documents)
+        self.document_tokens = [list(document.token_counts.keys()) for document in documents]
+        self.bm25 = BM25Okapi(self.document_tokens) if BM25Okapi is not None and self.document_tokens else None
 
     @classmethod
     def load(cls, index_dir: Path = DEFAULT_RAG_DIR) -> "LocalRagIndex":
@@ -189,17 +231,51 @@ class LocalRagIndex:
         top_k: int = 6,
         filters: dict[str, str] | None = None,
     ) -> list[RagHit]:
-        query_tokens = Counter(tokenize(question))
+        expanded_question = expand_query(question)
+        query_tokens = Counter(tokenize(expanded_question))
         if not query_tokens:
             return []
         candidates = self._filter_documents(filters or {})
-        scored = [
-            hit
-            for document in candidates
-            if (hit := self._score_document(document, question, query_tokens)).score > 0
-        ]
-        scored.sort(key=lambda hit: (-hit.score, hit.source_title, hit.page, hit.chunk_id))
-        return scored[:top_k]
+        if self.bm25 is not None and len(candidates) == len(self.documents):
+            scored = self._search_with_rank_bm25(question, query_tokens)
+        else:
+            scored = [
+                hit
+                for document in candidates
+                if (hit := self._score_document(document, question, query_tokens)).score > 0
+            ]
+        scored = [hit for hit in scored if not is_low_value_hit(hit)]
+        scored.sort(key=lambda hit: (-hit.score, source_priority(hit), hit.source_title, hit.page, hit.chunk_id))
+        return dedupe_hits(scored)[:top_k]
+
+    def _search_with_rank_bm25(self, question: str, query_tokens: Counter) -> list[RagHit]:
+        assert self.bm25 is not None
+        query = list(query_tokens.keys())
+        raw_scores = self.bm25.get_scores(query)
+        hits = []
+        for document, raw_score in zip(self.documents, raw_scores):
+            hit = self._score_document(document, question, query_tokens)
+            if raw_score <= 0 and hit.score <= 0:
+                continue
+            combined = round(float(raw_score) + hit.score, 6)
+            if combined <= 0 and hit.score > 0:
+                combined = hit.score
+            hits.append(
+                RagHit(
+                    chunk_id=hit.chunk_id,
+                    report_id=hit.report_id,
+                    source_title=hit.source_title,
+                    source_tier=hit.source_tier,
+                    source_type=hit.source_type,
+                    page=hit.page,
+                    section=hit.section,
+                    company=hit.company,
+                    text=hit.text,
+                    snippet=hit.snippet,
+                    score=combined,
+                )
+            )
+        return hits
 
     def _filter_documents(self, filters: dict[str, str]) -> list[RagDocument]:
         documents = self.documents
@@ -229,6 +305,12 @@ class LocalRagIndex:
         for field in (document.company, document.section, document.source_title):
             if field and normalize_text(field) in question_norm:
                 score += 0.8
+        if document.source_tier == "1":
+            score += 0.6
+        if document.source_type == "authority_whitepaper":
+            score += 0.8
+        if is_disclaimer_text(document.text):
+            score -= 4.0
 
         return RagHit(
             chunk_id=document.chunk_id,
@@ -262,3 +344,41 @@ def make_snippet(text: str, tokens: Any, *, radius: int = 110) -> str:
     prefix = "..." if start else ""
     suffix = "..." if end < len(text) else ""
     return f"{prefix}{text[start:end].strip()}{suffix}"
+
+
+def expand_query(question: str) -> str:
+    terms = expanded_terms(re.findall(r"[\u4e00-\u9fffA-Za-z0-9.]+", str(question or "")))
+    return " ".join([str(question or ""), *terms])
+
+
+def source_priority(hit: RagHit) -> int:
+    if hit.source_type == "authority_whitepaper":
+        return 0
+    if hit.source_tier == "1":
+        return 1
+    return 2
+
+
+def is_low_value_hit(hit: RagHit) -> bool:
+    text = f"{hit.section} {hit.snippet}"
+    if is_disclaimer_text(text):
+        return True
+    if any(term in text for term in DISCLAIMER_TERMS):
+        return True
+    normalized = normalize_topic(text)
+    if "目录" in normalized and len(hit.snippet) < 240:
+        return True
+    return False
+
+
+def dedupe_hits(hits: list[RagHit]) -> list[RagHit]:
+    output = []
+    seen = set()
+    for hit in hits:
+        key = re.sub(r"\s+", "", hit.snippet)[:90]
+        source_key = (hit.report_id, hit.page, key)
+        if source_key in seen:
+            continue
+        seen.add(source_key)
+        output.append(hit)
+    return output

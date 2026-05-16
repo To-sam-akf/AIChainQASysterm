@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import os
+from pathlib import Path
+
 import streamlit as st
 
+from src.curated_graph import DEFAULT_CURATED_DIR
 from src.frontend_data import (
     LocalKnowledgeGraph,
     RELATION_LABELS,
@@ -16,7 +20,10 @@ st.set_page_config(page_title="AI算力产业链知识图谱问答系统", layou
 
 @st.cache_data(show_spinner=False)
 def load_graph() -> LocalKnowledgeGraph:
-    return LocalKnowledgeGraph.from_csvs()
+    data_dir = Path(os.getenv("KG_DATA_DIR", str(DEFAULT_CURATED_DIR)))
+    if not (data_dir / "entities.csv").exists():
+        return LocalKnowledgeGraph.from_csvs()
+    return LocalKnowledgeGraph.from_dir(data_dir)
 
 
 @st.cache_resource(show_spinner=False)
@@ -48,31 +55,38 @@ def page_overview(graph: LocalKnowledgeGraph) -> None:
     st.subheader("可演示问题")
     examples = [
         "哪些公司涉及AI服务器？",
-        "天孚通信涉及哪些技术？",
-        "新易盛披露了哪些风险？",
-        "寒武纪有哪些财务指标？",
-        "什么是智能算力？",
+        "液冷产业链有哪些上市公司，各自处于什么环节？",
+        "中际旭创和新易盛在光模块业务上的差异是什么？",
+        "英维克液冷业务进展和主要风险是什么？",
+        "AI算力产业链当前最大的瓶颈是什么？",
     ]
     st.write(" / ".join(f"`{item}`" for item in examples))
 
 
 def page_qa(engine: QAEngine) -> None:
     status = engine.status
-    status_cols = st.columns(3)
-    status_cols[0].metric("Neo4j", "启用" if status.neo4j_enabled else "未启用")
-    status_cols[1].metric("本地 RAG", "就绪" if status.rag_enabled else "未构建")
-    status_cols[2].metric("LLM", "就绪" if status.llm_enabled else "未配置")
+    status_cols = st.columns(4)
+    status_cols[0].metric("图谱后端", status.graph_backend.upper())
+    status_cols[1].metric("Neo4j", "可用" if status.neo4j_enabled else "降级/未启用")
+    status_cols[2].metric("本地 RAG", "就绪" if status.rag_enabled else "未构建")
+    status_cols[3].metric("LLM", "就绪" if status.llm_enabled else "未配置")
+    if status.graph_error:
+        st.caption(f"图谱：{status.graph_error}")
     if status.rag_error:
         st.caption(f"RAG：{status.rag_error}")
     if status.llm_error:
         st.caption(f"LLM：{status.llm_error}")
 
     with st.form("qa_form"):
-        question = st.text_input("问题", value="哪些公司涉及AI服务器？", placeholder="输入公司、技术、产品、风险等问题")
+        question = st.text_input(
+            "问题",
+            value="液冷产业链有哪些上市公司，各自处于什么环节？",
+            placeholder="输入公司、技术、产品、产业链、风险或对比类问题",
+        )
         submitted = st.form_submit_button("提问")
 
     if submitted and question.strip():
-        with st.spinner("正在检索 Neo4j 与本地文档..."):
+        with st.spinner("正在规划问题、检索图谱与本地文档..."):
             st.session_state["qa_result"] = engine.answer_question(question)
 
     result = st.session_state.get("qa_result")
@@ -82,15 +96,24 @@ def page_qa(engine: QAEngine) -> None:
     st.subheader("回答")
     st.write(result["answer"])
 
+    cols = st.columns(3)
+    cols[0].metric("答案类型", result.get("answer_type", ""))
+    diagnostics = result.get("diagnostics", {})
+    cols[1].metric("图谱证据", diagnostics.get("graph_records", 0))
+    cols[2].metric("证据卡片", diagnostics.get("evidence_cards", 0))
+
+    with st.expander("问题规划", expanded=False):
+        st.json(result.get("plan", {}))
+
     st.subheader("Cypher")
     st.code(result["cypher"], language="cypher")
     if result.get("cypher_params"):
         st.json(result["cypher_params"])
 
     st.subheader("证据链")
-    evidence = result["evidence"]
-    if evidence:
-        st.dataframe(evidence, width="stretch", hide_index=True)
+    evidence_cards = result.get("evidence_cards") or result["evidence"]
+    if evidence_cards:
+        st.dataframe(evidence_cards, width="stretch", hide_index=True)
     else:
         st.info("当前知识图谱中未找到相关证据。")
 
@@ -113,6 +136,8 @@ def page_qa(engine: QAEngine) -> None:
         st.subheader("运行状态")
         for error in result["errors"]:
             st.warning(error)
+    with st.expander("诊断信息", expanded=False):
+        st.json(result.get("diagnostics", {}))
 
 
 def page_graph(graph: LocalKnowledgeGraph) -> None:

@@ -91,26 +91,50 @@ python scripts/load_neo4j.py --dry-run
 
 ## 第四阶段：Neo4j + 本地 RAG + LLM 问答
 
+先生成专业版 curated 图谱。该步骤会从 `data/verified/` 自动图谱中过滤非核心上市公司噪声、目录/释义页误抽取关系和低价值会计科目指标：
+
+```bash
+python scripts/build_curated_graph.py
+```
+
 构建本地 RAG 索引：
 
 ```bash
 python scripts/build_rag_index.py
 ```
 
-问答链路：
+专业问答链路：
 
-- LLM 根据问题和图谱 Schema 生成只读 Cypher。
-- 后端执行 Cypher 安全检查，只允许查询语句。
-- Neo4j 返回图谱结构化证据。
-- 本地 RAG 从 `data/chunks/` 的原文块中检索补充证据。
-- LLM 只能基于 Neo4j records 和 RAG hits 生成答案；无证据时返回固定兜底。
+- `QuestionPlan` 先解析问题意图、公司、主题、关系、是否比较、是否只看核心上市公司。
+- 图谱检索默认读取 `data/curated/`；Neo4j 可用时作为增强后端，不可用时自动降级 CSV。
+- 本地 RAG 使用 `jieba + BM25` 检索原文块，带同义词扩展、来源优先级、噪声过滤和去重。
+- 结构化证据会统一成 `evidence_cards`，再生成“结论、证据、研究要点、风险与边界”格式答案。
+- 答案只做事实归纳和研究框架，不提供买卖建议、目标价或收益预测。
 
 新增配置：
 
+- `KG_DATA_DIR`：专业图谱目录，默认 `data/curated`。
+- `QA_GRAPH_BACKEND`：`auto`、`csv` 或 `neo4j`，默认 `auto`。
+- `QA_CORE_COMPANIES_ONLY`：公司列表类问题默认只返回核心 A 股上市公司。
+- `QA_RERANK_TOP_N`：证据重排候选数量。
+- `QA_EVIDENCE_TOP_N`：最终进入答案的证据卡片数量。
 - `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；关闭后使用本地启发式查询。
+
+运行专业问答回归评测：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py
+```
+
+如果要让评测也调用已配置的 LLM：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
+```
 
 ## 第五阶段：前端展示
 
@@ -123,5 +147,12 @@ streamlit run app.py
 前端直接进入系统，不做营销页。页面包括：
 
 - 数据概览：实体、关系、报告数量和分布。
-- 智能问答：展示问题、答案、Cypher、参数、Neo4j 查询结果、本地 RAG 命中、证据链和子图。
+- 智能问答：展示问题规划、专业答案、Cypher/CSV 查询意图、图谱结果、本地 RAG 命中、证据卡片、诊断状态和子图。
 - 图谱展示：支持按公司、技术、关系类型筛选子图。
+
+可重点演示的问题：
+
+- `液冷产业链有哪些上市公司，各自处于什么环节？`
+- `中际旭创和新易盛在光模块业务上的差异是什么？`
+- `英维克液冷业务进展和主要风险是什么？`
+- `AI算力产业链当前最大的瓶颈是什么？`

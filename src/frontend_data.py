@@ -78,6 +78,10 @@ class LocalKnowledgeGraph:
     ) -> "LocalKnowledgeGraph":
         return cls(read_csv_rows(entities_csv), read_csv_rows(relations_csv))
 
+    @classmethod
+    def from_dir(cls, data_dir: Path) -> "LocalKnowledgeGraph":
+        return cls.from_csvs(data_dir / "entities.csv", data_dir / "relations.csv")
+
     def entity_counts(self) -> Counter:
         return Counter(row["type"] for row in self.entities)
 
