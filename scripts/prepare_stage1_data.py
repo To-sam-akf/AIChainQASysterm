@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Prepare stage-1 PDFs for the AI compute industry-chain KG project.
 
-The script collects public annual reports and research reports, validates the
-downloaded PDFs, and writes a reproducible manifest for later parsing stages.
+The script collects public annual reports, broker research reports, and
+authoritative industry whitepapers, validates the downloaded PDFs, and writes a
+reproducible manifest for later parsing stages.
 """
 
 from __future__ import annotations
@@ -19,20 +20,39 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import requests
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-
 ROOT_DIR = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT_DIR))
+
+from src.data_config import (
+    COMPANIES_EXTENDED_CSV,
+    INDUSTRY_SOURCES_CSV,
+    RESEARCH_KEYWORDS_CSV,
+    Company,
+    IndustrySource,
+    load_companies as load_company_config,
+    load_industry_sources,
+    load_research_keywords,
+    validate_companies as validate_company_config,
+    validate_industry_sources,
+    write_default_companies as write_default_company_config,
+    write_default_industry_sources,
+    write_default_research_keywords,
+)
+
+
 DATA_DIR = ROOT_DIR / "data"
 ANNUAL_DIR = DATA_DIR / "raw_pdfs" / "annual"
 RESEARCH_DIR = DATA_DIR / "raw_pdfs" / "research"
+INDUSTRY_DIR = DATA_DIR / "raw_pdfs" / "industry"
 METADATA_DIR = DATA_DIR / "metadata"
-COMPANIES_CSV = METADATA_DIR / "companies.csv"
+COMPANIES_CSV = COMPANIES_EXTENDED_CSV
 MANIFEST_CSV = METADATA_DIR / "reports_manifest.csv"
 
 CNINFO_QUERY_URL = "https://www.cninfo.com.cn/new/hisAnnouncement/query"
@@ -62,27 +82,8 @@ MANIFEST_FIELDS = [
     "pages",
     "status",
     "error",
-]
-
-DEFAULT_COMPANIES = [
-    ("浪潮信息", "000977", "SZ", "AI服务器"),
-    ("中科曙光", "603019", "SH", "AI服务器/高性能计算"),
-    ("工业富联", "601138", "SH", "AI服务器/智能制造"),
-    ("中际旭创", "300308", "SZ", "光模块"),
-    ("新易盛", "300502", "SZ", "光模块"),
-    ("天孚通信", "300394", "SZ", "光器件"),
-    ("英维克", "002837", "SZ", "液冷/温控"),
-    ("申菱环境", "301018", "SZ", "液冷/温控"),
-    ("寒武纪", "688256", "SH", "AI芯片"),
-    ("海光信息", "688041", "SH", "AI芯片/CPU"),
-]
-
-RESEARCH_KEYWORDS = [
-    "AI算力产业链",
-    "算力深度报告",
-    "AIDC算力",
-    "国产算力",
-    "AI服务器 光模块 液冷",
+    "source_tier",
+    "source_type",
 ]
 
 RESEARCH_RELEVANCE_TERMS = {
@@ -172,14 +173,6 @@ RESEARCH_SEEDS = [
 ]
 
 
-@dataclass(frozen=True)
-class Company:
-    company: str
-    stock_code: str
-    market: str
-    chain_segment: str
-
-
 @dataclass
 class ReportCandidate:
     report_id: str
@@ -195,6 +188,8 @@ class ReportCandidate:
     published_at: str = ""
     alternate_pdf_urls: list[str] = field(default_factory=list)
     score: int = 0
+    source_tier: str = "2"
+    source_type: str = ""
 
     @property
     def all_pdf_urls(self) -> list[str]:
@@ -207,45 +202,20 @@ def now_iso() -> str:
 
 
 def ensure_directories() -> None:
-    for path in (ANNUAL_DIR, RESEARCH_DIR, METADATA_DIR):
+    for path in (ANNUAL_DIR, RESEARCH_DIR, INDUSTRY_DIR, METADATA_DIR):
         path.mkdir(parents=True, exist_ok=True)
 
 
 def write_default_companies(path: Path = COMPANIES_CSV) -> None:
-    if path.exists():
-        return
-    ensure_directories()
-    with path.open("w", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
-        writer.writerow(["company", "stock_code", "market", "chain_segment"])
-        writer.writerows(DEFAULT_COMPANIES)
+    write_default_company_config(path)
 
 
 def load_companies(path: Path = COMPANIES_CSV) -> list[Company]:
-    write_default_companies(path)
-    with path.open(newline="", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        companies = [
-            Company(
-                company=row["company"].strip(),
-                stock_code=row["stock_code"].strip(),
-                market=row["market"].strip().upper(),
-                chain_segment=row["chain_segment"].strip(),
-            )
-            for row in reader
-        ]
-    return companies
+    return load_company_config(path)
 
 
-def validate_companies(companies: Iterable[Company]) -> None:
-    companies = list(companies)
-    if len(companies) != 10:
-        raise ValueError(f"Expected 10 target companies, got {len(companies)}")
-    for company in companies:
-        if not re.fullmatch(r"\d{6}", company.stock_code):
-            raise ValueError(f"Invalid stock code for {company.company}: {company.stock_code}")
-        if company.market not in {"SZ", "SH"}:
-            raise ValueError(f"Invalid market for {company.company}: {company.market}")
+def validate_companies(companies: list[Company]) -> None:
+    validate_company_config(companies)
 
 
 def safe_filename(value: str, max_stem_len: int = 96) -> str:
@@ -379,6 +349,8 @@ def manifest_row(
         "pages": pages,
         "status": status,
         "error": error,
+        "source_tier": candidate.source_tier,
+        "source_type": candidate.source_type,
     }
 
 
@@ -588,6 +560,8 @@ def find_annual_candidate(company: Company, year: int, session: requests.Session
         pdf_url=cninfo_pdf_url(announcement),
         local_path=local_path,
         published_at=format_cninfo_time(announcement.get("announcementTime")),
+        source_tier="1",
+        source_type="company_annual_report",
     )
 
 
@@ -668,12 +642,14 @@ def normalize_eastmoney_record(record: dict[str, Any]) -> ReportCandidate | None
         local_path=RESEARCH_DIR / file_name,
         published_at=published_at,
         score=score,
+        source_tier="2",
+        source_type="broker_research",
     )
 
 
-def query_eastmoney_research(session: requests.Session) -> list[ReportCandidate]:
+def query_eastmoney_research(session: requests.Session, keywords: list[str] | None = None) -> list[ReportCandidate]:
     candidates: dict[str, ReportCandidate] = {}
-    for keyword in RESEARCH_KEYWORDS:
+    for keyword in keywords or load_research_keywords():
         for q_type in ("1", "2", "0"):
             for page_no in range(1, 4):
                 params = {
@@ -741,14 +717,16 @@ def seed_research_candidates() -> list[ReportCandidate]:
                 local_path=RESEARCH_DIR / research_filename(0, seed["org"], seed["published_at"], seed["title"]),
                 published_at=seed["published_at"],
                 score=research_score(seed["title"]) + 2,
+                source_tier="2",
+                source_type="broker_research_seed",
             )
         )
     return candidates
 
 
-def find_research_candidates(session: requests.Session, max_research: int) -> list[ReportCandidate]:
+def find_research_candidates(session: requests.Session, max_research: int, keywords: list[str] | None = None) -> list[ReportCandidate]:
     by_id: dict[str, ReportCandidate] = {}
-    for candidate in query_eastmoney_research(session) + seed_research_candidates():
+    for candidate in query_eastmoney_research(session, keywords=keywords) + seed_research_candidates():
         existing = by_id.get(candidate.report_id)
         if existing is None or candidate.score > existing.score:
             by_id[candidate.report_id] = candidate
@@ -793,7 +771,7 @@ def plan_candidate(candidate: ReportCandidate) -> str:
 
 
 def run_annual(args: argparse.Namespace, session: requests.Session, manifest: ManifestStore) -> int:
-    companies = load_companies()
+    companies = load_companies(args.companies_csv)
     validate_companies(companies)
     failures = 0
     for company in companies:
@@ -832,8 +810,9 @@ def run_annual(args: argparse.Namespace, session: requests.Session, manifest: Ma
 
 
 def run_research(args: argparse.Namespace, session: requests.Session, manifest: ManifestStore) -> int:
+    keywords = load_research_keywords(args.research_keywords_csv)
     try:
-        candidates = find_research_candidates(session, args.max_research)
+        candidates = find_research_candidates(session, args.max_research, keywords=keywords)
     except Exception as exc:
         print(f"Research search failed: {exc}")
         candidates = seed_research_candidates()[: args.max_research]
@@ -867,19 +846,63 @@ def run_research(args: argparse.Namespace, session: requests.Session, manifest: 
     return 0
 
 
+def industry_filename(source: IndustrySource) -> str:
+    year_part = re.sub(r"[^0-9]", "", source.year or source.published_at)[:4] or "unknown"
+    title_part = safe_filename(short_title(source.title), max_stem_len=MAX_TITLE_FILENAME_LEN)
+    return f"AI算力行业知识_{year_part}_{title_part}.pdf"
+
+
+def industry_candidate(source: IndustrySource) -> ReportCandidate:
+    return ReportCandidate(
+        report_id=source.report_id,
+        kind="industry",
+        title=source.title,
+        source_site=source.source_site,
+        source_url=source.source_url,
+        pdf_url=source.pdf_url,
+        local_path=INDUSTRY_DIR / industry_filename(source),
+        year=source.year,
+        published_at=source.published_at,
+        source_tier=source.source_tier,
+        source_type=source.source_type,
+    )
+
+
+def run_industry(args: argparse.Namespace, session: requests.Session, manifest: ManifestStore) -> int:
+    sources = load_industry_sources(args.industry_sources_csv)
+    validate_industry_sources(sources)
+    failures = 0
+    for source in sources:
+        candidate = industry_candidate(source)
+        if args.dry_run:
+            print(plan_candidate(candidate))
+        else:
+            result = download_report(session, candidate, manifest, refresh=args.refresh)
+            print(result)
+            if result.startswith("FAIL"):
+                failures += 1
+        time.sleep(0.3)
+    return failures
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Prepare stage-1 annual and research PDFs.")
-    parser.add_argument("--kind", choices=("annual", "research", "all"), default="all")
+    parser.add_argument("--kind", choices=("annual", "research", "industry", "all"), default="all")
     parser.add_argument("--dry-run", action="store_true", help="Query and print candidates without downloading or writing manifest rows.")
     parser.add_argument("--refresh", action="store_true", help="Re-download PDFs even when a valid local file exists.")
     parser.add_argument("--max-research", type=int, default=DEFAULT_MAX_RESEARCH)
+    parser.add_argument("--companies-csv", type=Path, default=COMPANIES_CSV)
+    parser.add_argument("--research-keywords-csv", type=Path, default=RESEARCH_KEYWORDS_CSV)
+    parser.add_argument("--industry-sources-csv", type=Path, default=INDUSTRY_SOURCES_CSV)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     ensure_directories()
-    write_default_companies()
+    write_default_companies(args.companies_csv)
+    write_default_research_keywords(args.research_keywords_csv)
+    write_default_industry_sources(args.industry_sources_csv)
     manifest = ManifestStore()
     session = make_session()
 
@@ -888,6 +911,8 @@ def main(argv: list[str] | None = None) -> int:
         failures += run_annual(args, session, manifest)
     if args.kind in {"research", "all"}:
         failures += run_research(args, session, manifest)
+    if args.kind in {"industry", "all"}:
+        failures += run_industry(args, session, manifest)
 
     if failures:
         print(f"Completed with {failures} missing or failed items.")

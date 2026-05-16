@@ -51,6 +51,7 @@ def page_overview(graph: LocalKnowledgeGraph) -> None:
         "天孚通信涉及哪些技术？",
         "新易盛披露了哪些风险？",
         "寒武纪有哪些财务指标？",
+        "什么是智能算力？",
     ]
     st.write(" / ".join(f"`{item}`" for item in examples))
 

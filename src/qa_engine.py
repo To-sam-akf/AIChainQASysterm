@@ -197,6 +197,7 @@ def build_evidence(graph_records: list[dict[str, Any]], rag_hits: list[RagHit]) 
                 {
                     "kind": "graph",
                     "source": record.get("source", ""),
+                    "source_tier": record.get("source_tier", ""),
                     "page": record.get("page", ""),
                     "section": record.get("section", ""),
                     "evidence": text,
@@ -208,6 +209,7 @@ def build_evidence(graph_records: list[dict[str, Any]], rag_hits: list[RagHit]) 
             {
                 "kind": "rag",
                 "source": hit.source_title,
+                "source_tier": hit.source_tier,
                 "page": hit.page,
                 "section": hit.section,
                 "evidence": hit.snippet,

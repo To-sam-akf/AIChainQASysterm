@@ -25,6 +25,12 @@ RELATION_LABELS = {
     "HAS_METRIC": "披露指标",
     "DISCLOSES_RISK": "披露风险",
     "MENTIONED_IN": "来源报告",
+    "UPSTREAM_OF": "上游",
+    "DOWNSTREAM_OF": "下游",
+    "ENABLES": "使能",
+    "CONSTRAINS": "约束",
+    "DEFINES": "定义",
+    "SUPPORTED_BY_POLICY": "政策支撑",
 }
 
 QUESTION_RELATIONS = {
@@ -35,6 +41,10 @@ QUESTION_RELATIONS = {
     "指标": "HAS_METRIC",
     "财务": "HAS_METRIC",
     "风险": "DISCLOSES_RISK",
+    "政策": "SUPPORTED_BY_POLICY",
+    "定义": "DEFINES",
+    "上游": "UPSTREAM_OF",
+    "下游": "DOWNSTREAM_OF",
 }
 
 
@@ -298,6 +308,10 @@ def render_svg_graph(edges: list[dict[str, str]], *, width: int = 980, height: i
             "Metric": "#0f766e",
             "Risk": "#dc2626",
             "Report": "#475569",
+            "IndustryConcept": "#0891b2",
+            "Policy": "#4f46e5",
+            "Standard": "#9333ea",
+            "ValueChainSegment": "#ea580c",
         }.get(entity_type, "#334155")
 
     svg_parts = [

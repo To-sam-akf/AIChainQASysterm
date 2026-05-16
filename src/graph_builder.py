@@ -11,6 +11,7 @@ from src.extraction_schema import (
     RELATION_CSV_FIELDS,
     coerce_entity,
     coerce_relation,
+    infer_metric_properties,
     json_dumps,
     normalize_name,
     read_csv,
@@ -18,6 +19,7 @@ from src.extraction_schema import (
     stable_id,
     write_csv,
 )
+from src.data_config import core_company_alias_index
 
 
 def report_entity_from_manifest(row: dict[str, str]) -> dict[str, Any]:
@@ -32,6 +34,8 @@ def report_entity_from_manifest(row: dict[str, str]) -> dict[str, Any]:
         "published_at": row.get("published_at", ""),
         "sha256": row.get("sha256", ""),
         "pages": row.get("pages", ""),
+        "source_tier": row.get("source_tier", ""),
+        "source_type": row.get("source_type", ""),
     }
     return {
         "type": "Report",
@@ -42,11 +46,19 @@ def report_entity_from_manifest(row: dict[str, str]) -> dict[str, Any]:
     }
 
 
-def entity_csv_row(entity: dict[str, Any], source_report_ids: set[str] | None = None) -> dict[str, str]:
+def entity_csv_row(
+    entity: dict[str, Any],
+    source_report_ids: set[str] | None = None,
+    *,
+    core_companies: dict[str, str] | None = None,
+) -> dict[str, str]:
     entity_type = entity["type"]
     name = entity["name"]
     normalized = entity.get("normalized_name") or normalize_name(name, entity_type)
     report_ids = sorted(source_report_ids or {entity.get("source_report_id", "")} - {""})
+    is_core_company = ""
+    if entity_type == "Company":
+        is_core_company = "true" if normalized in (core_companies or {}) else "false"
     return {
         "entity_id": stable_id("entity", entity_type, normalized),
         "type": entity_type,
@@ -55,6 +67,7 @@ def entity_csv_row(entity: dict[str, Any], source_report_ids: set[str] | None = 
         "properties": json_dumps(entity.get("properties", {})),
         "source_report_ids": json_dumps(report_ids),
         "review_status": "auto",
+        "is_core_company": is_core_company,
     }
 
 
@@ -81,9 +94,37 @@ def relation_csv_row(relation: dict[str, Any]) -> dict[str, str]:
         "source_title": relation.get("source_title", ""),
         "page": relation.get("page", ""),
         "section": relation.get("section", ""),
+        "source_tier": relation.get("source_tier", ""),
         "confidence": relation.get("confidence", "0.70"),
         "review_status": "auto",
     }
+
+
+def canonicalize_company(entity: dict[str, Any], core_companies: dict[str, str]) -> dict[str, Any]:
+    if entity.get("type") != "Company":
+        return entity
+    normalized = normalize_name(entity.get("name", ""), "Company")
+    canonical = core_companies.get(normalized)
+    if not canonical:
+        return entity
+    updated = dict(entity)
+    updated["name"] = canonical
+    updated["normalized_name"] = normalize_name(canonical, "Company")
+    properties = dict(updated.get("properties", {}) or {})
+    properties["is_core_company"] = True
+    updated["properties"] = properties
+    return updated
+
+
+def relation_endpoint_entity(relation: dict[str, Any], endpoint: str) -> dict[str, Any]:
+    prefix = "head" if endpoint == "head" else "tail"
+    entity = {
+        "type": relation[f"{prefix}_type"],
+        "name": relation[f"{prefix}_name"],
+    }
+    if entity["type"] == "Metric":
+        entity["properties"] = infer_metric_properties(entity["name"], relation.get("evidence", ""))
+    return entity
 
 
 def add_entity(
@@ -91,7 +132,10 @@ def add_entity(
     source_index: dict[tuple[str, str], set[str]],
     entity: dict[str, Any],
     source_report_id: str,
+    *,
+    core_companies: dict[str, str] | None = None,
 ) -> None:
+    entity = canonicalize_company(entity, core_companies or {})
     coerced = coerce_entity(entity)
     key = (coerced["type"], coerced["normalized_name"])
     if key not in entities:
@@ -130,10 +174,12 @@ def build_verified_graph(
     entities: dict[tuple[str, str], dict[str, Any]] = {}
     source_index: dict[tuple[str, str], set[str]] = {}
     relations: dict[str, dict[str, Any]] = {}
+    report_source_tiers = {row["report_id"]: row.get("source_tier", "") for row in manifest_rows}
+    core_companies = core_company_alias_index()
 
     for report in manifest_rows:
         report_entity = report_entity_from_manifest(report)
-        add_entity(entities, source_index, report_entity, report["report_id"])
+        add_entity(entities, source_index, report_entity, report["report_id"], core_companies=core_companies)
 
     for record in load_extraction_records(extraction_paths):
         cleaned, _ = sanitize_extraction_payload({"entities": record.get("entities", []), "relations": record.get("relations", [])})
@@ -146,32 +192,40 @@ def build_verified_graph(
             if entity["type"] == "Report":
                 continue
             entity["source_report_id"] = source_report_id
-            add_entity(entities, source_index, entity, source_report_id)
+            entity = canonicalize_company(entity, core_companies)
+            add_entity(entities, source_index, entity, source_report_id, core_companies=core_companies)
             touched_entities.append(entity)
         for relation in cleaned["relations"]:
             if relation["relation"] == "MENTIONED_IN":
                 continue
+            if relation["head_type"] == "Company":
+                relation["head_name"] = core_companies.get(normalize_name(relation["head_name"], "Company"), relation["head_name"])
+            if relation["tail_type"] == "Company":
+                relation["tail_name"] = core_companies.get(normalize_name(relation["tail_name"], "Company"), relation["tail_name"])
             relation["source_report_id"] = relation.get("source_report_id") or source_report_id
             relation["source_title"] = relation.get("source_title") or source_title
             relation["page"] = relation.get("page") or page
             relation["section"] = relation.get("section") or section
+            relation["source_tier"] = relation.get("source_tier") or report_source_tiers.get(relation["source_report_id"], "")
             add_entity(
                 entities,
                 source_index,
-                {"type": relation["head_type"], "name": relation["head_name"]},
+                relation_endpoint_entity(relation, "head"),
                 relation["source_report_id"],
+                core_companies=core_companies,
             )
             add_entity(
                 entities,
                 source_index,
-                {"type": relation["tail_type"], "name": relation["tail_name"]},
+                relation_endpoint_entity(relation, "tail"),
                 relation["source_report_id"],
+                core_companies=core_companies,
             )
             add_relation(relations, relation)
             touched_entities.extend(
                 [
-                    {"type": relation["head_type"], "name": relation["head_name"]},
-                    {"type": relation["tail_type"], "name": relation["tail_name"]},
+                    relation_endpoint_entity(relation, "head"),
+                    relation_endpoint_entity(relation, "tail"),
                 ]
             )
         if source_report_id:
@@ -189,11 +243,15 @@ def build_verified_graph(
                     "source_title": source_title,
                     "page": page,
                     "section": section,
+                    "source_tier": report_source_tiers.get(source_report_id, ""),
                     "confidence": "1.00",
                 }
                 add_relation(relations, mention_relation)
 
-    entity_rows = [entity_csv_row(entity, source_index.get(key, set())) for key, entity in sorted(entities.items())]
+    entity_rows = [
+        entity_csv_row(entity, source_index.get(key, set()), core_companies=core_companies)
+        for key, entity in sorted(entities.items())
+    ]
     relation_rows = [relation_csv_row(relation) for _, relation in sorted(relations.items())]
     write_csv(entities_csv, ENTITY_CSV_FIELDS, entity_rows)
     write_csv(relations_csv, RELATION_CSV_FIELDS, relation_rows)

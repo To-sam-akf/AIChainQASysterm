@@ -39,6 +39,8 @@ class RagDocument:
     company: str
     source_title: str
     source_url: str
+    source_tier: str
+    source_type: str
     page: str
     section: str
     text: str
@@ -51,6 +53,8 @@ class RagHit:
     chunk_id: str
     report_id: str
     source_title: str
+    source_tier: str
+    source_type: str
     page: str
     section: str
     company: str
@@ -96,7 +100,7 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
         return None
     search_text = "\n".join(
         str(chunk.get(key, "") or "")
-        for key in ("company", "source_title", "section", "text")
+        for key in ("company", "source_title", "source_type", "section", "text")
     )
     counts = Counter(tokenize(search_text))
     if not counts:
@@ -108,6 +112,8 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
         company=str(chunk.get("company", "")),
         source_title=str(chunk.get("source_title", "")),
         source_url=str(chunk.get("source_url", "")),
+        source_tier=str(chunk.get("source_tier", "")),
+        source_type=str(chunk.get("source_type", "")),
         page=str(chunk.get("page", "")),
         section=str(chunk.get("section", "")),
         text=text[:MAX_TEXT_CHARS],
@@ -158,6 +164,8 @@ class LocalRagIndex:
                     company=str(row.get("company", "")),
                     source_title=str(row.get("source_title", "")),
                     source_url=str(row.get("source_url", "")),
+                    source_tier=str(row.get("source_tier", "")),
+                    source_type=str(row.get("source_type", "")),
                     page=str(row.get("page", "")),
                     section=str(row.get("section", "")),
                     text=str(row.get("text", "")),
@@ -226,6 +234,8 @@ class LocalRagIndex:
             chunk_id=document.chunk_id,
             report_id=document.report_id,
             source_title=document.source_title,
+            source_tier=document.source_tier,
+            source_type=document.source_type,
             page=document.page,
             section=document.section,
             company=document.company,

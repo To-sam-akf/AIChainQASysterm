@@ -139,6 +139,8 @@ def build_chunks_from_pages(
                     "year": page.get("year", ""),
                     "source_title": page.get("source_title", ""),
                     "source_url": page.get("source_url", ""),
+                    "source_tier": page.get("source_tier", ""),
+                    "source_type": page.get("source_type", ""),
                     "page": page.get("page", ""),
                     "section": section,
                     "text": text,

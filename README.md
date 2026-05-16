@@ -4,24 +4,28 @@ AI 算力产业链知识图谱问答系统。
 
 ## 第一阶段：数据准备
 
-初始化并下载最新可用年报和公开 AI 算力产业链研报：
+初始化并下载最新可用年报、公开 AI 算力产业链研报和权威行业白皮书：
 
 ```bash
-python scripts/prepare_stage1_data.py --kind all --max-research 5
+python scripts/prepare_stage1_data.py --kind all --max-research 10
 ```
 
 只查看候选文件，不下载：
 
 ```bash
 python scripts/prepare_stage1_data.py --kind annual --dry-run
-python scripts/prepare_stage1_data.py --kind research --max-research 5 --dry-run
+python scripts/prepare_stage1_data.py --kind research --max-research 10 --dry-run
+python scripts/prepare_stage1_data.py --kind industry --dry-run
 ```
 
 输出目录：
 
-- `data/raw_pdfs/annual/`：10 家目标公司的最新可用年报。
-- `data/raw_pdfs/research/`：5 份公开可直接访问的 AI 算力产业链研报。
-- `data/metadata/companies.csv`：目标公司清单。
+- `data/raw_pdfs/annual/`：30 家核心上市公司的最新可用年报。
+- `data/raw_pdfs/research/`：公开可直接访问的 AI 算力产业链研报。
+- `data/raw_pdfs/industry/`：中国信通院等权威机构白皮书、政策和标准资料。
+- `data/metadata/companies_extended.csv`：30 家核心上市公司、别名和产业链环节。
+- `data/metadata/research_keywords.csv`：研报检索关键词配置。
+- `data/metadata/industry_sources.csv`：权威行业知识源配置。
 - `data/metadata/reports_manifest.csv`：PDF 来源、状态、SHA256、文件大小和页数。
 
 ## 第二、三阶段：知识抽取与图谱构建
@@ -40,11 +44,12 @@ cp .env.example .env
 python scripts/parse_pdfs.py --manifest data/metadata/reports_manifest.csv
 ```
 
-调用 LLM 抽取实体关系。当前 15 份 PDF 约 1120 个 chunk，建议分批跑：
+调用 LLM 抽取实体关系。建议按报告类型分批跑：
 
 ```bash
 python scripts/extract_knowledge.py --kind research --contains 算力 --limit-chunks 20 --sleep 0.3
 python scripts/extract_knowledge.py --kind annual --contains 服务器 --limit-chunks 50 --resume --sleep 0.3
+python scripts/extract_knowledge.py --kind industry --contains 智能算力 --limit-chunks 50 --resume --sleep 0.3
 ```
 
 一次性跑完
@@ -77,6 +82,12 @@ python scripts/load_neo4j.py --dry-run
 - `data/chunks/`：面向 LLM 抽取的文本块。
 - `data/extracted/`：LLM 原始抽取 JSONL 和错误记录。
 - `data/verified/entities.csv`、`data/verified/relations.csv`：可人工校验后导入 Neo4j 的图谱数据。
+
+新增行业本体节点和关系：
+
+- 节点：`IndustryConcept`、`Policy`、`Standard`、`ValueChainSegment`。
+- 关系：`UPSTREAM_OF`、`DOWNSTREAM_OF`、`ENABLES`、`CONSTRAINS`、`DEFINES`、`SUPPORTED_BY_POLICY`。
+- 关系保留 `source_tier`，公司实体保留 `is_core_company`，用于区分核心上市公司和一般提及主体。
 
 ## 第四阶段：Neo4j + 本地 RAG + LLM 问答
 

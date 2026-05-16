@@ -117,7 +117,7 @@ class Neo4jGraphLoader:
                 tail_label = assert_label(row["tail_type"])
                 relation_type = assert_relation_type(row["relation"])
                 head_norm = normalize_name(row["head_name"], head_label)
-                tail_norm = row["tail_name"] if tail_label == "Report" and row["tail_name"].startswith(("annual_", "research_")) else normalize_name(row["tail_name"], tail_label)
+                tail_norm = row["tail_name"] if tail_label == "Report" and row["tail_name"].startswith(("annual_", "research_", "industry_")) else normalize_name(row["tail_name"], tail_label)
                 params = {
                     "head_norm": head_norm,
                     "tail_norm": tail_norm,
@@ -129,6 +129,7 @@ class Neo4jGraphLoader:
                     "source_title": row.get("source_title", ""),
                     "page": row.get("page", ""),
                     "section": row.get("section", ""),
+                    "source_tier": row.get("source_tier", ""),
                     "confidence": float(row.get("confidence") or 0.7),
                     "review_status": row.get("review_status", ""),
                 }
@@ -140,7 +141,8 @@ class Neo4jGraphLoader:
                     f"MERGE (h)-[r:{relation_type} {{relation_id: $relation_id}}]->(t) "
                     "SET r.evidence = $evidence, r.source_report_id = $source_report_id, "
                     "r.source_title = $source_title, r.page = $page, r.section = $section, "
-                    "r.confidence = $confidence, r.review_status = $review_status"
+                    "r.source_tier = $source_tier, r.confidence = $confidence, "
+                    "r.review_status = $review_status"
                 )
                 session.run(query, **params).consume()
         return len(rows)
