@@ -122,3 +122,28 @@ def test_company_compare_fallback_covers_both_companies() -> None:
     assert "新易盛" in result["answer"]
     assert result["answer_type"] == "company_compare"
 
+
+def test_followup_question_uses_conversation_history() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "中际旭创", "relation": "DISCLOSES_RISK", "tail_type": "Risk", "tail_name": "客户需求波动", "evidence": "中际旭创披露客户需求和产品价格波动风险。", "source_title": "年报", "page": "88", "source_tier": "1", "section": "风险因素"},
+            {"head_type": "Company", "head_name": "新易盛", "relation": "DISCLOSES_RISK", "tail_type": "Risk", "tail_name": "海外市场波动", "evidence": "新易盛披露海外市场、汇率及客户需求变化风险。", "source_title": "年报", "page": "92", "source_tier": "1", "section": "风险因素"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=None)
+
+    result = engine.answer_question(
+        "继续说它们的主要风险",
+        conversation_history=[
+            {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
+            {"role": "assistant", "content": "两家公司都涉及光模块业务。"},
+        ],
+    )
+
+    assert result["diagnostics"]["contextualized"] is True
+    assert "中际旭创" in result["contextual_question"]
+    assert "新易盛" in result["contextual_question"]
+    assert result["answer_type"] == "risk_analysis"
+    assert "客户需求波动" in result["answer"]
+    assert "海外市场波动" in result["answer"]

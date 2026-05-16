@@ -101,14 +101,25 @@ def generate_cypher(
     client: Any | None = None,
     enable_llm: bool = True,
     limit: int = 50,
+    llm_options: dict[str, Any] | None = None,
 ) -> GeneratedCypher:
     if client is not None and enable_llm:
         try:
-            payload = client.chat_json(
-                system_prompt=SYSTEM_PROMPT,
-                user_prompt=build_cypher_prompt(question),
-                temperature=0.0,
-            )
+            kwargs = {
+                "system_prompt": SYSTEM_PROMPT,
+                "user_prompt": build_cypher_prompt(question),
+                "temperature": 0.0,
+            }
+            if llm_options:
+                kwargs.update(llm_options)
+            try:
+                payload = client.chat_json(**kwargs)
+            except TypeError:
+                payload = client.chat_json(
+                    system_prompt=SYSTEM_PROMPT,
+                    user_prompt=build_cypher_prompt(question),
+                    temperature=0.0,
+                )
             cypher = ensure_limit(str(payload.get("cypher", "")), limit=limit)
             return GeneratedCypher(cypher=cypher, params={}, source="llm")
         except (CypherSafetyError, Exception) as exc:

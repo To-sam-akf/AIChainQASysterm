@@ -36,7 +36,13 @@ python scripts/prepare_stage1_data.py --kind industry --dry-run
 cp .env.example .env
 ```
 
-`.env` 默认使用 DeepSeek OpenAI 兼容接口，填入 `LLM_API_KEY` 后即可运行。
+`.env` 默认使用 DeepSeek OpenAI 兼容接口，填入 `LLM_API_KEY` 后即可运行。当前示例配置启用 DeepSeek 思考模式：
+
+- `LLM_MODEL=deepseek-v4-pro`
+- `LLM_THINKING_ENABLED=true`
+- `LLM_REASONING_EFFORT=high`
+
+如果账号仍使用旧版推理模型，可把 `LLM_MODEL` 改为 `deepseek-reasoner`。
 
 解析 PDF 并生成文本块：
 
@@ -122,6 +128,10 @@ python scripts/build_rag_index.py
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；关闭后使用本地启发式查询。
+- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 8。
+- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 16000。
+- `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，默认在 DeepSeek endpoint 下开启。
+- `LLM_REASONING_EFFORT`：DeepSeek 思考强度，默认 `high`。
 
 运行专业问答回归评测：
 
@@ -147,7 +157,9 @@ streamlit run app.py
 前端直接进入系统，不做营销页。页面包括：
 
 - 数据概览：实体、关系、报告数量和分布。
-- 智能问答：展示问题规划、专业答案、Cypher/CSV 查询意图、图谱结果、本地 RAG 命中、证据卡片、诊断状态和子图。
+- 智能问答：支持连续多轮追问，展示问题规划、专业答案、模型思考过程、Cypher/CSV 查询意图、图谱结果、本地 RAG 命中、证据卡片、诊断状态和子图。
+- 侧栏模型设置：可在前端按轮次开启或关闭 DeepSeek 思考模式，并选择 `low`、`medium`、`high` 思考强度。
+- 侧栏对话记录：保留当前会话历史，支持新建对话、保存到 `data/conversations/`、查看已保存记录、下载 Markdown 或 JSON。
 - 图谱展示：支持按公司、技术、关系类型筛选子图。
 
 可重点演示的问题：

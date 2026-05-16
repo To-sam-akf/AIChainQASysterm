@@ -25,6 +25,8 @@ data/extracted/**/*.csv
 data/extracted/**/*.log
 data/rag/**/*.jsonl
 data/rag/**/*.json
+data/conversations/**/*.md
+data/conversations/**/*.json
 
 # Keep reproducible metadata under version control
 !data/metadata/

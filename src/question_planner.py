@@ -41,16 +41,27 @@ def plan_question(
     *,
     client: Any | None = None,
     core_companies_only: bool = True,
+    llm_options: dict[str, Any] | None = None,
 ) -> QuestionPlan:
     deterministic = heuristic_plan_question(question, core_companies_only=core_companies_only)
     if client is None or not hasattr(client, "chat_json"):
         return deterministic
     try:
-        payload = client.chat_json(
-            system_prompt=PLANNER_SYSTEM_PROMPT,
-            user_prompt=build_planner_prompt(question, deterministic),
-            temperature=0.0,
-        )
+        kwargs = {
+            "system_prompt": PLANNER_SYSTEM_PROMPT,
+            "user_prompt": build_planner_prompt(question, deterministic),
+            "temperature": 0.0,
+        }
+        if llm_options:
+            kwargs.update(llm_options)
+        try:
+            payload = client.chat_json(**kwargs)
+        except TypeError:
+            payload = client.chat_json(
+                system_prompt=PLANNER_SYSTEM_PROMPT,
+                user_prompt=build_planner_prompt(question, deterministic),
+                temperature=0.0,
+            )
         return merge_llm_plan(question, deterministic, payload, core_companies_only=core_companies_only)
     except Exception:
         return deterministic
@@ -142,10 +153,10 @@ def heuristic_plan_question(question: str, *, core_companies_only: bool = True) 
     asks_company_list = any(term in question for term in ("哪些公司", "上市公司", "企业", "标的"))
     bottleneck = any(term in question for term in BOTTLENECK_TERMS) or "最大" in question and "问题" in question
 
-    if needs_comparison and companies:
-        answer_type = "company_compare"
-    elif needs_risk and companies:
+    if needs_risk and companies:
         answer_type = "risk_analysis"
+    elif needs_comparison and companies:
+        answer_type = "company_compare"
     elif bottleneck:
         answer_type = "industry_bottleneck"
     elif asks_company_list:
@@ -275,4 +286,3 @@ def listify(value: Any) -> list[str]:
     if isinstance(value, str) and value.strip():
         return [value.strip()]
     return []
-

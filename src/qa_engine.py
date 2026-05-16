@@ -23,7 +23,7 @@ from src.professional_qa import (
     rank_evidence_cards,
     search_csv_graph,
 )
-from src.question_planner import QuestionPlan, plan_question
+from src.question_planner import QuestionPlan, extract_companies, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
 
 
@@ -33,6 +33,10 @@ ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助�
 只能根据提供的 Neo4j/CSV 图谱结果和本地 RAG 原文片段回答，不要编造证据外信息。
 答案用中文，面向资深投资者，按“结论、证据、研究要点、风险与边界”组织。
 可以给事实归纳、产业链位置、催化因素、风险和跟踪指标；禁止给股票买卖建议、目标价或收益预测。"""
+
+CONTEXTUALIZER_SYSTEM_PROMPT = """你是中国 AI 算力产业链问答系统的追问改写器。
+根据历史对话，把用户当前问题改写成可独立检索的中文问题。
+只输出改写后的问题，不解释，不回答问题，不引入历史对话中没有出现的新公司或主题。"""
 
 
 @dataclass
@@ -62,6 +66,8 @@ class QAEngine:
         rerank_top_n: int = 40,
         evidence_top_n: int = 10,
         core_companies_only: bool = True,
+        history_max_turns: int = 8,
+        history_max_chars: int = 16000,
         status: QAEngineStatus | None = None,
     ) -> None:
         self.llm_client = llm_client
@@ -74,6 +80,8 @@ class QAEngine:
         self.rerank_top_n = rerank_top_n
         self.evidence_top_n = evidence_top_n
         self.core_companies_only = core_companies_only
+        self.history_max_turns = history_max_turns
+        self.history_max_chars = history_max_chars
         self.status = status or QAEngineStatus(
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
@@ -91,6 +99,8 @@ class QAEngine:
         evidence_top_n = int(os.getenv("QA_EVIDENCE_TOP_N", "10"))
         core_companies_only = os.getenv("QA_CORE_COMPANIES_ONLY", "true").casefold() != "false"
         enable_llm_cypher = os.getenv("QA_ENABLE_LLM_CYPHER", "true").casefold() != "false"
+        history_max_turns = int(os.getenv("QA_HISTORY_MAX_TURNS", "8"))
+        history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "16000"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
 
         llm_client = None
@@ -161,6 +171,8 @@ class QAEngine:
             rerank_top_n=rerank_top_n,
             evidence_top_n=evidence_top_n,
             core_companies_only=core_companies_only,
+            history_max_turns=history_max_turns,
+            history_max_chars=history_max_chars,
             status=status,
         )
 
@@ -168,24 +180,54 @@ class QAEngine:
         if self.graph_client is not None and hasattr(self.graph_client, "close"):
             self.graph_client.close()
 
-    def answer_question(self, question: str) -> dict[str, Any]:
+    def answer_question(
+        self,
+        question: str,
+        conversation_history: list[dict[str, str]] | None = None,
+        *,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> dict[str, Any]:
         question = question.strip()
         errors: list[str] = []
-        plan = plan_question(question, client=self.llm_client, core_companies_only=self.core_companies_only)
-        generated = self._generate_display_cypher(question, plan, errors)
+        llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
+        history = normalize_conversation_history(
+            conversation_history,
+            max_turns=self.history_max_turns,
+            max_chars=self.history_max_chars,
+        )
+        contextual_question = self._contextualize_question(question, history, errors, llm_options)
+        plan = plan_question(
+            contextual_question,
+            client=self.llm_client,
+            core_companies_only=self.core_companies_only,
+            llm_options=llm_options,
+        )
+        generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options)
         if generated.error:
             errors.append(generated.error)
         graph_records = self._query_graph(generated, plan, errors)
-        rag_hits = self._search_rag(question, plan, errors)
+        rag_hits = self._search_rag(contextual_question, plan, errors)
         raw_cards = [*cards_from_graph_records(graph_records, plan), *cards_from_rag_hits(rag_hits, plan)]
         evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
         evidence = legacy_evidence_rows(evidence_cards)
-        answer = self._generate_answer(question, plan, graph_records, evidence_cards, errors)
+        answer, reasoning_content = self._generate_answer(
+            question,
+            contextual_question,
+            history,
+            plan,
+            graph_records,
+            evidence_cards,
+            errors,
+            llm_options,
+        )
         return {
             "question": question,
+            "contextual_question": contextual_question,
             "answer": answer,
+            "reasoning_content": reasoning_content,
             "answer_type": plan.answer_type,
             "plan": plan.to_dict(),
             "cypher": generated.cypher,
@@ -202,6 +244,10 @@ class QAEngine:
                 "rag_hits": len(rag_hits),
                 "evidence_cards": len(evidence_cards),
                 "rerank_top_n": self.rerank_top_n,
+                "history_messages": len(history),
+                "contextualized": contextual_question != question,
+                "thinking_enabled": thinking_enabled,
+                "reasoning_effort": reasoning_effort or "",
                 "graph_error": self.status.graph_error,
                 "rag_error": self.status.rag_error,
                 "llm_error": self.status.llm_error,
@@ -209,7 +255,13 @@ class QAEngine:
             "errors": errors,
         }
 
-    def _generate_display_cypher(self, question: str, plan: QuestionPlan, errors: list[str]) -> GeneratedCypher:
+    def _generate_display_cypher(
+        self,
+        question: str,
+        plan: QuestionPlan,
+        errors: list[str],
+        llm_options: dict[str, Any],
+    ) -> GeneratedCypher:
         if self.status.graph_backend == "csv" or self.graph_client is None:
             return GeneratedCypher(
                 cypher=pseudo_cypher_for_plan(plan, limit=self.graph_limit),
@@ -225,6 +277,7 @@ class QAEngine:
                 client=self.llm_client,
                 enable_llm=self.enable_llm_cypher,
                 limit=self.graph_limit,
+                llm_options=llm_options,
             )
         except Exception as exc:
             errors.append(f"Cypher generation failed: {exc}")
@@ -271,26 +324,88 @@ class QAEngine:
             errors.append(f"RAG search failed: {exc}")
             return []
 
+    def _contextualize_question(
+        self,
+        question: str,
+        history: list[dict[str, str]],
+        errors: list[str],
+        llm_options: dict[str, Any],
+    ) -> str:
+        fallback = heuristic_contextual_question(question, history)
+        if not history or self.llm_client is None:
+            return fallback
+        prompt = build_contextualizer_prompt(question)
+        try:
+            if hasattr(self.llm_client, "chat_messages"):
+                response = self.llm_client.chat_messages(
+                    messages=[
+                        {"role": "system", "content": CONTEXTUALIZER_SYSTEM_PROMPT},
+                        *history,
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.0,
+                    **llm_options,
+                )
+                return sanitize_contextual_question(response.content) or fallback
+            if hasattr(self.llm_client, "chat_text"):
+                content = self.llm_client.chat_text(
+                    system_prompt=CONTEXTUALIZER_SYSTEM_PROMPT,
+                    user_prompt=format_history_for_prompt(history) + "\n\n" + prompt,
+                    temperature=0.0,
+                    **llm_options,
+                )
+                return sanitize_contextual_question(content) or fallback
+        except Exception as exc:
+            errors.append(f"Question contextualization failed: {exc}")
+        return fallback
+
     def _generate_answer(
         self,
         question: str,
+        contextual_question: str,
+        history: list[dict[str, str]],
         plan: QuestionPlan,
         graph_records: list[dict[str, Any]],
         evidence_cards: list[Any],
         errors: list[str],
-    ) -> str:
+        llm_options: dict[str, Any],
+    ) -> tuple[str, str]:
         if not evidence_cards:
-            return NO_EVIDENCE_ANSWER
+            return NO_EVIDENCE_ANSWER, ""
+        prompt_question = question
+        if contextual_question != question:
+            prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
+        user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
         if self.llm_client is not None and hasattr(self.llm_client, "chat_text"):
             try:
+                if history and hasattr(self.llm_client, "chat_messages"):
+                    response = self.llm_client.chat_messages(
+                        messages=[
+                            {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+                            *history,
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=0.2,
+                        **llm_options,
+                    )
+                    return response.content, response.reasoning_content
+                if hasattr(self.llm_client, "chat_text_with_metadata"):
+                    response = self.llm_client.chat_text_with_metadata(
+                        system_prompt=ANSWER_SYSTEM_PROMPT,
+                        user_prompt=user_prompt,
+                        temperature=0.2,
+                        **llm_options,
+                    )
+                    return response.content, response.reasoning_content
                 return self.llm_client.chat_text(
                     system_prompt=ANSWER_SYSTEM_PROMPT,
-                    user_prompt=build_professional_answer_prompt(question, plan, graph_records, evidence_cards),
+                    user_prompt=user_prompt,
                     temperature=0.2,
-                )
+                    **llm_options,
+                ), ""
             except Exception as exc:
                 errors.append(f"LLM answer failed: {exc}")
-        return fallback_professional_answer(plan, evidence_cards, graph_records)
+        return fallback_professional_answer(plan, evidence_cards, graph_records), ""
 
 
 def build_answer_prompt(question: str, graph_records: list[dict[str, Any]], rag_hits: list[RagHit]) -> str:
@@ -304,6 +419,113 @@ def build_answer_prompt(question: str, graph_records: list[dict[str, Any]], rag_
         ensure_ascii=False,
         indent=2,
     )
+
+
+def build_llm_options(*, thinking_enabled: bool | None, reasoning_effort: str | None) -> dict[str, Any]:
+    options: dict[str, Any] = {}
+    if thinking_enabled is not None:
+        options["thinking_enabled"] = thinking_enabled
+    if reasoning_effort:
+        options["reasoning_effort"] = reasoning_effort
+    return options
+
+
+def normalize_conversation_history(
+    messages: list[dict[str, str]] | None,
+    *,
+    max_turns: int,
+    max_chars: int,
+) -> list[dict[str, str]]:
+    normalized: list[dict[str, str]] = []
+    for message in messages or []:
+        role = str(message.get("role") or "").strip()
+        if role not in {"user", "assistant"}:
+            continue
+        content = str(message.get("content") or "").strip()
+        if not content:
+            continue
+        normalized.append({"role": role, "content": content[:3000]})
+
+    if max_turns <= 0:
+        return []
+    normalized = normalized[-max_turns * 2 :]
+    if max_chars <= 0:
+        return normalized
+
+    selected: list[dict[str, str]] = []
+    used = 0
+    for message in reversed(normalized):
+        content = message["content"]
+        size = len(content)
+        if selected and used + size > max_chars:
+            break
+        if size > max_chars:
+            content = content[-max_chars:]
+            size = len(content)
+        selected.append({"role": message["role"], "content": content})
+        used += size
+    return list(reversed(selected))
+
+
+def build_contextualizer_prompt(question: str) -> str:
+    return f"""请把下面当前问题改写成一个不依赖上下文也能检索的单轮问题。
+如果当前问题已经完整，原样输出。
+
+当前问题：{question}
+"""
+
+
+def heuristic_contextual_question(question: str, history: list[dict[str, str]]) -> str:
+    question = question.strip()
+    if not history or not question_needs_context(question):
+        return question
+    last_user = next((message["content"] for message in reversed(history) if message["role"] == "user"), "")
+    if not last_user:
+        return question
+    companies = extract_companies(last_user)
+    if companies:
+        return f"{'和'.join(companies)} {question}"
+    return f"{last_user}；追问：{question}"
+
+
+def question_needs_context(question: str) -> bool:
+    context_terms = (
+        "它",
+        "其",
+        "他们",
+        "这些",
+        "这类",
+        "上述",
+        "上面",
+        "前面",
+        "刚才",
+        "继续",
+        "进一步",
+        "再展开",
+        "风险呢",
+        "差异呢",
+        "还有呢",
+    )
+    return len(question.strip()) <= 18 or any(term in question for term in context_terms)
+
+
+def sanitize_contextual_question(content: str) -> str:
+    text = str(content or "").strip()
+    if not text:
+        return ""
+    text = text.replace("```", "").strip()
+    if text.startswith(("改写后的问题：", "问题：")):
+        text = text.split("：", 1)[-1].strip()
+    text = text.strip("\"'“”‘’ \n")
+    return text[:500]
+
+
+def format_history_for_prompt(history: list[dict[str, str]]) -> str:
+    lines = ["历史对话："]
+    for message in history:
+        role = "用户" if message["role"] == "user" else "助手"
+        lines.append(f"{role}：{message['content']}")
+    return "\n".join(lines)
 
 
 def build_evidence(graph_records: list[dict[str, Any]], rag_hits: list[RagHit]) -> list[dict[str, Any]]:
