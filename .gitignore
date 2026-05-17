@@ -13,6 +13,14 @@ wheels/
 .venv
 .env
 
+# Frontend dependencies
+node_modules/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo
+web/vite.config.js
+web/vite.config.d.ts
+
 # Stage 1 downloaded source documents
 data/raw_pdfs/**/*.pdf
 data/raw_pdfs/**/*.part
