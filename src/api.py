@@ -47,6 +47,7 @@ class MessageCreateRequest(BaseModel):
     question: str
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
+    web_search_enabled: bool | None = None
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -67,6 +68,11 @@ def default_thinking_enabled() -> bool:
 def default_reasoning_effort() -> str:
     effort = os.getenv("LLM_REASONING_EFFORT", "low").strip() or "low"
     return effort if effort in REASONING_EFFORTS else "low"
+
+
+def default_web_search_enabled() -> bool:
+    web_search_default = "deepseek" in os.getenv("LLM_BASE_URL", "").casefold()
+    return env_bool("QA_WEB_SEARCH_ENABLED", web_search_default)
 
 
 @lru_cache(maxsize=1)
@@ -155,6 +161,7 @@ async def api_status(
             "thinking_enabled": default_thinking_enabled(),
             "reasoning_effort": default_reasoning_effort(),
             "reasoning_efforts": REASONING_EFFORTS,
+            "web_search_enabled": getattr(engine, "web_search_enabled", default_web_search_enabled()),
         },
     }
 
@@ -234,20 +241,24 @@ async def append_message(
 
     thinking_enabled = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
     reasoning_effort = request.reasoning_effort or (default_reasoning_effort() if thinking_enabled else "")
+    web_search_enabled = default_web_search_enabled() if request.web_search_enabled is None else request.web_search_enabled
     result = engine.answer_question(
         question,
         conversation_history=history,
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort or None,
+        web_search_enabled=web_search_enabled,
     )
     result["diagnostics"]["thinking_enabled"] = thinking_enabled
     result["diagnostics"]["reasoning_effort"] = reasoning_effort
+    result["diagnostics"]["web_search_enabled"] = web_search_enabled
     turn = {
         "created_at": now_iso(),
         "question": question,
         "answer": result["answer"],
         "thinking_enabled": thinking_enabled,
         "reasoning_effort": reasoning_effort,
+        "web_search_enabled": web_search_enabled,
         "result": result,
     }
     try:
@@ -276,6 +287,7 @@ async def append_message_stream(
 
     thinking_enabled = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
     reasoning_effort = request.reasoning_effort or (default_reasoning_effort() if thinking_enabled else "")
+    web_search_enabled = default_web_search_enabled() if request.web_search_enabled is None else request.web_search_enabled
 
     def generate_events() -> Any:
         result: dict[str, Any] | None = None
@@ -286,6 +298,7 @@ async def append_message_stream(
                     conversation_history=history,
                     thinking_enabled=thinking_enabled,
                     reasoning_effort=reasoning_effort or None,
+                    web_search_enabled=web_search_enabled,
                 ):
                     event_type = str(event.get("type") or "message")
                     if event_type == "final":
@@ -299,6 +312,7 @@ async def append_message_stream(
                     conversation_history=history,
                     thinking_enabled=thinking_enabled,
                     reasoning_effort=reasoning_effort or None,
+                    web_search_enabled=web_search_enabled,
                 )
                 yield sse_event("answer_delta", {"content": result.get("answer", "")})
 
@@ -310,12 +324,14 @@ async def append_message_stream(
                 result["diagnostics"] = diagnostics
             diagnostics["thinking_enabled"] = thinking_enabled
             diagnostics["reasoning_effort"] = reasoning_effort
+            diagnostics["web_search_enabled"] = web_search_enabled
             turn = {
                 "created_at": now_iso(),
                 "question": question,
                 "answer": result["answer"],
                 "thinking_enabled": thinking_enabled,
                 "reasoning_effort": reasoning_effort,
+                "web_search_enabled": web_search_enabled,
                 "result": result,
             }
             conversation = store.append_turn(conversation_id, turn)

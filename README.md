@@ -41,6 +41,7 @@ cp .env.example .env
 - `LLM_MODEL=deepseek-v4-pro`
 - `LLM_THINKING_ENABLED=true`
 - `LLM_REASONING_EFFORT=high`
+- `QA_WEB_SEARCH_ENABLED=true`
 
 如果账号仍使用旧版推理模型，可把 `LLM_MODEL` 改为 `deepseek-reasoner`。
 
@@ -136,6 +137,9 @@ python scripts/build_rag_index.py
 - `QA_UI_RENDER_LATEST_ONLY`：前端是否只默认渲染选中轮次的证据详情，默认开启。
 - `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，快问快答默认关闭。
 - `LLM_REASONING_EFFORT`：DeepSeek 思考强度，快问快答默认 `low`。
+- `QA_WEB_SEARCH_ENABLED`：是否在问答答案生成前启用应用侧联网检索；DeepSeek 配置下默认开启。
+- `QA_WEB_SEARCH_TOP_K`：联网补充证据条数，默认 5。
+- `QA_WEB_SEARCH_TIMEOUT`：联网检索超时时间，默认 5 秒。
 
 运行专业问答回归评测：
 
@@ -186,6 +190,7 @@ React 工作台包括：
 - 数据概览：实体、关系、报告数量、图谱/RAG/LLM 状态和分布。
 - 产业链图谱：按公司、技术、关系类型筛选子图和明细。
 - 输入框模型控制：可在对话框底部切换 DeepSeek 思考模式，并循环选择 `low`、`medium`、`high` 思考强度。
+- 联网补充：可按轮次开启或关闭公开网页检索；本地图谱与 RAG 仍是主证据。
 
 生产构建：
 
@@ -209,6 +214,7 @@ Streamlit 页面包括：
 - 数据概览：实体、关系、报告数量和分布。
 - 智能问答：支持连续多轮追问，展示问题规划、专业答案、模型思考过程、Cypher/CSV 查询意图、图谱结果、本地 RAG 命中、证据卡片、诊断状态和子图。
 - 侧栏模型设置：可在前端按轮次开启或关闭 DeepSeek 思考模式，并选择 `low`、`medium`、`high` 思考强度。
+- 侧栏联网检索：可开启公开网页检索作为补充证据，回答中会标注“联网补充”。
 - 侧栏对话记录：保留当前会话历史，支持新建对话、保存到 `data/conversations/`、查看已保存记录、下载 Markdown 或 JSON。
 - 图谱展示：支持按公司、技术、关系类型筛选子图。
 

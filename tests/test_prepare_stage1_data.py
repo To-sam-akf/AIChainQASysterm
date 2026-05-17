@@ -41,9 +41,17 @@ def test_industry_sources_have_downloadable_pdf_metadata() -> None:
     validate_industry_sources(sources)
 
     assert sources
-    assert all(source.pdf_url.endswith(".pdf") for source in sources)
+    assert all(source.pdf_url.startswith(("http://", "https://")) for source in sources)
     assert all(source.source_tier in {"1", "2", "3"} for source in sources)
-    assert {source.source_type for source in sources} == {"authority_whitepaper"}
+    source_types = {source.source_type for source in sources}
+    assert {
+        "authority_whitepaper",
+        "technical_roadmap",
+        "open_specification",
+        "benchmark_methodology",
+        "technical_paper",
+        "model_technical_report",
+    } <= source_types
 
     candidate = industry_candidate(sources[0])
     assert candidate.kind == "industry"

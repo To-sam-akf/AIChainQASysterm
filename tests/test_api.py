@@ -1,7 +1,8 @@
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
+import httpx
 
 from src.api import app, get_conversation_store, get_knowledge_graph, get_qa_engine
 from src.conversation_store import ConversationStore
@@ -30,6 +31,7 @@ class FakeEngine:
         *,
         thinking_enabled: bool | None = None,
         reasoning_effort: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> dict:
         self.calls.append(
             {
@@ -37,6 +39,7 @@ class FakeEngine:
                 "history": conversation_history or [],
                 "thinking_enabled": thinking_enabled,
                 "reasoning_effort": reasoning_effort,
+                "web_search_enabled": web_search_enabled,
             }
         )
         return {
@@ -51,6 +54,7 @@ class FakeEngine:
             "cypher_source": "test",
             "graph_records": [],
             "rag_hits": [],
+            "web_search_hits": [],
             "evidence_cards": [],
             "evidence": [],
             "subgraph": [],
@@ -59,7 +63,7 @@ class FakeEngine:
         }
 
 
-def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
+def make_test_client(tmp_path: Path, engine: FakeEngine) -> httpx.AsyncClient:
     graph = LocalKnowledgeGraph(
         entities=[
             {"type": "Company", "name": "浪潮信息", "normalized_name": "浪潮信息"},
@@ -88,82 +92,107 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
     app.dependency_overrides[get_conversation_store] = override_store
     app.dependency_overrides[get_qa_engine] = override_engine
     app.dependency_overrides[get_knowledge_graph] = override_graph
-    return TestClient(app)
+    transport = httpx.ASGITransport(app=app)
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
 def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> None:
-    engine = FakeEngine()
-    client = make_test_client(tmp_path, engine)
-    try:
-        created = client.post("/api/conversations", json={"title": ""})
-        assert created.status_code == 201
-        conversation_id = created.json()["id"]
+    async def run() -> None:
+        engine = FakeEngine()
+        client = make_test_client(tmp_path, engine)
+        try:
+            created = await client.post("/api/conversations", json={"title": ""})
+            assert created.status_code == 201
+            conversation_id = created.json()["id"]
 
-        first = client.post(
-            f"/api/conversations/{conversation_id}/messages",
-            json={"question": "中际旭创和新易盛在光模块业务上的差异是什么？", "thinking_enabled": False},
-        )
-        assert first.status_code == 200
-        assert first.json()["conversation"]["turns"][0]["answer"].startswith("回答：")
+            first = await client.post(
+                f"/api/conversations/{conversation_id}/messages",
+                json={
+                    "question": "中际旭创和新易盛在光模块业务上的差异是什么？",
+                    "thinking_enabled": False,
+                    "web_search_enabled": False,
+                },
+            )
+            assert first.status_code == 200
+            assert first.json()["conversation"]["turns"][0]["answer"].startswith("回答：")
 
-        second = client.post(
-            f"/api/conversations/{conversation_id}/messages",
-            json={"question": "继续说它们的主要风险", "thinking_enabled": True, "reasoning_effort": "medium"},
-        )
-        assert second.status_code == 200
-        assert engine.calls[1]["history"] == [
-            {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
-            {"role": "assistant", "content": "回答：中际旭创和新易盛在光模块业务上的差异是什么？"},
-        ]
-        assert engine.calls[1]["thinking_enabled"] is True
-        assert engine.calls[1]["reasoning_effort"] == "medium"
+            second = await client.post(
+                f"/api/conversations/{conversation_id}/messages",
+                json={
+                    "question": "继续说它们的主要风险",
+                    "thinking_enabled": True,
+                    "reasoning_effort": "medium",
+                    "web_search_enabled": True,
+                },
+            )
+            assert second.status_code == 200
+            assert engine.calls[1]["history"] == [
+                {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
+                {"role": "assistant", "content": "回答：中际旭创和新易盛在光模块业务上的差异是什么？"},
+            ]
+            assert engine.calls[1]["thinking_enabled"] is True
+            assert engine.calls[1]["reasoning_effort"] == "medium"
+            assert engine.calls[1]["web_search_enabled"] is True
+            assert second.json()["conversation"]["turns"][1]["web_search_enabled"] is True
 
-        fetched = client.get(f"/api/conversations/{conversation_id}")
-        assert fetched.status_code == 200
-        assert len(fetched.json()["turns"]) == 2
+            fetched = await client.get(f"/api/conversations/{conversation_id}")
+            assert fetched.status_code == 200
+            assert len(fetched.json()["turns"]) == 2
 
-        renamed = client.patch(f"/api/conversations/{conversation_id}", json={"title": "光模块比较"})
-        assert renamed.status_code == 200
-        assert renamed.json()["title"] == "光模块比较"
+            renamed = await client.patch(f"/api/conversations/{conversation_id}", json={"title": "光模块比较"})
+            assert renamed.status_code == 200
+            assert renamed.json()["title"] == "光模块比较"
 
-        listed = client.get("/api/conversations")
-        assert listed.status_code == 200
-        assert listed.json()["conversations"][0]["turn_count"] == 2
+            listed = await client.get("/api/conversations")
+            assert listed.status_code == 200
+            assert listed.json()["conversations"][0]["turn_count"] == 2
 
-        exported = client.get(f"/api/conversations/{conversation_id}/export?format=md")
-        assert exported.status_code == 200
-        assert "继续说它们的主要风险" in exported.text
+            exported = await client.get(f"/api/conversations/{conversation_id}/export?format=md")
+            assert exported.status_code == 200
+            assert "继续说它们的主要风险" in exported.text
 
-        deleted = client.delete(f"/api/conversations/{conversation_id}")
-        assert deleted.status_code == 204
-    finally:
-        app.dependency_overrides.clear()
+            deleted = await client.delete(f"/api/conversations/{conversation_id}")
+            assert deleted.status_code == 204
+        finally:
+            await client.aclose()
+            app.dependency_overrides.clear()
+
+    asyncio.run(run())
 
 
 def test_api_rejects_empty_question_and_missing_conversation(tmp_path: Path) -> None:
-    engine = FakeEngine()
-    client = make_test_client(tmp_path, engine)
-    try:
-        empty = client.post("/api/conversations/missing/messages", json={"question": "   "})
-        missing = client.get("/api/conversations/missing")
+    async def run() -> None:
+        engine = FakeEngine()
+        client = make_test_client(tmp_path, engine)
+        try:
+            empty = await client.post("/api/conversations/missing/messages", json={"question": "   "})
+            missing = await client.get("/api/conversations/missing")
 
-        assert empty.status_code == 400
-        assert missing.status_code == 404
-    finally:
-        app.dependency_overrides.clear()
+            assert empty.status_code == 400
+            assert missing.status_code == 404
+        finally:
+            await client.aclose()
+            app.dependency_overrides.clear()
+
+    asyncio.run(run())
 
 
 def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
-    engine = FakeEngine()
-    client = make_test_client(tmp_path, engine)
-    try:
-        status_response = client.get("/api/status")
-        summary_response = client.get("/api/graph/summary")
-        subgraph_response = client.get("/api/graph/subgraph")
+    async def run() -> None:
+        engine = FakeEngine()
+        client = make_test_client(tmp_path, engine)
+        try:
+            status_response = await client.get("/api/status")
+            summary_response = await client.get("/api/graph/summary")
+            subgraph_response = await client.get("/api/graph/subgraph")
 
-        assert status_response.status_code == 200
-        assert status_response.json()["stats"]["companies"] == 1
-        assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
-        assert "<svg" in subgraph_response.json()["svg"]
-    finally:
-        app.dependency_overrides.clear()
+            assert status_response.status_code == 200
+            assert status_response.json()["stats"]["companies"] == 1
+            assert "web_search_enabled" in status_response.json()["settings"]
+            assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
+            assert "<svg" in subgraph_response.json()["svg"]
+        finally:
+            await client.aclose()
+            app.dependency_overrides.clear()
+
+    asyncio.run(run())

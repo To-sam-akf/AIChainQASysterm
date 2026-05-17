@@ -14,7 +14,7 @@ from src.cypher_generator import GeneratedCypher, generate_cypher
 from src.curated_graph import DEFAULT_CURATED_DIR
 from src.extraction_schema import normalize_name
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, subgraph_edges
-from src.llm_client import OpenAICompatibleClient, load_dotenv
+from src.llm_client import OpenAICompatibleClient, env_bool, load_dotenv
 from src.neo4j_client import Neo4jReadClient
 from src.professional_qa import (
     build_professional_answer_prompt,
@@ -28,14 +28,16 @@ from src.professional_qa import (
 )
 from src.question_planner import QuestionPlan, extract_companies, heuristic_plan_question, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
+from src.web_search import DuckDuckGoSearchClient, WebSearchResponse
 
 
 NO_EVIDENCE_ANSWER = "当前知识库中未找到相关证据。"
 
-ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助手。
-只能根据提供的 Neo4j/CSV 图谱结果和本地 RAG 原文片段回答，不要编造证据外信息。
-答案用中文，面向资深投资者，按“结论、证据、研究要点、风险与边界”组织。
-可以给事实归纳、产业链位置、催化因素、风险和跟踪指标；禁止给股票买卖建议、目标价或收益预测。"""
+ANSWER_SYSTEM_PROMPT = """你是资深中国 AI 算力产业链研究分析师，擅长把图谱关系、研报原文和公开信息组织成有洞察的投研回答。
+回答前先审视证据强弱、来源层级、时间性和可能冲突；最终只输出清晰结论与依据，不展示冗长推理草稿。
+知识库证据（Neo4j/CSV 图谱、本地 RAG 原文）是事实主锚点；联网结果只能作为“联网补充”用于最新背景、线索或交叉验证。
+你可以积极归纳、比较和提出研究假设，但每个事实判断都必须被输入证据支撑；证据不足时要明确边界和待核验问题。
+禁止编造证据外事实、股票买卖建议、目标价或收益预测。"""
 
 CONTEXTUALIZER_SYSTEM_PROMPT = """你是中国 AI 算力产业链问答系统的追问改写器。
 根据历史对话，把用户当前问题改写成可独立检索的中文问题。
@@ -106,6 +108,9 @@ class QAEngine:
         core_companies_only: bool = True,
         history_max_turns: int = 3,
         history_max_chars: int = 4000,
+        web_search_client: Any | None = None,
+        web_search_enabled: bool = False,
+        web_search_top_k: int = 5,
         status: QAEngineStatus | None = None,
     ) -> None:
         self.llm_client = llm_client
@@ -122,6 +127,9 @@ class QAEngine:
         self.core_companies_only = core_companies_only
         self.history_max_turns = history_max_turns
         self.history_max_chars = history_max_chars
+        self.web_search_client = web_search_client
+        self.web_search_enabled = web_search_enabled
+        self.web_search_top_k = max(web_search_top_k, 0)
         self.status = status or QAEngineStatus(
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
@@ -144,6 +152,10 @@ class QAEngine:
         history_max_turns = int(os.getenv("QA_HISTORY_MAX_TURNS", "3"))
         history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "4000"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
+        web_search_default = "deepseek" in os.getenv("LLM_BASE_URL", "").casefold()
+        web_search_enabled = env_bool("QA_WEB_SEARCH_ENABLED", web_search_default)
+        web_search_top_k = int(os.getenv("QA_WEB_SEARCH_TOP_K", "5"))
+        web_search_timeout = float(os.getenv("QA_WEB_SEARCH_TIMEOUT", "5"))
 
         llm_client = None
         llm_error = ""
@@ -202,6 +214,11 @@ class QAEngine:
             rag_error=rag_error,
             llm_error=llm_error,
         )
+        web_search_client = (
+            DuckDuckGoSearchClient(timeout=web_search_timeout, top_k=web_search_top_k)
+            if web_search_enabled
+            else None
+        )
         return cls(
             llm_client=llm_client,
             graph_client=graph_client,
@@ -217,6 +234,9 @@ class QAEngine:
             core_companies_only=core_companies_only,
             history_max_turns=history_max_turns,
             history_max_chars=history_max_chars,
+            web_search_client=web_search_client,
+            web_search_enabled=web_search_enabled,
+            web_search_top_k=web_search_top_k,
             status=status,
         )
 
@@ -231,6 +251,7 @@ class QAEngine:
         *,
         thinking_enabled: bool | None = None,
         reasoning_effort: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> dict[str, Any]:
         total_start = time.perf_counter()
         timings_ms: dict[str, float] = {}
@@ -285,6 +306,10 @@ class QAEngine:
         record_timing(timings_ms, "evidence", stage_start)
 
         stage_start = time.perf_counter()
+        web_search_hits, web_search_error = self._search_web(contextual_question, plan, web_search_enabled)
+        record_timing(timings_ms, "web_search", stage_start)
+
+        stage_start = time.perf_counter()
         answer, reasoning_content = self._generate_answer(
             question,
             contextual_question,
@@ -292,6 +317,7 @@ class QAEngine:
             plan,
             graph_records,
             evidence_cards,
+            web_search_hits,
             errors,
             llm_options,
             llm_client,
@@ -319,6 +345,9 @@ class QAEngine:
             "enable_llm_planner": self.enable_llm_planner,
             "thinking_enabled": thinking_enabled,
             "reasoning_effort": reasoning_effort or "",
+            "web_search_enabled": self._effective_web_search_enabled(web_search_enabled),
+            "web_search_hits": len(web_search_hits),
+            "web_search_error": web_search_error,
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
             "llm_error": self.status.llm_error,
@@ -339,6 +368,7 @@ class QAEngine:
             "cypher_source": generated.source,
             "graph_records": graph_records,
             "rag_hits": rag_hit_rows,
+            "web_search_hits": web_search_hits,
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
             "subgraph": subgraph,
@@ -353,6 +383,7 @@ class QAEngine:
         *,
         thinking_enabled: bool | None = None,
         reasoning_effort: str | None = None,
+        web_search_enabled: bool | None = None,
     ) -> Iterator[dict[str, Any]]:
         total_start = time.perf_counter()
         timings_ms: dict[str, float] = {}
@@ -427,6 +458,18 @@ class QAEngine:
         if thinking_enabled:
             yield stream_progress("evidence", f"已保留 {len(evidence_cards)} 条高相关证据，开始组织答案")
 
+        use_web_search = self._effective_web_search_enabled(web_search_enabled)
+        if use_web_search:
+            yield stream_progress("web_search", "正在联网检索最新公开信息")
+        stage_start = time.perf_counter()
+        web_search_hits, web_search_error = self._search_web(contextual_question, plan, web_search_enabled)
+        record_timing(timings_ms, "web_search", stage_start)
+        if use_web_search:
+            if web_search_hits:
+                yield stream_progress("web_search", f"已找到 {len(web_search_hits)} 条联网补充证据")
+            else:
+                yield stream_progress("web_search", "联网检索未返回可用补充证据，将继续使用知识库证据")
+
         stage_start = time.perf_counter()
         answer = ""
         reasoning_content = ""
@@ -437,6 +480,7 @@ class QAEngine:
             plan,
             graph_records,
             evidence_cards,
+            web_search_hits,
             errors,
             llm_options,
             llm_client,
@@ -471,6 +515,9 @@ class QAEngine:
             "enable_llm_planner": self.enable_llm_planner,
             "thinking_enabled": thinking_enabled,
             "reasoning_effort": reasoning_effort or "",
+            "web_search_enabled": use_web_search,
+            "web_search_hits": len(web_search_hits),
+            "web_search_error": web_search_error,
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
             "llm_error": self.status.llm_error,
@@ -493,6 +540,7 @@ class QAEngine:
                 "cypher_source": generated.source,
                 "graph_records": graph_records,
                 "rag_hits": rag_hit_rows,
+                "web_search_hits": web_search_hits,
                 "evidence_cards": evidence_card_rows,
                 "evidence": evidence,
                 "subgraph": subgraph,
@@ -578,6 +626,31 @@ class QAEngine:
             errors.append(f"RAG search failed: {exc}")
             return []
 
+    def _effective_web_search_enabled(self, requested: bool | None) -> bool:
+        return self.web_search_enabled if requested is None else requested
+
+    def _search_web(
+        self,
+        question: str,
+        plan: QuestionPlan,
+        requested: bool | None,
+    ) -> tuple[list[dict[str, Any]], str]:
+        if not self._effective_web_search_enabled(requested):
+            return [], ""
+        if self.web_search_client is None:
+            return [], "Web search client is not configured."
+        query = build_web_search_query(question, plan)
+        try:
+            response = self.web_search_client.search(query, top_k=self.web_search_top_k)
+        except Exception as exc:
+            return [], str(exc)
+        if isinstance(response, WebSearchResponse):
+            return web_search_hits_to_dicts(response.hits), response.error
+        if isinstance(response, tuple) and len(response) == 2:
+            hits, error = response
+            return web_search_hits_to_dicts(hits), str(error or "")
+        return web_search_hits_to_dicts(response), ""
+
     def _contextualize_question(
         self,
         question: str,
@@ -624,16 +697,23 @@ class QAEngine:
         plan: QuestionPlan,
         graph_records: list[dict[str, Any]],
         evidence_cards: list[Any],
+        web_search_hits: list[dict[str, Any]],
         errors: list[str],
         llm_options: dict[str, Any],
         llm_client: Any | None,
     ) -> tuple[str, str]:
         if not evidence_cards:
-            return NO_EVIDENCE_ANSWER, ""
+            return no_evidence_answer_with_web_clues(web_search_hits), ""
         prompt_question = question
         if contextual_question != question:
             prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
-        user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
+        user_prompt = build_professional_answer_prompt(
+            prompt_question,
+            plan,
+            graph_records,
+            evidence_cards,
+            web_search_hits=web_search_hits,
+        )
         if llm_client is not None and hasattr(llm_client, "chat_text"):
             try:
                 if history and hasattr(llm_client, "chat_messages"):
@@ -673,6 +753,7 @@ class QAEngine:
         plan: QuestionPlan,
         graph_records: list[dict[str, Any]],
         evidence_cards: list[Any],
+        web_search_hits: list[dict[str, Any]],
         errors: list[str],
         llm_options: dict[str, Any],
         llm_client: Any | None,
@@ -680,15 +761,22 @@ class QAEngine:
         thinking_enabled: bool,
     ) -> Iterator[dict[str, Any]]:
         if not evidence_cards:
-            for chunk in chunk_text(NO_EVIDENCE_ANSWER):
+            answer = no_evidence_answer_with_web_clues(web_search_hits)
+            for chunk in chunk_text(answer):
                 yield {"type": "answer_delta", "content": chunk}
-            yield {"type": "answer_complete", "answer": NO_EVIDENCE_ANSWER, "reasoning_content": ""}
+            yield {"type": "answer_complete", "answer": answer, "reasoning_content": ""}
             return
 
         prompt_question = question
         if contextual_question != question:
             prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
-        user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
+        user_prompt = build_professional_answer_prompt(
+            prompt_question,
+            plan,
+            graph_records,
+            evidence_cards,
+            web_search_hits=web_search_hits,
+        )
 
         if thinking_enabled:
             yield {"type": "progress", "stage": "answer", "message": "正在生成结论、证据和风险边界"}
@@ -728,6 +816,7 @@ class QAEngine:
             plan,
             graph_records,
             evidence_cards,
+            web_search_hits,
             errors,
             llm_options,
             llm_client,
@@ -804,6 +893,64 @@ def build_llm_options(*, thinking_enabled: bool | None, reasoning_effort: str | 
     if reasoning_effort:
         options["reasoning_effort"] = reasoning_effort
     return options
+
+
+def build_web_search_query(question: str, plan: QuestionPlan) -> str:
+    parts = [question.strip()]
+    parts.extend(plan.companies[:4])
+    parts.extend(plan.topics[:4])
+    parts.append("AI 算力 产业链")
+    seen = set()
+    tokens = []
+    for part in parts:
+        value = str(part or "").strip()
+        if value and value not in seen:
+            seen.add(value)
+            tokens.append(value)
+    return " ".join(tokens)[:300]
+
+
+def web_search_hits_to_dicts(hits: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for hit in hits or []:
+        if hasattr(hit, "to_dict"):
+            row = hit.to_dict()
+        elif isinstance(hit, dict):
+            row = dict(hit)
+        else:
+            row = {
+                "title": str(getattr(hit, "title", "") or ""),
+                "url": str(getattr(hit, "url", "") or ""),
+                "snippet": str(getattr(hit, "snippet", "") or ""),
+            }
+        title = str(row.get("title") or "").strip()
+        url = str(row.get("url") or "").strip()
+        snippet = str(row.get("snippet") or "").strip()
+        if title and url:
+            rows.append({"title": title, "url": url, "snippet": snippet})
+    return rows
+
+
+def no_evidence_answer_with_web_clues(web_search_hits: list[dict[str, Any]]) -> str:
+    if not web_search_hits:
+        return NO_EVIDENCE_ANSWER
+    clues = []
+    for index, hit in enumerate(web_search_hits[:3], start=1):
+        title = str(hit.get("title") or "").strip()
+        url = str(hit.get("url") or "").strip()
+        snippet = str(hit.get("snippet") or "").strip()
+        source = f"[{title}]({url})" if title and url else title or url
+        if snippet:
+            clues.append(f"{index}. {source}：{snippet}")
+        elif source:
+            clues.append(f"{index}. {source}")
+    if not clues:
+        return NO_EVIDENCE_ANSWER
+    return (
+        f"{NO_EVIDENCE_ANSWER}\n\n"
+        "联网补充线索（未入库，仅供后续核验）：\n"
+        + "\n".join(clues)
+    )
 
 
 def stream_progress(stage: str, message: str) -> dict[str, str]:

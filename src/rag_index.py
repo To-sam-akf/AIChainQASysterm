@@ -63,6 +63,26 @@ DOMAIN_WORDS = (
     "硅光",
     "CPO",
     "LPO",
+    "OAM",
+    "OAI",
+    "HBM",
+    "UCIe",
+    "UALink",
+    "Ultra Ethernet",
+    "SerDes",
+    "PAM4",
+    "RDMA",
+    "MLPerf",
+    "FlashAttention",
+    "PagedAttention",
+    "KV cache",
+    "MoE",
+    "chiplet",
+    "interconnect",
+    "scale-up",
+    "scale-out",
+    "co-packaged optics",
+    "cold plate",
     "算力网络",
     "交换机",
     "服务器电源",
@@ -71,6 +91,22 @@ DOMAIN_WORDS = (
     "经营现金流",
     "研发投入",
 )
+SOURCE_TYPE_BONUS = {
+    "technical_roadmap": 1.6,
+    "open_specification": 1.6,
+    "benchmark_methodology": 1.4,
+    "model_technical_report": 1.2,
+    "technical_paper": 1.1,
+    "authority_whitepaper": 0.8,
+}
+SOURCE_TYPE_PRIORITY = {
+    "technical_roadmap": 0,
+    "open_specification": 0,
+    "benchmark_methodology": 0,
+    "model_technical_report": 1,
+    "technical_paper": 1,
+    "authority_whitepaper": 1,
+}
 _JIEBA_WORDS_ADDED = False
 
 
@@ -451,8 +487,7 @@ class LocalRagIndex:
                 score += 0.8
         if document.source_tier == "1":
             score += 0.6
-        if document.source_type == "authority_whitepaper":
-            score += 0.8
+        score += SOURCE_TYPE_BONUS.get(document.source_type, 0.0)
         if is_disclaimer_text(document.text):
             score -= 4.0
 
@@ -496,11 +531,11 @@ def expand_query(question: str) -> str:
 
 
 def source_priority(hit: RagHit) -> int:
-    if hit.source_type == "authority_whitepaper":
-        return 0
+    if hit.source_type in SOURCE_TYPE_PRIORITY:
+        return SOURCE_TYPE_PRIORITY[hit.source_type]
     if hit.source_tier == "1":
-        return 1
-    return 2
+        return 2
+    return 3
 
 
 def is_low_value_hit(hit: RagHit) -> bool:

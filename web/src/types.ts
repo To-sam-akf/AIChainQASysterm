@@ -23,6 +23,7 @@ export interface ConversationTurn {
   answer: string;
   thinking_enabled: boolean;
   reasoning_effort: string;
+  web_search_enabled?: boolean;
   result: QAResult;
 }
 
@@ -38,6 +39,7 @@ export interface QAResult {
   cypher_source: string;
   graph_records: Record<string, unknown>[];
   rag_hits: Record<string, unknown>[];
+  web_search_hits?: Record<string, unknown>[];
   evidence_cards: Record<string, unknown>[];
   evidence: Record<string, unknown>[];
   subgraph: GraphEdge[];
@@ -70,6 +72,7 @@ export interface ApiStatus {
     thinking_enabled: boolean;
     reasoning_effort: string;
     reasoning_efforts: string[];
+    web_search_enabled: boolean;
   };
 }
 

@@ -63,6 +63,7 @@ TARGET_ANNUAL_YEARS = (2025, 2024)
 DEFAULT_MAX_RESEARCH = 5
 REQUEST_TIMEOUT = 30
 MAX_TITLE_FILENAME_LEN = 36
+MANUAL_SOURCE_TYPES = {"manual_open_specification", "manual_reference"}
 
 MANIFEST_FIELDS = [
     "report_id",
@@ -874,6 +875,14 @@ def run_industry(args: argparse.Namespace, session: requests.Session, manifest: 
     failures = 0
     for source in sources:
         candidate = industry_candidate(source)
+        if source.source_type in MANUAL_SOURCE_TYPES:
+            note = f"manual download required for {candidate.source_site}: {candidate.source_url}"
+            if args.dry_run:
+                print(f"MANUAL {candidate.title} -> {relative_path(candidate.local_path)} [{candidate.source_url}]")
+            else:
+                manifest.upsert(manifest_row(candidate, status="manual_reference", error=note))
+                print(f"MANUAL {candidate.title}: {note}")
+            continue
         if args.dry_run:
             print(plan_candidate(candidate))
         else:

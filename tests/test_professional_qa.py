@@ -6,6 +6,7 @@ from src.frontend_data import LocalKnowledgeGraph
 from src.llm_client import ChatStreamChunk, ChatTextResult
 from src.qa_engine import QAEngine
 from src.question_planner import heuristic_plan_question
+from src.web_search import WebSearchHit, WebSearchResponse
 
 
 ENTITY_FIELDS = [
@@ -151,23 +152,47 @@ def test_followup_question_uses_conversation_history() -> None:
 
 
 class RecordingLLMClient:
+    def __init__(self) -> None:
+        self.last_system_prompt = ""
+        self.last_user_prompt = ""
+        self.last_messages: list[dict[str, str]] = []
+
     def chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object) -> ChatTextResult:
         del temperature, kwargs
+        self.last_messages = messages
         system_prompt = messages[0]["content"]
+        self.last_system_prompt = system_prompt
+        self.last_user_prompt = messages[-1]["content"]
         if "追问改写器" in system_prompt:
             return ChatTextResult(content="中际旭创和新易盛 继续说它们的主要风险")
         return ChatTextResult(content="基于证据回答。")
 
     def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
-        del system_prompt, user_prompt, temperature, kwargs
+        del temperature, kwargs
+        self.last_system_prompt = system_prompt
+        self.last_user_prompt = user_prompt
         return "基于证据回答。"
 
 
 class StreamingLLMClient(RecordingLLMClient):
     def stream_chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object):
-        del messages, temperature, kwargs
+        del temperature, kwargs
+        self.last_messages = messages
+        self.last_system_prompt = messages[0]["content"]
+        self.last_user_prompt = messages[-1]["content"]
         yield ChatStreamChunk(content="结论：")
         yield ChatStreamChunk(content="浪潮信息涉及 AI 服务器。")
+
+
+class FakeWebSearchClient:
+    def __init__(self, hits: list[WebSearchHit] | None = None, error: str = "") -> None:
+        self.hits = hits or []
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    def search(self, query: str, *, top_k: int | None = None) -> WebSearchResponse:
+        self.calls.append({"query": query, "top_k": top_k})
+        return WebSearchResponse(hits=self.hits, error=self.error)
 
 
 def test_fast_path_limits_llm_calls_on_first_turn() -> None:
@@ -185,6 +210,66 @@ def test_fast_path_limits_llm_calls_on_first_turn() -> None:
     assert result["diagnostics"]["planner_source"] == "heuristic"
     assert result["cypher_source"] == "question_plan_csv"
     assert "timings_ms" in result["diagnostics"]
+
+
+def test_answer_prompt_includes_web_search_evidence_when_enabled() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    llm = RecordingLLMClient()
+    web_search = FakeWebSearchClient(
+        [
+            WebSearchHit(
+                title="AI 服务器公开报道",
+                url="https://example.com/ai-server",
+                snippet="公开资料显示，AI 服务器产业链景气度较高。",
+            )
+        ]
+    )
+    engine = QAEngine(
+        csv_graph=graph,
+        rag_index=None,
+        llm_client=llm,
+        web_search_client=web_search,
+        web_search_enabled=True,
+        web_search_top_k=3,
+    )
+
+    result = engine.answer_question("哪些上市公司涉及AI服务器？")
+
+    assert web_search.calls and web_search.calls[0]["top_k"] == 3
+    assert result["diagnostics"]["web_search_enabled"] is True
+    assert result["diagnostics"]["web_search_hits"] == 1
+    assert result["web_search_hits"][0]["url"] == "https://example.com/ai-server"
+    assert '"web_evidence_cards"' in llm.last_user_prompt
+    assert "联网补充" in llm.last_user_prompt
+    assert "公开资料显示" in llm.last_user_prompt
+
+
+def test_web_search_can_be_disabled_per_question() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    web_search = FakeWebSearchClient([WebSearchHit(title="不应调用", url="https://example.com")])
+    engine = QAEngine(
+        csv_graph=graph,
+        rag_index=None,
+        llm_client=RecordingLLMClient(),
+        web_search_client=web_search,
+        web_search_enabled=True,
+    )
+
+    result = engine.answer_question("哪些上市公司涉及AI服务器？", web_search_enabled=False)
+
+    assert web_search.calls == []
+    assert result["diagnostics"]["web_search_enabled"] is False
+    assert result["diagnostics"]["web_search_hits"] == 0
 
 
 def test_independent_multiturn_question_skips_contextualizer_llm() -> None:
@@ -238,11 +323,27 @@ def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None
             {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
         ],
     )
-    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=StreamingLLMClient())
+    engine = QAEngine(
+        csv_graph=graph,
+        rag_index=None,
+        llm_client=StreamingLLMClient(),
+        web_search_client=FakeWebSearchClient(
+            [WebSearchHit(title="AI服务器最新公开信息", url="https://example.com/latest", snippet="联网补充摘要。")]
+        ),
+        web_search_enabled=True,
+    )
 
-    events = list(engine.answer_question_stream("哪些上市公司涉及AI服务器？", thinking_enabled=True, reasoning_effort="low"))
+    events = list(
+        engine.answer_question_stream(
+            "哪些上市公司涉及AI服务器？",
+            thinking_enabled=True,
+            reasoning_effort="low",
+            web_search_enabled=True,
+        )
+    )
 
     assert any(event.get("type") == "progress" for event in events)
+    assert any(event.get("stage") == "web_search" and "联网检索" in str(event.get("message")) for event in events)
     assert [event.get("content") for event in events if event.get("type") == "answer_delta"] == [
         "结论：",
         "浪潮信息涉及 AI 服务器。",
@@ -250,4 +351,5 @@ def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None
     final = events[-1]
     assert final["type"] == "final"
     assert final["result"]["answer"] == "结论：浪潮信息涉及 AI 服务器。"
+    assert final["result"]["diagnostics"]["web_search_hits"] == 1
     assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1

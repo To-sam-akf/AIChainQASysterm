@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Download,
   FileText,
+  Globe2,
   History,
   Loader2,
   Maximize2,
@@ -81,13 +82,19 @@ const ENTITY_STYLES: Record<string, { label: string; color: string }> = {
 const FALLBACK_ENTITY_STYLE = { label: "实体", color: "#334155" };
 const zhCollator = new Intl.Collator("zh-Hans-CN");
 
-function createPendingTurn(question: string, thinkingEnabled: boolean, reasoningEffort: string): ConversationTurn {
+function createPendingTurn(
+  question: string,
+  thinkingEnabled: boolean,
+  reasoningEffort: string,
+  webSearchEnabled: boolean
+): ConversationTurn {
   return {
     created_at: new Date().toISOString(),
     question,
     answer: "",
     thinking_enabled: thinkingEnabled,
     reasoning_effort: thinkingEnabled ? reasoningEffort : "",
+    web_search_enabled: webSearchEnabled,
     result: {
       question,
       contextual_question: question,
@@ -100,10 +107,11 @@ function createPendingTurn(question: string, thinkingEnabled: boolean, reasoning
       cypher_source: "",
       graph_records: [],
       rag_hits: [],
+      web_search_hits: [],
       evidence_cards: [],
       evidence: [],
       subgraph: [],
-      diagnostics: { streaming: true },
+      diagnostics: { streaming: true, web_search_enabled: webSearchEnabled },
       errors: []
     }
   };
@@ -115,6 +123,10 @@ function nextProgressItems(items: string[], message: string): string[] {
   return [...items, text].slice(-5);
 }
 
+function turnUsesWebSearch(turn: ConversationTurn): boolean {
+  return turn.web_search_enabled ?? (turn.result.diagnostics.web_search_enabled === true);
+}
+
 function App() {
   const [view, setView] = useState<View>("chat");
   const [status, setStatus] = useState<ApiStatus | null>(null);
@@ -124,6 +136,7 @@ function App() {
   const [input, setInput] = useState("");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("low");
+  const [webSearchEnabled, setWebSearchEnabled] = useState(false);
   const [sending, setSending] = useState(false);
   const [streamingTurn, setStreamingTurn] = useState<ConversationTurn | null>(null);
   const [streamingProgress, setStreamingProgress] = useState<string[]>([]);
@@ -153,6 +166,7 @@ function App() {
       setConversations(conversationPayload);
       setThinkingEnabled(statusPayload.settings.thinking_enabled);
       setReasoningEffort(statusPayload.settings.reasoning_effort);
+      setWebSearchEnabled(statusPayload.settings.web_search_enabled);
       if (conversationPayload.length > 0) {
         const latest = await getConversation(conversationPayload[0].id);
         setCurrent(latest);
@@ -235,13 +249,14 @@ function App() {
     setToast("");
     const submittedThinking = thinkingEnabled;
     const submittedReasoningEffort = submittedThinking ? reasoningEffort : "";
+    const submittedWebSearch = webSearchEnabled;
     try {
       let conversation = current;
       if (!conversation) {
         conversation = await createConversation();
         setCurrent(conversation);
       }
-      const pendingTurn = createPendingTurn(trimmed, submittedThinking, submittedReasoningEffort);
+      const pendingTurn = createPendingTurn(trimmed, submittedThinking, submittedReasoningEffort, submittedWebSearch);
       setStreamingTurn(pendingTurn);
       setStreamingProgress([]);
       setSelectedTurn(null);
@@ -252,6 +267,7 @@ function App() {
         trimmed,
         submittedThinking,
         submittedReasoningEffort,
+        submittedWebSearch,
         (event) => {
           if (event.type === "progress") {
             setStreamingProgress((items) => nextProgressItems(items, event.message));
@@ -340,10 +356,12 @@ function App() {
             thinkingEnabled={thinkingEnabled}
             reasoningEffort={reasoningEffort}
             reasoningEfforts={status?.settings.reasoning_efforts ?? ["low", "medium", "high"]}
+            webSearchEnabled={webSearchEnabled}
             onInput={setInput}
             onSubmit={handleSubmit}
             onThinkingChange={setThinkingEnabled}
             onReasoningChange={setReasoningEffort}
+            onWebSearchChange={setWebSearchEnabled}
             onOpenDetails={(turn) => {
               setSelectedTurn(turn);
               setDetailTab("evidence");
@@ -473,10 +491,12 @@ function ChatView(props: {
   thinkingEnabled: boolean;
   reasoningEffort: string;
   reasoningEfforts: string[];
+  webSearchEnabled: boolean;
   onInput: (value: string) => void;
   onSubmit: (question?: string) => void;
   onThinkingChange: (value: boolean) => void;
   onReasoningChange: (value: string) => void;
+  onWebSearchChange: (value: boolean) => void;
   onOpenDetails: (turn: ConversationTurn) => void;
   onExample: (value: string) => void;
 }) {
@@ -494,11 +514,13 @@ function ChatView(props: {
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
             reasoningEfforts={props.reasoningEfforts}
+            webSearchEnabled={props.webSearchEnabled}
             placeholder="请输入你想了解的 AI 算力链产业问题..."
             onChange={props.onInput}
             onSubmit={props.onSubmit}
             onThinkingChange={props.onThinkingChange}
             onReasoningChange={props.onReasoningChange}
+            onWebSearchChange={props.onWebSearchChange}
           />
           <ExampleRail examples={props.examples} onPick={props.onExample} onSubmit={props.onSubmit} />
           {props.loading && (
@@ -555,11 +577,13 @@ function ChatView(props: {
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
             reasoningEfforts={props.reasoningEfforts}
+            webSearchEnabled={props.webSearchEnabled}
             placeholder="继续追问，系统会自动携带当前对话上下文..."
             onChange={props.onInput}
             onSubmit={props.onSubmit}
             onThinkingChange={props.onThinkingChange}
             onReasoningChange={props.onReasoningChange}
+            onWebSearchChange={props.onWebSearchChange}
           />
         </div>
       )}
@@ -573,12 +597,14 @@ function Composer(props: {
   thinkingEnabled: boolean;
   reasoningEffort: string;
   reasoningEfforts: string[];
+  webSearchEnabled: boolean;
   placeholder: string;
   compact?: boolean;
   onChange: (value: string) => void;
   onSubmit: (question?: string) => void;
   onThinkingChange: (value: boolean) => void;
   onReasoningChange: (value: string) => void;
+  onWebSearchChange: (value: boolean) => void;
 }) {
   const reasoningEfforts = props.reasoningEfforts.length ? props.reasoningEfforts : ["low", "medium", "high"];
   const activeReasoningEffort = reasoningEfforts.includes(props.reasoningEffort)
@@ -605,6 +631,10 @@ function Composer(props: {
     const currentIndex = reasoningEfforts.indexOf(activeReasoningEffort);
     const nextEffort = reasoningEfforts[(currentIndex + 1) % reasoningEfforts.length];
     props.onReasoningChange(nextEffort);
+  }
+
+  function toggleWebSearch() {
+    props.onWebSearchChange(!props.webSearchEnabled);
   }
 
   return (
@@ -636,6 +666,17 @@ function Composer(props: {
             onClick={cycleReasoningEffort}
           >
             强度：{props.thinkingEnabled ? activeReasoningEffort : "关闭"}
+          </button>
+          <button
+            className={props.webSearchEnabled ? "pill active" : "pill"}
+            type="button"
+            disabled={props.sending}
+            aria-pressed={props.webSearchEnabled}
+            title="联网检索公开信息，作为知识库外的补充证据"
+            onClick={toggleWebSearch}
+          >
+            <Globe2 size={14} />
+            <span>联网：{props.webSearchEnabled ? "开" : "关"}</span>
           </button>
         </div>
         <button className="send-button" type="button" disabled={!props.value.trim() || props.sending} onClick={() => props.onSubmit()}>
@@ -682,6 +723,7 @@ function MessagePair(props: {
           <div className="answer-meta">
             <span>第 {props.index + 1} 轮</span>
             <span>{props.turn.thinking_enabled ? `思考 ${props.turn.reasoning_effort}` : "快速回答"}</span>
+            {turnUsesWebSearch(props.turn) && <span>联网补充</span>}
             {props.isStreaming && <span>生成中</span>}
           </div>
           {props.turn.thinking_enabled && Boolean(props.progressItems?.length) && (

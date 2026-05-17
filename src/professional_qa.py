@@ -19,7 +19,7 @@ from src.domain_lexicon import (
 )
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS
 from src.question_planner import QuestionPlan
-from src.rag_index import RagHit
+from src.rag_index import SOURCE_TYPE_BONUS, RagHit
 
 
 @dataclass(frozen=True)
@@ -244,8 +244,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
         score = float(hit.score)
         if hit.source_tier == "1":
             score += 1.0
-        if hit.source_type == "authority_whitepaper":
-            score += 1.0
+        score += SOURCE_TYPE_BONUS.get(hit.source_type, 0.0)
         if hit.company and hit.company in plan.companies:
             score += 1.2
         if plan.expanded_topics and any(normalize_topic(term) in normalize_topic(hit.snippet) for term in plan.expanded_topics):
@@ -305,14 +304,28 @@ def build_professional_answer_prompt(
     plan: QuestionPlan,
     graph_records: list[dict[str, Any]],
     cards: list[EvidenceCard],
+    web_search_hits: list[dict[str, Any]] | None = None,
 ) -> str:
     payload = {
         "question": question,
         "question_plan": plan.to_dict(),
+        "source_policy": [
+            "本地 Neo4j/CSV 图谱和本地 RAG 原文是主证据，回答中的事实判断必须优先由这些知识库证据支撑。",
+            "联网结果只能作为补充背景、最新线索或交叉验证；使用时必须标注为“联网补充”，不能替代知识库证据。",
+            "若本地证据与联网补充存在冲突，优先说明本地证据结论，并把冲突列为待核验事项。",
+            "证据不足时直接说明边界，不要补全缺失事实、目标价、收益预测或买卖建议。",
+        ],
         "neo4j_or_csv_graph_records": graph_records[:30],
-        "evidence_cards": [card.to_dict() for card in cards[:12]],
+        "local_evidence_cards": [card.to_dict() for card in cards[:12]],
+        "web_evidence_cards": (web_search_hits or [])[:8],
+        "answer_contract": [
+            "先给直接结论，再解释推理链条和证据强弱。",
+            "回答应体现产业链位置、传导逻辑、催化因素、风险边界和后续跟踪指标。",
+            "避免机械罗列证据；要把证据组织成有洞察的研究判断。",
+            "最终输出中文，面向资深投资者，清晰区分知识库证据和联网补充。",
+        ],
     }
-    return "请基于以下 Neo4j/CSV 图谱证据和 RAG 原文证据回答，不要使用证据外信息：\n" + json.dumps(
+    return "请基于以下结构化证据和检索补充回答用户问题，并严格遵守 source_policy：\n" + json.dumps(
         payload,
         ensure_ascii=False,
         indent=2,
