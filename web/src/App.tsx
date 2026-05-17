@@ -28,7 +28,7 @@ import {
   getGraphSummary,
   getStatus,
   listConversations,
-  sendMessage,
+  streamMessage,
   updateConversationTitle
 } from "./api";
 import type {
@@ -46,6 +46,40 @@ type DetailTab = "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
 
+function createPendingTurn(question: string, thinkingEnabled: boolean, reasoningEffort: string): ConversationTurn {
+  return {
+    created_at: new Date().toISOString(),
+    question,
+    answer: "",
+    thinking_enabled: thinkingEnabled,
+    reasoning_effort: thinkingEnabled ? reasoningEffort : "",
+    result: {
+      question,
+      contextual_question: question,
+      answer: "",
+      reasoning_content: "",
+      answer_type: "streaming",
+      plan: {},
+      cypher: "",
+      cypher_params: {},
+      cypher_source: "",
+      graph_records: [],
+      rag_hits: [],
+      evidence_cards: [],
+      evidence: [],
+      subgraph: [],
+      diagnostics: { streaming: true },
+      errors: []
+    }
+  };
+}
+
+function nextProgressItems(items: string[], message: string): string[] {
+  const text = message.trim();
+  if (!text || items[items.length - 1] === text) return items;
+  return [...items, text].slice(-5);
+}
+
 function App() {
   const [view, setView] = useState<View>("chat");
   const [status, setStatus] = useState<ApiStatus | null>(null);
@@ -56,6 +90,8 @@ function App() {
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("low");
   const [sending, setSending] = useState(false);
+  const [streamingTurn, setStreamingTurn] = useState<ConversationTurn | null>(null);
+  const [streamingProgress, setStreamingProgress] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
   const [selectedTurn, setSelectedTurn] = useState<ConversationTurn | null>(null);
@@ -103,6 +139,8 @@ function App() {
       setCurrent(conversation);
       setSelectedTurn(null);
       setInput("");
+      setStreamingTurn(null);
+      setStreamingProgress([]);
       setView("chat");
       setSidebarOpen(false);
       await refreshConversations();
@@ -116,6 +154,8 @@ function App() {
       const conversation = await getConversation(id);
       setCurrent(conversation);
       setSelectedTurn(null);
+      setStreamingTurn(null);
+      setStreamingProgress([]);
       setView("chat");
       setSidebarOpen(false);
     } catch (error) {
@@ -158,20 +198,58 @@ function App() {
     if (!trimmed || sending) return;
     setSending(true);
     setToast("");
+    const submittedThinking = thinkingEnabled;
+    const submittedReasoningEffort = submittedThinking ? reasoningEffort : "";
     try {
       let conversation = current;
       if (!conversation) {
         conversation = await createConversation();
         setCurrent(conversation);
       }
-      const updated = await sendMessage(conversation.id, trimmed, thinkingEnabled, reasoningEffort);
-      setCurrent(updated);
+      const pendingTurn = createPendingTurn(trimmed, submittedThinking, submittedReasoningEffort);
+      setStreamingTurn(pendingTurn);
+      setStreamingProgress([]);
       setSelectedTurn(null);
       setInput("");
       setView("chat");
+      const updated = await streamMessage(
+        conversation.id,
+        trimmed,
+        submittedThinking,
+        submittedReasoningEffort,
+        (event) => {
+          if (event.type === "progress") {
+            setStreamingProgress((items) => nextProgressItems(items, event.message));
+          } else if (event.type === "answer_delta") {
+            setStreamingTurn((turn) => {
+              if (!turn) return turn;
+              const answer = `${turn.answer}${event.content}`;
+              return {
+                ...turn,
+                answer,
+                result: {
+                  ...turn.result,
+                  answer
+                }
+              };
+            });
+          } else if (event.type === "final") {
+            setCurrent(event.conversation);
+            setStreamingTurn(null);
+            setStreamingProgress([]);
+          } else if (event.type === "error") {
+            setToast(event.message);
+          }
+        }
+      );
+      setCurrent(updated);
+      setStreamingTurn(null);
+      setStreamingProgress([]);
       await refreshConversations();
     } catch (error) {
       setToast(error instanceof Error ? error.message : "发送失败");
+      setStreamingTurn(null);
+      setStreamingProgress([]);
     } finally {
       setSending(false);
     }
@@ -227,6 +305,8 @@ function App() {
             examples={examples}
             input={input}
             sending={sending}
+            streamingTurn={streamingTurn}
+            streamingProgress={streamingProgress}
             thinkingEnabled={thinkingEnabled}
             reasoningEffort={reasoningEffort}
             onInput={setInput}
@@ -389,6 +469,8 @@ function ChatView(props: {
   examples: string[];
   input: string;
   sending: boolean;
+  streamingTurn: ConversationTurn | null;
+  streamingProgress: string[];
   thinkingEnabled: boolean;
   reasoningEffort: string;
   onInput: (value: string) => void;
@@ -396,7 +478,7 @@ function ChatView(props: {
   onOpenDetails: (turn: ConversationTurn) => void;
   onExample: (value: string) => void;
 }) {
-  const hasTurns = Boolean(props.conversation?.turns.length);
+  const hasTurns = Boolean(props.conversation?.turns.length || props.streamingTurn);
   return (
     <section className={`chat-page ${hasTurns ? "with-turns" : "empty"}`}>
       {!hasTurns ? (
@@ -445,10 +527,19 @@ function ChatView(props: {
             {props.conversation?.turns.map((turn, index) => (
               <MessagePair key={`${turn.created_at}-${index}`} index={index} turn={turn} onOpenDetails={props.onOpenDetails} />
             ))}
-            {props.sending && (
+            {props.streamingTurn && (
+              <MessagePair
+                index={props.conversation?.turns.length ?? 0}
+                turn={props.streamingTurn}
+                isStreaming
+                progressItems={props.streamingProgress}
+                onOpenDetails={props.onOpenDetails}
+              />
+            )}
+            {props.sending && !props.streamingTurn && (
               <div className="assistant-thinking">
                 <Loader2 size={18} className="spin" />
-                <span>正在结合历史对话、图谱与本地 RAG 证据生成答案</span>
+                <span>正在启动问答链路</span>
               </div>
             )}
           </div>
@@ -520,7 +611,13 @@ function ExampleRail(props: { examples: string[]; onPick: (value: string) => voi
   );
 }
 
-function MessagePair(props: { index: number; turn: ConversationTurn; onOpenDetails: (turn: ConversationTurn) => void }) {
+function MessagePair(props: {
+  index: number;
+  turn: ConversationTurn;
+  isStreaming?: boolean;
+  progressItems?: string[];
+  onOpenDetails: (turn: ConversationTurn) => void;
+}) {
   return (
     <article className="turn">
       <div className="message user-message">
@@ -537,16 +634,47 @@ function MessagePair(props: { index: number; turn: ConversationTurn; onOpenDetai
           <div className="answer-meta">
             <span>第 {props.index + 1} 轮</span>
             <span>{props.turn.thinking_enabled ? `思考 ${props.turn.reasoning_effort}` : "快速回答"}</span>
+            {props.isStreaming && <span>生成中</span>}
           </div>
-          <div className="answer-text">{renderAnswerMarkdown(props.turn.answer)}</div>
-          <button className="details-button" type="button" onClick={() => props.onOpenDetails(props.turn)}>
-            <FileText size={15} />
-            <span>查看证据与诊断</span>
-            <ChevronRight size={15} />
-          </button>
+          {props.turn.thinking_enabled && Boolean(props.progressItems?.length) && (
+            <ThoughtProgress items={props.progressItems ?? []} />
+          )}
+          <div className="answer-text">
+            {props.turn.answer ? (
+              <>
+                {renderAnswerMarkdown(props.turn.answer)}
+                {props.isStreaming && <span className="stream-caret" />}
+              </>
+            ) : (
+              <div className="stream-placeholder">
+                <Loader2 size={16} className="spin" />
+                <span>正在生成答案</span>
+              </div>
+            )}
+          </div>
+          {!props.isStreaming && (
+            <button className="details-button" type="button" onClick={() => props.onOpenDetails(props.turn)}>
+              <FileText size={15} />
+              <span>查看证据与诊断</span>
+              <ChevronRight size={15} />
+            </button>
+          )}
         </div>
       </div>
     </article>
+  );
+}
+
+function ThoughtProgress(props: { items: string[] }) {
+  return (
+    <div className="thought-progress" aria-live="polite">
+      {props.items.map((item, index) => (
+        <div className="thought-step" key={`${item}-${index}`}>
+          <span>{index + 1}</span>
+          <p>{item}</p>
+        </div>
+      ))}
+    </div>
   );
 }
 

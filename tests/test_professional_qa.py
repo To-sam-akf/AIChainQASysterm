@@ -3,7 +3,7 @@ from pathlib import Path
 
 from src.curated_graph import build_curated_graph
 from src.frontend_data import LocalKnowledgeGraph
-from src.llm_client import ChatTextResult
+from src.llm_client import ChatStreamChunk, ChatTextResult
 from src.qa_engine import QAEngine
 from src.question_planner import heuristic_plan_question
 
@@ -163,6 +163,13 @@ class RecordingLLMClient:
         return "基于证据回答。"
 
 
+class StreamingLLMClient(RecordingLLMClient):
+    def stream_chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object):
+        del messages, temperature, kwargs
+        yield ChatStreamChunk(content="结论：")
+        yield ChatStreamChunk(content="浪潮信息涉及 AI 服务器。")
+
+
 def test_fast_path_limits_llm_calls_on_first_turn() -> None:
     graph = LocalKnowledgeGraph(
         entities=[],
@@ -222,3 +229,25 @@ def test_followup_question_uses_contextualizer_llm_when_needed() -> None:
     assert result["diagnostics"]["contextualized"] is True
     assert result["diagnostics"]["llm_calls"]["total"] == 2
     assert result["answer_type"] == "risk_analysis"
+
+
+def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=StreamingLLMClient())
+
+    events = list(engine.answer_question_stream("哪些上市公司涉及AI服务器？", thinking_enabled=True, reasoning_effort="low"))
+
+    assert any(event.get("type") == "progress" for event in events)
+    assert [event.get("content") for event in events if event.get("type") == "answer_delta"] == [
+        "结论：",
+        "浪潮信息涉及 AI 服务器。",
+    ]
+    final = events[-1]
+    assert final["type"] == "final"
+    assert final["result"]["answer"] == "结论：浪潮信息涉及 AI 服务器。"
+    assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1

@@ -687,6 +687,64 @@ button {
   font-size: 12px;
 }
 
+.thought-progress {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 14px;
+  border-left: 3px solid rgba(31, 117, 117, 0.62);
+  padding: 4px 0 4px 12px;
+}
+
+.thought-step {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #58616b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.thought-step span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: #155d5d;
+  background: rgba(223, 247, 244, 0.9);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.thought-step p {
+  margin: 0;
+}
+
+.stream-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #68717a;
+}
+
+.stream-caret {
+  display: inline-block;
+  width: 7px;
+  height: 18px;
+  margin-left: 3px;
+  vertical-align: -3px;
+  background: #1f7575;
+  animation: blink 1s steps(2, start) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
 .details-button {
   display: inline-flex;
   align-items: center;

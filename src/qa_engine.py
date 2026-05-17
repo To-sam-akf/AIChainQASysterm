@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -68,7 +69,7 @@ class QAEngineStatus:
 class CountingLLMClient:
     """Proxy that records remote LLM calls while preserving hasattr behavior."""
 
-    TRACKED_METHODS = {"chat_json", "chat_text", "chat_text_with_metadata", "chat_messages"}
+    TRACKED_METHODS = {"chat_json", "chat_text", "chat_text_with_metadata", "chat_messages", "stream_chat_messages"}
 
     def __init__(self, client: Any) -> None:
         self._client = client
@@ -345,6 +346,161 @@ class QAEngine:
             "errors": errors,
         }
 
+    def answer_question_stream(
+        self,
+        question: str,
+        conversation_history: list[dict[str, str]] | None = None,
+        *,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        total_start = time.perf_counter()
+        timings_ms: dict[str, float] = {}
+        question = question.strip()
+        errors: list[str] = []
+        llm_client = CountingLLMClient(self.llm_client) if self.llm_client is not None else None
+        llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
+
+        if thinking_enabled:
+            yield stream_progress("history", "正在结合历史对话理解当前问题")
+        stage_start = time.perf_counter()
+        history = normalize_conversation_history(
+            conversation_history,
+            max_turns=self.history_max_turns,
+            max_chars=self.history_max_chars,
+        )
+        record_timing(timings_ms, "history", stage_start)
+
+        if thinking_enabled:
+            yield stream_progress("contextualize", "正在判断是否需要补全追问上下文")
+        stage_start = time.perf_counter()
+        contextual_question = self._contextualize_question(question, history, errors, llm_options, llm_client)
+        record_timing(timings_ms, "contextualize", stage_start)
+        if thinking_enabled and contextual_question != question:
+            yield stream_progress("contextualize", "已将追问改写为可独立检索的问题")
+
+        if thinking_enabled:
+            yield stream_progress("plan", "正在识别公司、主题和答案类型")
+        stage_start = time.perf_counter()
+        plan = heuristic_plan_question(contextual_question, core_companies_only=self.core_companies_only)
+        planner_source = "heuristic"
+        if self._should_use_llm_planner(plan, llm_client):
+            plan = plan_question(
+                contextual_question,
+                client=llm_client,
+                core_companies_only=self.core_companies_only,
+                llm_options=llm_options,
+            )
+            planner_source = "llm"
+        record_timing(timings_ms, "plan", stage_start)
+        if thinking_enabled:
+            yield stream_progress("plan", describe_plan_progress(plan))
+
+        if thinking_enabled:
+            yield stream_progress("cypher", "正在准备图谱查询条件")
+        stage_start = time.perf_counter()
+        generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options, llm_client)
+        if generated.error:
+            errors.append(generated.error)
+        record_timing(timings_ms, "cypher", stage_start)
+
+        if thinking_enabled:
+            yield stream_progress("graph", "正在检索产业链图谱关系")
+        stage_start = time.perf_counter()
+        graph_records = self._query_graph(generated, plan, errors)
+        record_timing(timings_ms, "graph", stage_start)
+
+        if thinking_enabled:
+            yield stream_progress("rag", "正在召回本地研报与原文片段")
+        stage_start = time.perf_counter()
+        rag_hits = self._search_rag(contextual_question, plan, errors)
+        record_timing(timings_ms, "rag", stage_start)
+
+        if thinking_enabled:
+            yield stream_progress("evidence", "正在筛选可支撑答案的证据")
+        stage_start = time.perf_counter()
+        raw_cards = [*cards_from_graph_records(graph_records, plan), *cards_from_rag_hits(rag_hits, plan)]
+        evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
+        if plan.answer_type == "risk_analysis":
+            evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
+        record_timing(timings_ms, "evidence", stage_start)
+        if thinking_enabled:
+            yield stream_progress("evidence", f"已保留 {len(evidence_cards)} 条高相关证据，开始组织答案")
+
+        stage_start = time.perf_counter()
+        answer = ""
+        reasoning_content = ""
+        for event in self._generate_answer_stream(
+            question,
+            contextual_question,
+            history,
+            plan,
+            graph_records,
+            evidence_cards,
+            errors,
+            llm_options,
+            llm_client,
+            thinking_enabled=bool(thinking_enabled),
+        ):
+            if event.get("type") in {"answer_delta", "progress"}:
+                yield event
+                continue
+            if event.get("type") == "answer_complete":
+                answer = str(event.get("answer") or "")
+                reasoning_content = str(event.get("reasoning_content") or "")
+        record_timing(timings_ms, "answer", stage_start)
+
+        stage_start = time.perf_counter()
+        evidence = legacy_evidence_rows(evidence_cards)
+        rag_hit_rows = [hit.to_dict() for hit in rag_hits]
+        evidence_card_rows = [card.to_dict() for card in evidence_cards]
+        subgraph = graph_records_to_subgraph(graph_records)
+        record_timing(timings_ms, "render_payload", stage_start)
+
+        diagnostics = {
+            "graph_backend": self.status.graph_backend,
+            "graph_records": len(graph_records),
+            "rag_hits": len(rag_hits),
+            "evidence_cards": len(evidence_cards),
+            "rerank_top_n": self.rerank_top_n,
+            "history_messages": len(history),
+            "contextualized": contextual_question != question,
+            "contextualizer_mode": self.contextualizer_mode,
+            "planner_source": planner_source,
+            "enable_llm_cypher": self.enable_llm_cypher,
+            "enable_llm_planner": self.enable_llm_planner,
+            "thinking_enabled": thinking_enabled,
+            "reasoning_effort": reasoning_effort or "",
+            "graph_error": self.status.graph_error,
+            "rag_error": self.status.rag_error,
+            "llm_error": self.status.llm_error,
+        }
+        timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
+        diagnostics["timings_ms"] = timings_ms
+        diagnostics["llm_calls"] = llm_client.calls if llm_client is not None else {"total": 0}
+
+        yield {
+            "type": "final",
+            "result": {
+                "question": question,
+                "contextual_question": contextual_question,
+                "answer": answer,
+                "reasoning_content": reasoning_content,
+                "answer_type": plan.answer_type,
+                "plan": plan.to_dict(),
+                "cypher": generated.cypher,
+                "cypher_params": generated.params,
+                "cypher_source": generated.source,
+                "graph_records": graph_records,
+                "rag_hits": rag_hit_rows,
+                "evidence_cards": evidence_card_rows,
+                "evidence": evidence,
+                "subgraph": subgraph,
+                "diagnostics": diagnostics,
+                "errors": errors,
+            },
+        }
+
     def _should_use_llm_planner(self, plan: QuestionPlan, llm_client: Any | None) -> bool:
         if not self.enable_llm_planner or llm_client is None or not hasattr(llm_client, "chat_json"):
             return False
@@ -509,6 +665,77 @@ class QAEngine:
                 errors.append(f"LLM answer failed: {exc}")
         return fallback_professional_answer(plan, evidence_cards, graph_records), ""
 
+    def _generate_answer_stream(
+        self,
+        question: str,
+        contextual_question: str,
+        history: list[dict[str, str]],
+        plan: QuestionPlan,
+        graph_records: list[dict[str, Any]],
+        evidence_cards: list[Any],
+        errors: list[str],
+        llm_options: dict[str, Any],
+        llm_client: Any | None,
+        *,
+        thinking_enabled: bool,
+    ) -> Iterator[dict[str, Any]]:
+        if not evidence_cards:
+            for chunk in chunk_text(NO_EVIDENCE_ANSWER):
+                yield {"type": "answer_delta", "content": chunk}
+            yield {"type": "answer_complete", "answer": NO_EVIDENCE_ANSWER, "reasoning_content": ""}
+            return
+
+        prompt_question = question
+        if contextual_question != question:
+            prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
+        user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
+
+        if thinking_enabled:
+            yield {"type": "progress", "stage": "answer", "message": "正在生成结论、证据和风险边界"}
+
+        if llm_client is not None and hasattr(llm_client, "stream_chat_messages"):
+            chunks: list[str] = []
+            try:
+                messages = [
+                    {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+                    *history,
+                    {"role": "user", "content": user_prompt},
+                ]
+                for chunk in llm_client.stream_chat_messages(
+                    messages=messages,
+                    temperature=0.2,
+                    **llm_options,
+                ):
+                    content = str(getattr(chunk, "content", "") or "")
+                    if not content:
+                        continue
+                    chunks.append(content)
+                    yield {"type": "answer_delta", "content": content}
+                answer = "".join(chunks).strip()
+                if answer:
+                    yield {"type": "answer_complete", "answer": answer, "reasoning_content": ""}
+                    return
+            except Exception as exc:
+                errors.append(f"LLM answer stream failed: {exc}")
+                if chunks:
+                    yield {"type": "answer_complete", "answer": "".join(chunks).strip(), "reasoning_content": ""}
+                    return
+
+        answer, reasoning_content = self._generate_answer(
+            question,
+            contextual_question,
+            history,
+            plan,
+            graph_records,
+            evidence_cards,
+            errors,
+            llm_options,
+            llm_client,
+        )
+        for chunk in chunk_text(answer):
+            yield {"type": "answer_delta", "content": chunk}
+        yield {"type": "answer_complete", "answer": answer, "reasoning_content": reasoning_content}
+
 
 def build_answer_prompt(question: str, graph_records: list[dict[str, Any]], rag_hits: list[RagHit]) -> str:
     payload = {
@@ -577,6 +804,35 @@ def build_llm_options(*, thinking_enabled: bool | None, reasoning_effort: str | 
     if reasoning_effort:
         options["reasoning_effort"] = reasoning_effort
     return options
+
+
+def stream_progress(stage: str, message: str) -> dict[str, str]:
+    return {"type": "progress", "stage": stage, "message": message}
+
+
+def describe_plan_progress(plan: QuestionPlan) -> str:
+    type_labels = {
+        "topic_to_company": "主题到公司检索",
+        "company_compare": "公司对比",
+        "risk_analysis": "风险分析",
+        "industry_bottleneck": "产业瓶颈分析",
+        "company_profile": "公司画像",
+        "thematic_research": "主题研究",
+    }
+    parts = [f"问题规划完成：{type_labels.get(plan.answer_type, plan.answer_type)}"]
+    if plan.companies:
+        parts.append(f"核心公司为{'、'.join(plan.companies[:4])}")
+    if plan.topics:
+        parts.append(f"关注主题为{'、'.join(plan.topics[:4])}")
+    return "，".join(parts)
+
+
+def chunk_text(text: str, *, size: int = 18) -> Iterator[str]:
+    value = str(text or "")
+    if not value:
+        return
+    for index in range(0, len(value), size):
+        yield value[index : index + size]
 
 
 def normalize_conversation_history(

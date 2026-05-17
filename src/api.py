@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.conversation_store import (
@@ -107,6 +109,16 @@ def http_error_from_store(exc: Exception) -> HTTPException:
     if isinstance(exc, InvalidConversationError):
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+def sse_event(event: str, data: dict[str, Any]) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def public_stream_payload(event: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(event)
+    payload.pop("type", None)
+    return payload
 
 
 router = APIRouter(prefix="/api")
@@ -243,6 +255,79 @@ async def append_message(
     except Exception as exc:
         raise http_error_from_store(exc) from exc
     return {"conversation": conversation, "turn": turn}
+
+
+@router.post("/conversations/{conversation_id}/messages/stream")
+async def append_message_stream(
+    conversation_id: str,
+    request: MessageCreateRequest,
+    store: ConversationStore = Depends(get_conversation_store),
+    engine: QAEngine = Depends(get_qa_engine),
+) -> StreamingResponse:
+    question = request.question.strip()
+    if not question:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
+    if request.reasoning_effort and request.reasoning_effort not in REASONING_EFFORTS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reasoning effort")
+    try:
+        history = store.history_messages(conversation_id)
+    except Exception as exc:
+        raise http_error_from_store(exc) from exc
+
+    thinking_enabled = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
+    reasoning_effort = request.reasoning_effort or (default_reasoning_effort() if thinking_enabled else "")
+
+    def generate_events() -> Any:
+        result: dict[str, Any] | None = None
+        try:
+            if hasattr(engine, "answer_question_stream"):
+                for event in engine.answer_question_stream(
+                    question,
+                    conversation_history=history,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort or None,
+                ):
+                    event_type = str(event.get("type") or "message")
+                    if event_type == "final":
+                        result = dict(event.get("result") or {})
+                        continue
+                    if event_type in {"progress", "answer_delta"}:
+                        yield sse_event(event_type, public_stream_payload(event))
+            else:
+                result = engine.answer_question(
+                    question,
+                    conversation_history=history,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort or None,
+                )
+                yield sse_event("answer_delta", {"content": result.get("answer", "")})
+
+            if result is None:
+                raise RuntimeError("No answer result was generated")
+            diagnostics = result.get("diagnostics")
+            if not isinstance(diagnostics, dict):
+                diagnostics = {}
+                result["diagnostics"] = diagnostics
+            diagnostics["thinking_enabled"] = thinking_enabled
+            diagnostics["reasoning_effort"] = reasoning_effort
+            turn = {
+                "created_at": now_iso(),
+                "question": question,
+                "answer": result["answer"],
+                "thinking_enabled": thinking_enabled,
+                "reasoning_effort": reasoning_effort,
+                "result": result,
+            }
+            conversation = store.append_turn(conversation_id, turn)
+            yield sse_event("final", {"conversation": conversation, "turn": turn})
+        except Exception as exc:
+            yield sse_event("error", {"message": str(exc) or "生成失败"})
+
+    return StreamingResponse(
+        generate_events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @router.get("/conversations/{conversation_id}/export")

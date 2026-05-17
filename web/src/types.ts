@@ -93,3 +93,9 @@ export interface GraphSubgraph {
   edges: GraphEdge[];
   svg: string;
 }
+
+export type MessageStreamEvent =
+  | { type: "progress"; stage: string; message: string }
+  | { type: "answer_delta"; content: string }
+  | { type: "final"; conversation: Conversation; turn: ConversationTurn }
+  | { type: "error"; message: string };
