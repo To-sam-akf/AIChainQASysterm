@@ -47,6 +47,34 @@ QUESTION_RELATIONS = {
     "下游": "DOWNSTREAM_OF",
 }
 
+ENTITY_ORDER = [
+    "Company",
+    "IndustryChain",
+    "ValueChainSegment",
+    "IndustryConcept",
+    "Technology",
+    "Product",
+    "Metric",
+    "Risk",
+    "Policy",
+    "Standard",
+    "Report",
+]
+
+ENTITY_COLORS = {
+    "Company": "#1f6f70",
+    "Technology": "#2563eb",
+    "Product": "#7a4cc2",
+    "IndustryChain": "#b86519",
+    "ValueChainSegment": "#c2410c",
+    "IndustryConcept": "#0e7490",
+    "Metric": "#477148",
+    "Risk": "#c43c39",
+    "Policy": "#4f5f9f",
+    "Standard": "#8a4f9f",
+    "Report": "#64748b",
+}
+
 
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     if not path.exists():
@@ -336,60 +364,149 @@ def subgraph_edges(records: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def render_svg_graph(edges: list[dict[str, str]], *, width: int = 980, height: int = 560) -> str:
-    edges = edges[:80]
-    nodes: dict[str, str] = {}
-    for edge in edges:
-        nodes.setdefault(edge["source"], edge.get("source_type", ""))
-        nodes.setdefault(edge["target"], edge.get("target_type", ""))
-    if not nodes:
+    edges = [edge for edge in edges if edge.get("source") and edge.get("target")][:140]
+    if not edges:
         return '<div class="empty-graph">当前筛选条件下没有可展示的子图。</div>'
 
-    names = list(nodes.keys())
-    center_x, center_y = width / 2, height / 2
-    radius = min(width, height) * 0.36
-    positions = {}
-    for index, name in enumerate(names):
-        angle = 2 * math.pi * index / max(len(names), 1)
-        positions[name] = (center_x + radius * math.cos(angle), center_y + radius * math.sin(angle))
+    nodes: dict[str, dict[str, Any]] = {}
+    for edge in edges:
+        source = edge["source"]
+        target = edge["target"]
+        source_node = nodes.setdefault(
+            source,
+            {"type": edge.get("source_type", ""), "degree": 0, "source_count": 0, "target_count": 0},
+        )
+        target_node = nodes.setdefault(
+            target,
+            {"type": edge.get("target_type", ""), "degree": 0, "source_count": 0, "target_count": 0},
+        )
+        source_node["degree"] += 1
+        source_node["source_count"] += 1
+        target_node["degree"] += 1
+        target_node["target_count"] += 1
+
+    def order_index(entity_type: str) -> int:
+        try:
+            return ENTITY_ORDER.index(entity_type)
+        except ValueError:
+            return len(ENTITY_ORDER)
+
+    def sort_key(item: tuple[str, dict[str, Any]]) -> tuple[int, int, str]:
+        name, node = item
+        return (order_index(str(node.get("type", ""))), -int(node.get("degree", 0)), normalize_name(name))
+
+    source_names = [
+        name
+        for name, node in sorted(nodes.items(), key=sort_key)
+        if node.get("type") == "Company" or (node.get("source_count", 0) and node.get("source_count", 0) >= node.get("target_count", 0))
+    ]
+    if not source_names:
+        source_names = [name for name, node in sorted(nodes.items(), key=sort_key) if node.get("source_count", 0)]
+    source_set = set(source_names)
+
+    grouped_targets: dict[str, list[str]] = defaultdict(list)
+    for name, node in sorted(nodes.items(), key=sort_key):
+        if name not in source_set:
+            grouped_targets[str(node.get("type", "")) or "Entity"].append(name)
+
+    columns: list[tuple[str, str, list[str]]] = []
+    max_rows_per_column = 24
+
+    def append_columns(column_id: str, label: str, names: list[str]) -> None:
+        for start in range(0, len(names), max_rows_per_column):
+            chunk = names[start : start + max_rows_per_column]
+            suffix = f" {start // max_rows_per_column + 1}" if len(names) > max_rows_per_column else ""
+            columns.append((f"{column_id}-{start}", f"{label}{suffix}", chunk))
+
+    if source_names:
+        append_columns("source", "起点", source_names)
+    for entity_type in sorted(grouped_targets, key=lambda value: (order_index(value), value)):
+        append_columns(entity_type, entity_type, grouped_targets[entity_type])
+    if not columns:
+        columns.append(("entities", "实体", list(nodes)))
+
+    node_gap = 48
+    column_gap = 260
+    left_padding = 86
+    top_padding = 68
+    right_padding = 220
+    bottom_padding = 84
+    max_rows = max((len(names) for _, _, names in columns), default=1)
+    canvas_width = max(width, left_padding + (len(columns) - 1) * column_gap + right_padding)
+    canvas_height = max(height, top_padding + max(max_rows - 1, 0) * node_gap + bottom_padding)
+    positions: dict[str, tuple[float, float]] = {}
+    for column_index, (_, _, names) in enumerate(columns):
+        x = left_padding + column_index * column_gap
+        for node_index, name in enumerate(names):
+            positions[name] = (x, top_padding + node_index * node_gap)
 
     def color(entity_type: str) -> str:
-        return {
-            "Company": "#2563eb",
-            "Technology": "#059669",
-            "Product": "#7c3aed",
-            "IndustryChain": "#d97706",
-            "Metric": "#0f766e",
-            "Risk": "#dc2626",
-            "Report": "#475569",
-            "IndustryConcept": "#0891b2",
-            "Policy": "#4f46e5",
-            "Standard": "#9333ea",
-            "ValueChainSegment": "#ea580c",
-        }.get(entity_type, "#334155")
+        return ENTITY_COLORS.get(entity_type, "#334155")
 
-    svg_parts = [
-        f'<svg viewBox="0 0 {width} {height}" width="100%" height="{height}" role="img">',
-        '<rect width="100%" height="100%" fill="#f8fafc"/>',
-        '<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L0,6 L9,3 z" fill="#64748b"/></marker></defs>',
-    ]
-    for edge in edges:
+    def radius(name: str) -> float:
+        return min(18, max(9, 8 + math.sqrt(float(nodes[name].get("degree", 1))) * 2.2))
+
+    def path_for(edge: dict[str, str], index: int) -> str:
         x1, y1 = positions[edge["source"]]
         x2, y2 = positions[edge["target"]]
-        mid_x, mid_y = (x1 + x2) / 2, (y1 + y2) / 2
+        direction = 1 if x2 >= x1 else -1
+        start_x = x1 + radius(edge["source"]) * direction
+        end_x = x2 - radius(edge["target"]) * direction
+        offset = (index % 9 - 4) * 3.5
+        if abs(end_x - start_x) < 28:
+            loop = 44 + (index % 5) * 10
+            return (
+                f"M {start_x:.1f} {y1:.1f} C {start_x + loop:.1f} {y1 - 22:.1f}, "
+                f"{end_x + loop:.1f} {y2 + 22:.1f}, {end_x:.1f} {y2:.1f}"
+            )
+        curve = max(72, abs(end_x - start_x) * 0.42)
+        return (
+            f"M {start_x:.1f} {y1:.1f} C {start_x + curve * direction:.1f} {y1 + offset:.1f}, "
+            f"{end_x - curve * direction:.1f} {y2 - offset:.1f}, {end_x:.1f} {y2:.1f}"
+        )
+
+    show_edge_labels = len(edges) <= 18 and len(nodes) <= 34
+    svg_parts = [
+        f'<svg viewBox="0 0 {canvas_width} {canvas_height}" width="100%" height="{canvas_height}" role="img" data-layout="layered">',
+        '<rect width="100%" height="100%" fill="#f8fafc"/>',
+        '<defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto"><path d="M0,0 L0,7 L7,3.5 z" fill="#94a3b8"/></marker></defs>',
+    ]
+    for column_index, (_, label, names) in enumerate(columns):
+        x = left_padding + column_index * column_gap
         svg_parts.append(
-            f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-            'stroke="#64748b" stroke-width="1.4" marker-end="url(#arrow)" opacity="0.78"/>'
+            f'<text x="{x:.1f}" y="32" text-anchor="middle" font-size="12" font-weight="700" fill="#475569">'
+            f'{html.escape(label)}</text>'
         )
         svg_parts.append(
-            f'<text x="{mid_x:.1f}" y="{mid_y:.1f}" text-anchor="middle" font-size="11" fill="#334155">'
-            f'{html.escape(edge["label"])}</text>'
+            f'<text x="{x:.1f}" y="49" text-anchor="middle" font-size="11" fill="#94a3b8">{len(names)}</text>'
         )
-    for name, entity_type in nodes.items():
+    for index, edge in enumerate(edges):
+        x1, y1 = positions[edge["source"]]
+        x2, y2 = positions[edge["target"]]
+        svg_parts.append(
+            f'<path d="{path_for(edge, index)}" fill="none" stroke="#94a3b8" stroke-width="1.15" '
+            'stroke-linecap="round" opacity="0.52" marker-end="url(#arrow)">'
+            f'<title>{html.escape(edge["source"])} - {html.escape(edge.get("label", ""))} - {html.escape(edge["target"])}</title>'
+            "</path>"
+        )
+        if show_edge_labels:
+            svg_parts.append(
+                f'<text x="{(x1 + x2) / 2:.1f}" y="{(y1 + y2) / 2 - 7:.1f}" text-anchor="middle" '
+                'font-size="10" fill="#475569" paint-order="stroke" stroke="#f8fafc" stroke-width="4">'
+                f'{html.escape(edge.get("label", ""))}</text>'
+            )
+    for name, node in nodes.items():
         x, y = positions[name]
-        escaped = html.escape(short_label(name))
-        svg_parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="24" fill="{color(entity_type)}"/>')
+        entity_type = str(node.get("type", ""))
+        escaped = html.escape(short_label(name, 10))
         svg_parts.append(
-            f'<text x="{x:.1f}" y="{y + 42:.1f}" text-anchor="middle" font-size="12" fill="#0f172a">{escaped}</text>'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius(name):.1f}" fill="{color(entity_type)}" '
+            'stroke="rgba(255,255,255,0.92)" stroke-width="2"/>'
+        )
+        svg_parts.append(
+            f'<text x="{x + radius(name) + 8:.1f}" y="{y + 4:.1f}" font-size="12" font-weight="650" '
+            'fill="#17202a" paint-order="stroke" stroke="#f8fafc" stroke-width="4">'
+            f'{escaped}</text>'
         )
     svg_parts.append("</svg>")
     return "\n".join(svg_parts)

@@ -83,4 +83,5 @@ def test_render_svg_graph_outputs_svg() -> None:
     svg = render_svg_graph(edges)
 
     assert "<svg" in svg
+    assert 'data-layout="layered"' in svg
     assert "浪潮信息" in svg
