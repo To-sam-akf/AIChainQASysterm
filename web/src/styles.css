@@ -137,14 +137,9 @@ button {
   background: rgba(255, 255, 255, 0.56);
 }
 
-.settings-card,
 .history-panel {
   border-top: 1px solid rgba(28, 34, 39, 0.12);
   padding-top: 18px;
-}
-
-.settings-card {
-  margin-bottom: 18px;
 }
 
 .section-title {
@@ -156,24 +151,6 @@ button {
   font-size: 13px;
 }
 
-.toggle-row,
-.select-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 10px;
-  color: #20262c;
-  font-size: 14px;
-}
-
-.toggle-row input {
-  width: 38px;
-  height: 20px;
-  accent-color: #16202a;
-}
-
-.select-row select,
 .filter-row select,
 .history-item input {
   min-width: 106px;
@@ -447,6 +424,7 @@ button {
 .pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 32px;
   border: 1px solid rgba(28, 33, 38, 0.13);
   border-radius: 999px;
@@ -456,10 +434,20 @@ button {
   font-size: 13px;
 }
 
+.pill:hover:not(:disabled) {
+  border-color: rgba(25, 111, 112, 0.32);
+  background: rgba(255, 255, 255, 0.84);
+}
+
 .pill.active {
   border-color: rgba(25, 111, 112, 0.35);
   color: #155d5d;
   background: rgba(223, 247, 244, 0.68);
+}
+
+.pill:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
 }
 
 .send-button {
@@ -894,20 +882,167 @@ pre {
   margin: 0 0 8px;
 }
 
-.mini-graph {
+.graph-canvas {
+  position: relative;
   width: 100%;
+  height: 620px;
+  overflow: hidden;
+  border-radius: inherit;
+  background: #f8fafc;
+}
+
+.graph-canvas.compact {
+  height: 390px;
   border: 1px solid rgba(29, 34, 39, 0.12);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.58);
 }
 
-.mini-graph circle {
-  fill: #17202a;
+.graph-canvas svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
 }
 
-.mini-graph text {
-  fill: #303840;
+.graph-canvas svg.is-panning {
+  cursor: grabbing;
+}
+
+.graph-toolbar {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  right: 12px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.graph-count,
+.graph-actions {
+  pointer-events: auto;
+}
+
+.graph-count {
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+  font-size: 12px;
+}
+
+.graph-actions {
+  display: inline-flex;
+  gap: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  padding: 4px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.graph-actions button,
+.graph-tool-hint {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: #334155;
+}
+
+.graph-tool-hint {
+  cursor: grab;
+}
+
+.graph-actions button:hover {
+  color: #102c2d;
+  background: rgba(31, 111, 112, 0.1);
+}
+
+.graph-column-label text:first-child {
+  fill: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.graph-column-label text:last-child {
+  fill: #94a3b8;
   font-size: 11px;
+}
+
+.graph-edge {
+  fill: none;
+  stroke: #94a3b8;
+  stroke-width: 1.15;
+  stroke-linecap: round;
+  opacity: 0.5;
+}
+
+.graph-edge-group:hover .graph-edge {
+  stroke: #1f6f70;
+  stroke-width: 1.8;
+  opacity: 0.9;
+}
+
+.graph-edge-label {
+  fill: #475569;
+  paint-order: stroke;
+  stroke: #f8fafc;
+  stroke-width: 4px;
+  font-size: 10px;
+}
+
+.graph-node circle {
+  stroke: rgba(255, 255, 255, 0.92);
+  stroke-width: 2;
+  filter: drop-shadow(0 5px 10px rgba(15, 23, 42, 0.14));
+}
+
+.graph-node-label {
+  fill: #17202a;
+  paint-order: stroke;
+  stroke: #f8fafc;
+  stroke-width: 4px;
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.graph-legend {
+  position: absolute;
+  z-index: 2;
+  right: 12px;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  pointer-events: none;
+}
+
+.graph-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #334155;
+  background: rgba(255, 255, 255, 0.82);
+  font-size: 11px;
+}
+
+.graph-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
 
 .page-panel {
@@ -1040,15 +1175,10 @@ pre {
 }
 
 .graph-surface {
-  min-height: 360px;
+  min-height: 620px;
   margin-bottom: 16px;
-  overflow: auto;
-  padding: 12px;
-}
-
-.graph-surface svg {
-  display: block;
-  width: 100%;
+  overflow: hidden;
+  padding: 0;
 }
 
 .toast {

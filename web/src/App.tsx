@@ -7,17 +7,20 @@ import {
   FileText,
   History,
   Loader2,
+  Maximize2,
   Menu,
   MessageSquareText,
+  Move,
   Pencil,
   Plus,
   Send,
-  Settings2,
   Sparkles,
   Trash2,
-  X
+  X,
+  ZoomIn,
+  ZoomOut
 } from "lucide-react";
-import { KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { KeyboardEvent, PointerEvent, WheelEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   createConversation,
@@ -45,6 +48,38 @@ type View = "chat" | "overview" | "graph";
 type DetailTab = "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
+const GRAPH_VIEWPORTS = {
+  large: { width: 1040, height: 560 },
+  compact: { width: 640, height: 360 }
+} as const;
+const ENTITY_ORDER = [
+  "Company",
+  "IndustryChain",
+  "ValueChainSegment",
+  "IndustryConcept",
+  "Technology",
+  "Product",
+  "Metric",
+  "Risk",
+  "Policy",
+  "Standard",
+  "Report"
+];
+const ENTITY_STYLES: Record<string, { label: string; color: string }> = {
+  Company: { label: "公司", color: "#1f6f70" },
+  Technology: { label: "技术", color: "#2563eb" },
+  Product: { label: "产品", color: "#7a4cc2" },
+  IndustryChain: { label: "产业链", color: "#b86519" },
+  ValueChainSegment: { label: "环节", color: "#c2410c" },
+  IndustryConcept: { label: "概念", color: "#0e7490" },
+  Metric: { label: "指标", color: "#477148" },
+  Risk: { label: "风险", color: "#c43c39" },
+  Policy: { label: "政策", color: "#4f5f9f" },
+  Standard: { label: "标准", color: "#8a4f9f" },
+  Report: { label: "报告", color: "#64748b" }
+};
+const FALLBACK_ENTITY_STYLE = { label: "实体", color: "#334155" };
+const zhCollator = new Intl.Collator("zh-Hans-CN");
 
 function createPendingTurn(question: string, thinkingEnabled: boolean, reasoningEffort: string): ConversationTurn {
   return {
@@ -266,9 +301,6 @@ function App() {
         conversations={conversations}
         currentId={current?.id ?? ""}
         view={view}
-        thinkingEnabled={thinkingEnabled}
-        reasoningEffort={reasoningEffort}
-        reasoningEfforts={status?.settings.reasoning_efforts ?? ["low", "medium", "high"]}
         editingId={editingId}
         editingTitle={editingTitle}
         onClose={() => setSidebarOpen(false)}
@@ -285,8 +317,6 @@ function App() {
           setView(nextView);
           setSidebarOpen(false);
         }}
-        onThinkingChange={setThinkingEnabled}
-        onReasoningChange={setReasoningEffort}
       />
       <main className="workspace">
         <GeometricBackdrop />
@@ -309,8 +339,11 @@ function App() {
             streamingProgress={streamingProgress}
             thinkingEnabled={thinkingEnabled}
             reasoningEffort={reasoningEffort}
+            reasoningEfforts={status?.settings.reasoning_efforts ?? ["low", "medium", "high"]}
             onInput={setInput}
             onSubmit={handleSubmit}
+            onThinkingChange={setThinkingEnabled}
+            onReasoningChange={setReasoningEffort}
             onOpenDetails={(turn) => {
               setSelectedTurn(turn);
               setDetailTab("evidence");
@@ -336,9 +369,6 @@ function Sidebar(props: {
   conversations: ConversationSummary[];
   currentId: string;
   view: View;
-  thinkingEnabled: boolean;
-  reasoningEffort: string;
-  reasoningEfforts: string[];
   editingId: string;
   editingTitle: string;
   onClose: () => void;
@@ -349,8 +379,6 @@ function Sidebar(props: {
   onRename: (id: string) => void;
   onEditTitle: (title: string) => void;
   onViewChange: (view: View) => void;
-  onThinkingChange: (value: boolean) => void;
-  onReasoningChange: (value: string) => void;
 }) {
   return (
     <aside className="sidebar">
@@ -388,35 +416,6 @@ function Sidebar(props: {
           <span>产业链图谱</span>
         </button>
       </nav>
-
-      <section className="settings-card" aria-label="模型设置">
-        <div className="section-title">
-          <Settings2 size={16} />
-          <span>模型设置</span>
-        </div>
-        <label className="toggle-row">
-          <span>思考模式</span>
-          <input
-            type="checkbox"
-            checked={props.thinkingEnabled}
-            onChange={(event) => props.onThinkingChange(event.target.checked)}
-          />
-        </label>
-        <label className="select-row">
-          <span>思考强度</span>
-          <select
-            value={props.reasoningEffort}
-            disabled={!props.thinkingEnabled}
-            onChange={(event) => props.onReasoningChange(event.target.value)}
-          >
-            {props.reasoningEfforts.map((effort) => (
-              <option key={effort} value={effort}>
-                {effort}
-              </option>
-            ))}
-          </select>
-        </label>
-      </section>
 
       <section className="history-panel">
         <div className="section-title">
@@ -473,8 +472,11 @@ function ChatView(props: {
   streamingProgress: string[];
   thinkingEnabled: boolean;
   reasoningEffort: string;
+  reasoningEfforts: string[];
   onInput: (value: string) => void;
   onSubmit: (question?: string) => void;
+  onThinkingChange: (value: boolean) => void;
+  onReasoningChange: (value: string) => void;
   onOpenDetails: (turn: ConversationTurn) => void;
   onExample: (value: string) => void;
 }) {
@@ -491,9 +493,12 @@ function ChatView(props: {
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
+            reasoningEfforts={props.reasoningEfforts}
             placeholder="请输入你想了解的 AI 算力链产业问题..."
             onChange={props.onInput}
             onSubmit={props.onSubmit}
+            onThinkingChange={props.onThinkingChange}
+            onReasoningChange={props.onReasoningChange}
           />
           <ExampleRail examples={props.examples} onPick={props.onExample} onSubmit={props.onSubmit} />
           {props.loading && (
@@ -549,9 +554,12 @@ function ChatView(props: {
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
+            reasoningEfforts={props.reasoningEfforts}
             placeholder="继续追问，系统会自动携带当前对话上下文..."
             onChange={props.onInput}
             onSubmit={props.onSubmit}
+            onThinkingChange={props.onThinkingChange}
+            onReasoningChange={props.onReasoningChange}
           />
         </div>
       )}
@@ -564,16 +572,39 @@ function Composer(props: {
   sending: boolean;
   thinkingEnabled: boolean;
   reasoningEffort: string;
+  reasoningEfforts: string[];
   placeholder: string;
   compact?: boolean;
   onChange: (value: string) => void;
   onSubmit: (question?: string) => void;
+  onThinkingChange: (value: boolean) => void;
+  onReasoningChange: (value: string) => void;
 }) {
+  const reasoningEfforts = props.reasoningEfforts.length ? props.reasoningEfforts : ["low", "medium", "high"];
+  const activeReasoningEffort = reasoningEfforts.includes(props.reasoningEffort)
+    ? props.reasoningEffort
+    : reasoningEfforts[0];
+
   function onKeyDown(event: KeyboardEvent<HTMLTextAreaElement>) {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       props.onSubmit();
     }
+  }
+
+  function toggleThinking() {
+    props.onThinkingChange(!props.thinkingEnabled);
+  }
+
+  function cycleReasoningEffort() {
+    if (!props.thinkingEnabled) {
+      props.onReasoningChange(activeReasoningEffort);
+      props.onThinkingChange(true);
+      return;
+    }
+    const currentIndex = reasoningEfforts.indexOf(activeReasoningEffort);
+    const nextEffort = reasoningEfforts[(currentIndex + 1) % reasoningEfforts.length];
+    props.onReasoningChange(nextEffort);
   }
 
   return (
@@ -587,8 +618,25 @@ function Composer(props: {
       />
       <div className="composer-footer">
         <div className="composer-controls">
-          <span className={props.thinkingEnabled ? "pill active" : "pill"}>思考模式</span>
-          <span className="pill">强度：{props.thinkingEnabled ? props.reasoningEffort : "关闭"}</span>
+          <button
+            className={props.thinkingEnabled ? "pill active" : "pill"}
+            type="button"
+            disabled={props.sending}
+            aria-pressed={props.thinkingEnabled}
+            onClick={toggleThinking}
+          >
+            思考模式：{props.thinkingEnabled ? "开" : "关"}
+          </button>
+          <button
+            className={props.thinkingEnabled ? "pill active" : "pill"}
+            type="button"
+            disabled={props.sending}
+            aria-pressed={props.thinkingEnabled}
+            title={props.thinkingEnabled ? "点击切换思考强度" : "点击开启思考模式"}
+            onClick={cycleReasoningEffort}
+          >
+            强度：{props.thinkingEnabled ? activeReasoningEffort : "关闭"}
+          </button>
         </div>
         <button className="send-button" type="button" disabled={!props.value.trim() || props.sending} onClick={() => props.onSubmit()}>
           {props.sending ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
@@ -904,7 +952,7 @@ function GraphView() {
             <span>加载图谱中</span>
           </div>
         ) : (
-          <div dangerouslySetInnerHTML={{ __html: subgraph?.svg ?? "" }} />
+          <GraphCanvas edges={subgraph?.edges ?? []} empty="当前筛选条件下没有可展示的子图" />
         )}
       </div>
       <DataTable rows={subgraph?.rows ?? []} empty="当前筛选条件下没有关系" />
@@ -926,6 +974,445 @@ function StatusPill(props: { label: string; value: string }) {
     <div className="status-pill">
       <span>{props.label}</span>
       <strong>{props.value}</strong>
+    </div>
+  );
+}
+
+type GraphVariant = keyof typeof GRAPH_VIEWPORTS;
+
+type GraphTransform = {
+  x: number;
+  y: number;
+  scale: number;
+};
+
+type GraphNodeLayout = {
+  id: string;
+  type: string;
+  degree: number;
+  sourceCount: number;
+  targetCount: number;
+  x: number;
+  y: number;
+  r: number;
+  lane: string;
+};
+
+type GraphColumnLayout = {
+  id: string;
+  label: string;
+  type: string;
+  x: number;
+  count: number;
+};
+
+type GraphLayoutEdge = GraphEdge & {
+  key: string;
+};
+
+type GraphLayout = {
+  width: number;
+  height: number;
+  nodes: GraphNodeLayout[];
+  edges: GraphLayoutEdge[];
+  columns: GraphColumnLayout[];
+  legendTypes: string[];
+  showEdgeLabels: boolean;
+};
+
+function entityStyle(entityType: string) {
+  return ENTITY_STYLES[entityType] ?? FALLBACK_ENTITY_STYLE;
+}
+
+function entityOrderIndex(entityType: string) {
+  const index = ENTITY_ORDER.indexOf(entityType);
+  return index >= 0 ? index : ENTITY_ORDER.length;
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function splitSvgLabel(value: string, length: number) {
+  const text = value.replace(/\s+/g, " ").trim();
+  if (text.length <= length) return [text];
+  const second = text.slice(length, length * 2);
+  return [text.slice(0, length), text.length > length * 2 ? `${second}...` : second];
+}
+
+function graphEdgeKey(edge: GraphEdge, index: number) {
+  return `${edge.source}-${edge.label}-${edge.target}-${index}`;
+}
+
+function createGraphLayout(edges: GraphEdge[], variant: GraphVariant): GraphLayout {
+  const compact = variant === "compact";
+  const viewport = GRAPH_VIEWPORTS[variant];
+  const visibleEdges = edges
+    .filter((edge) => edge.source?.trim() && edge.target?.trim())
+    .slice(0, compact ? 70 : 140)
+    .map((edge, index) => ({ ...edge, key: graphEdgeKey(edge, index) }));
+  const nodeMap = new Map<string, GraphNodeLayout>();
+
+  function ensureNode(id: string, entityType: string) {
+    let node = nodeMap.get(id);
+    if (!node) {
+      node = {
+        id,
+        type: entityType,
+        degree: 0,
+        sourceCount: 0,
+        targetCount: 0,
+        x: 0,
+        y: 0,
+        r: compact ? 9 : 11,
+        lane: ""
+      };
+      nodeMap.set(id, node);
+    } else if (!node.type && entityType) {
+      node.type = entityType;
+    }
+    return node;
+  }
+
+  visibleEdges.forEach((edge) => {
+    const source = ensureNode(edge.source, edge.source_type);
+    const target = ensureNode(edge.target, edge.target_type);
+    source.degree += 1;
+    source.sourceCount += 1;
+    target.degree += 1;
+    target.targetCount += 1;
+  });
+
+  const nodes = Array.from(nodeMap.values());
+  nodes.forEach((node) => {
+    node.r = clamp((compact ? 7 : 8) + Math.sqrt(node.degree) * (compact ? 1.9 : 2.2), compact ? 8 : 9, compact ? 15 : 18);
+  });
+
+  function sortNodes(a: GraphNodeLayout, b: GraphNodeLayout) {
+    return (
+      entityOrderIndex(a.type) - entityOrderIndex(b.type) ||
+      b.degree - a.degree ||
+      zhCollator.compare(a.id, b.id)
+    );
+  }
+
+  let sourceNodes = nodes
+    .filter((node) => node.type === "Company" || (node.sourceCount > 0 && node.sourceCount >= node.targetCount))
+    .sort(sortNodes);
+  if (!sourceNodes.length) {
+    sourceNodes = nodes.filter((node) => node.sourceCount > 0).sort(sortNodes);
+  }
+  const sourceSet = new Set(sourceNodes.map((node) => node.id));
+  const targetGroups = new Map<string, GraphNodeLayout[]>();
+  nodes
+    .filter((node) => !sourceSet.has(node.id))
+    .sort(sortNodes)
+    .forEach((node) => {
+      const key = node.type || "Entity";
+      const group = targetGroups.get(key) ?? [];
+      group.push(node);
+      targetGroups.set(key, group);
+    });
+
+  const columns: Array<{ id: string; label: string; type: string; nodes: GraphNodeLayout[] }> = [];
+  const maxRowsPerColumn = compact ? 12 : 24;
+
+  function pushColumns(id: string, label: string, type: string, columnNodes: GraphNodeLayout[]) {
+    for (let start = 0; start < columnNodes.length; start += maxRowsPerColumn) {
+      const chunk = columnNodes.slice(start, start + maxRowsPerColumn);
+      const suffix = columnNodes.length > maxRowsPerColumn ? ` ${Math.floor(start / maxRowsPerColumn) + 1}` : "";
+      columns.push({ id: `${id}-${start}`, label: `${label}${suffix}`, type, nodes: chunk });
+    }
+  }
+
+  if (sourceNodes.length) {
+    pushColumns("source", "起点", "", sourceNodes);
+  }
+  Array.from(targetGroups.entries())
+    .sort(([a], [b]) => entityOrderIndex(a) - entityOrderIndex(b) || zhCollator.compare(entityStyle(a).label, entityStyle(b).label))
+    .forEach(([type, group]) => {
+      pushColumns(type, entityStyle(type).label, type, group);
+    });
+  if (!columns.length && nodes.length) {
+    columns.push({ id: "entities", label: "实体", type: "", nodes });
+  }
+
+  const nodeGap = compact ? 46 : 54;
+  const columnGap = compact ? 214 : 282;
+  const leftPadding = compact ? 64 : 88;
+  const topPadding = compact ? 58 : 68;
+  const rightPadding = compact ? 188 : 240;
+  const bottomPadding = compact ? 72 : 88;
+  const maxRows = Math.max(...columns.map((column) => column.nodes.length), 1);
+  const width = Math.max(viewport.width, leftPadding + Math.max(columns.length - 1, 0) * columnGap + rightPadding);
+  const height = Math.max(viewport.height, topPadding + Math.max(maxRows - 1, 0) * nodeGap + bottomPadding);
+  const columnLayouts: GraphColumnLayout[] = [];
+
+  columns.forEach((column, columnIndex) => {
+    const x = leftPadding + columnIndex * columnGap;
+    columnLayouts.push({ id: column.id, label: column.label, type: column.type, x, count: column.nodes.length });
+    column.nodes.forEach((node, nodeIndex) => {
+      node.x = x;
+      node.y = topPadding + nodeIndex * nodeGap;
+      node.lane = column.id;
+    });
+  });
+
+  return {
+    width,
+    height,
+    nodes,
+    edges: visibleEdges,
+    columns: columnLayouts,
+    legendTypes: Array.from(new Set(nodes.map((node) => node.type))).sort((a, b) => entityOrderIndex(a) - entityOrderIndex(b)),
+    showEdgeLabels: visibleEdges.length <= (compact ? 10 : 18) && nodes.length <= (compact ? 22 : 34)
+  };
+}
+
+function fitGraphTransform(layout: GraphLayout, viewport: { width: number; height: number }): GraphTransform {
+  if (!layout.nodes.length) return { x: 0, y: 0, scale: 1 };
+  const padding = 42;
+  const scale = Math.min(
+    (viewport.width - padding * 2) / Math.max(layout.width, 1),
+    (viewport.height - padding * 2) / Math.max(layout.height, 1),
+    1.18
+  );
+  const safeScale = clamp(scale, 0.08, 1.18);
+  return {
+    x: (viewport.width - layout.width * safeScale) / 2,
+    y: (viewport.height - layout.height * safeScale) / 2,
+    scale: safeScale
+  };
+}
+
+function graphPath(source: GraphNodeLayout, target: GraphNodeLayout, index: number) {
+  const direction = target.x >= source.x ? 1 : -1;
+  const startX = source.x + source.r * direction;
+  const endX = target.x - target.r * direction;
+  const startY = source.y;
+  const endY = target.y;
+  const offset = ((index % 9) - 4) * 3.5;
+  if (Math.abs(endX - startX) < 28) {
+    const loop = 44 + (index % 5) * 10;
+    return `M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${(startX + loop).toFixed(1)} ${(startY - 22).toFixed(1)}, ${(endX + loop).toFixed(1)} ${(endY + 22).toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+  }
+  const curve = Math.max(72, Math.abs(endX - startX) * 0.42);
+  return `M ${startX.toFixed(1)} ${startY.toFixed(1)} C ${(startX + curve * direction).toFixed(1)} ${(startY + offset).toFixed(1)}, ${(endX - curve * direction).toFixed(1)} ${(endY - offset).toFixed(1)}, ${endX.toFixed(1)} ${endY.toFixed(1)}`;
+}
+
+function edgeLabelPoint(source: GraphNodeLayout, target: GraphNodeLayout, index: number) {
+  return {
+    x: (source.x + target.x) / 2,
+    y: (source.y + target.y) / 2 - 7 + ((index % 5) - 2) * 4
+  };
+}
+
+function GraphCanvas(props: { edges: GraphEdge[]; variant?: GraphVariant; empty: string }) {
+  const variant = props.variant ?? "large";
+  const viewport = GRAPH_VIEWPORTS[variant];
+  const layout = useMemo(() => createGraphLayout(props.edges, variant), [props.edges, variant]);
+  const [transform, setTransform] = useState<GraphTransform>({ x: 0, y: 0, scale: 1 });
+  const [isPanning, setIsPanning] = useState(false);
+  const dragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+    unitX: number;
+    unitY: number;
+  } | null>(null);
+  const reactId = useId();
+  const arrowId = useMemo(() => `graph-arrow-${reactId.replace(/:/g, "")}`, [reactId]);
+  const nodeById = useMemo(() => new Map(layout.nodes.map((node) => [node.id, node])), [layout.nodes]);
+
+  useEffect(() => {
+    setTransform(fitGraphTransform(layout, viewport));
+  }, [layout, viewport.height, viewport.width]);
+
+  if (!layout.edges.length) return <div className="empty-table">{props.empty}</div>;
+
+  function zoomAt(point: { x: number; y: number }, scale: number) {
+    setTransform((current) => {
+      const nextScale = clamp(scale, 0.08, 4.5);
+      const localX = (point.x - current.x) / current.scale;
+      const localY = (point.y - current.y) / current.scale;
+      return {
+        scale: nextScale,
+        x: point.x - localX * nextScale,
+        y: point.y - localY * nextScale
+      };
+    });
+  }
+
+  function zoomBy(factor: number) {
+    setTransform((current) => {
+      const point = { x: viewport.width / 2, y: viewport.height / 2 };
+      const nextScale = clamp(current.scale * factor, 0.08, 4.5);
+      const localX = (point.x - current.x) / current.scale;
+      const localY = (point.y - current.y) / current.scale;
+      return {
+        scale: nextScale,
+        x: point.x - localX * nextScale,
+        y: point.y - localY * nextScale
+      };
+    });
+  }
+
+  function fitGraph() {
+    setTransform(fitGraphTransform(layout, viewport));
+  }
+
+  function eventPoint(event: WheelEvent<SVGSVGElement> | PointerEvent<SVGSVGElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * viewport.width,
+      y: ((event.clientY - rect.top) / rect.height) * viewport.height
+    };
+  }
+
+  function onWheel(event: WheelEvent<SVGSVGElement>) {
+    event.preventDefault();
+    const factor = event.deltaY < 0 ? 1.16 : 0.86;
+    zoomAt(eventPoint(event), transform.scale * factor);
+  }
+
+  function onPointerDown(event: PointerEvent<SVGSVGElement>) {
+    if (event.button !== 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: transform.x,
+      originY: transform.y,
+      unitX: viewport.width / rect.width,
+      unitY: viewport.height / rect.height
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    setIsPanning(true);
+  }
+
+  function onPointerMove(event: PointerEvent<SVGSVGElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    setTransform((current) => ({
+      ...current,
+      x: drag.originX + (event.clientX - drag.startX) * drag.unitX,
+      y: drag.originY + (event.clientY - drag.startY) * drag.unitY
+    }));
+  }
+
+  function stopPanning(event: PointerEvent<SVGSVGElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    if (event.currentTarget.hasPointerCapture(drag.pointerId)) {
+      event.currentTarget.releasePointerCapture(drag.pointerId);
+    }
+    dragRef.current = null;
+    setIsPanning(false);
+  }
+
+  return (
+    <div className={`graph-canvas ${variant}`}>
+      <div className="graph-toolbar">
+        <span className="graph-count">{layout.nodes.length} 节点 · {layout.edges.length} 关系 · {Math.round(transform.scale * 100)}%</span>
+        <div className="graph-actions" aria-label="图谱控制">
+          <span className="graph-tool-hint" title="拖拽画布可平移" aria-label="拖拽画布可平移">
+            <Move size={16} />
+          </span>
+          <button type="button" title="缩小" aria-label="缩小" onClick={() => zoomBy(0.78)}>
+            <ZoomOut size={16} />
+          </button>
+          <button type="button" title="放大" aria-label="放大" onClick={() => zoomBy(1.28)}>
+            <ZoomIn size={16} />
+          </button>
+          <button type="button" title="适配窗口" aria-label="适配窗口" onClick={fitGraph}>
+            <Maximize2 size={16} />
+          </button>
+        </div>
+      </div>
+      <svg
+        className={isPanning ? "is-panning" : ""}
+        viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+        role="img"
+        aria-label="产业链知识图谱"
+        onWheel={onWheel}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={stopPanning}
+        onPointerCancel={stopPanning}
+      >
+        <rect width={viewport.width} height={viewport.height} fill="#f8fafc" />
+        <defs>
+          <marker id={arrowId} markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
+            <path d="M0,0 L0,7 L7,3.5 z" fill="#94a3b8" />
+          </marker>
+        </defs>
+        <g transform={`translate(${transform.x.toFixed(2)} ${transform.y.toFixed(2)}) scale(${transform.scale.toFixed(4)})`}>
+          {layout.columns.map((column) => (
+            <g className="graph-column-label" key={column.id}>
+              <text x={column.x} y="32" textAnchor="middle">
+                {column.label}
+              </text>
+              <text x={column.x} y="49" textAnchor="middle">
+                {column.count}
+              </text>
+            </g>
+          ))}
+          {layout.edges.map((edge, index) => {
+            const source = nodeById.get(edge.source);
+            const target = nodeById.get(edge.target);
+            if (!source || !target) return null;
+            const labelPoint = edgeLabelPoint(source, target, index);
+            return (
+              <g className="graph-edge-group" key={edge.key}>
+                <path className="graph-edge" d={graphPath(source, target, index)} markerEnd={`url(#${arrowId})`}>
+                  <title>
+                    {edge.source} - {edge.label} - {edge.target}
+                  </title>
+                </path>
+                {layout.showEdgeLabels && (
+                  <text className="graph-edge-label" x={labelPoint.x} y={labelPoint.y} textAnchor="middle">
+                    {edge.label}
+                  </text>
+                )}
+              </g>
+            );
+          })}
+          {layout.nodes.map((node) => {
+            const style = entityStyle(node.type);
+            const lines = splitSvgLabel(node.id, variant === "compact" ? 8 : 10);
+            return (
+              <g className="graph-node" key={node.id}>
+                <circle cx={node.x} cy={node.y} r={node.r} fill={style.color}>
+                  <title>
+                    {node.id} · {style.label}
+                  </title>
+                </circle>
+                <text className="graph-node-label" x={node.x + node.r + 8} y={node.y - (lines.length - 1) * 7 + 4}>
+                  {lines.map((line, index) => (
+                    <tspan key={line} x={node.x + node.r + 8} dy={index === 0 ? 0 : 14}>
+                      {line}
+                    </tspan>
+                  ))}
+                </text>
+              </g>
+            );
+          })}
+        </g>
+      </svg>
+      <div className="graph-legend">
+        {layout.legendTypes.map((type) => {
+          const style = entityStyle(type);
+          return (
+            <span key={type}>
+              <i style={{ background: style.color }} />
+              {style.label}
+            </span>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -986,59 +1473,7 @@ function JsonBlock(props: { value: unknown; title?: string }) {
 }
 
 function SubgraphMini(props: { edges: GraphEdge[] }) {
-  if (!props.edges.length) return <div className="empty-table">当前答案没有可展示的子图</div>;
-  const nodes = Array.from(new Set(props.edges.flatMap((edge) => [edge.source, edge.target]).filter(Boolean)));
-  const width = 560;
-  const height = 360;
-  const radius = 128;
-  const cx = width / 2;
-  const cy = height / 2;
-  const positions = new Map<string, { x: number; y: number }>();
-  nodes.forEach((node, index) => {
-    const angle = (Math.PI * 2 * index) / Math.max(nodes.length, 1);
-    positions.set(node, { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
-  });
-  return (
-    <svg className="mini-graph" viewBox={`0 0 ${width} ${height}`} role="img">
-      <defs>
-        <marker id="mini-arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto">
-          <path d="M0,0 L0,6 L9,3 z" fill="#8b8174" />
-        </marker>
-      </defs>
-      {props.edges.slice(0, 40).map((edge, index) => {
-        const source = positions.get(edge.source);
-        const target = positions.get(edge.target);
-        if (!source || !target) return null;
-        return (
-          <g key={`${edge.source}-${edge.target}-${index}`}>
-            <line
-              x1={source.x}
-              y1={source.y}
-              x2={target.x}
-              y2={target.y}
-              stroke="#8b8174"
-              strokeWidth="1.2"
-              markerEnd="url(#mini-arrow)"
-            />
-            <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 4} textAnchor="middle">
-              {edge.label}
-            </text>
-          </g>
-        );
-      })}
-      {nodes.map((node) => {
-        const position = positions.get(node)!;
-        return (
-          <g key={node}>
-            <circle cx={position.x} cy={position.y} r="22" />
-            <text x={position.x} y={position.y + 39} textAnchor="middle">
-              {node.length > 12 ? `${node.slice(0, 12)}...` : node}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
+  return <GraphCanvas edges={props.edges} variant="compact" empty="当前答案没有可展示的子图" />;
 }
 
 function GeometricBackdrop() {
