@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import dataclass
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -49,6 +51,15 @@ class ChatTextResult:
     usage: dict[str, Any] | None = None
 
 
+@dataclass(frozen=True)
+class ChatStreamChunk:
+    content: str = ""
+    reasoning_content: str = ""
+    model: str = ""
+    usage: dict[str, Any] | None = None
+    finish_reason: str = ""
+
+
 class OpenAICompatibleClient:
     def __init__(
         self,
@@ -66,7 +77,10 @@ class OpenAICompatibleClient:
         self.timeout = timeout
         self.max_retries = max_retries
         self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
-        thinking_default = "deepseek" in self.base_url.casefold()
+        model_name = self.model.casefold()
+        thinking_default = "deepseek" in self.base_url.casefold() and (
+            "reasoner" in model_name or "v4-pro" in model_name
+        )
         self.thinking_enabled = env_bool(("LLM_THINKING_ENABLED", "LLM_ENABLE_THINKING"), thinking_default)
         self.reasoning_effort = os.getenv("LLM_REASONING_EFFORT", "high").strip()
         self._thinking_runtime_disabled = False
@@ -177,6 +191,23 @@ class OpenAICompatibleClient:
                     time.sleep(1.5 * (attempt + 1))
         raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_error}")
 
+    def stream_chat_messages(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float = 0.2,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> Iterator[ChatStreamChunk]:
+        payload = self._build_payload(
+            messages=messages,
+            temperature=temperature,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+        )
+        payload["stream"] = True
+        yield from self._stream_chat(payload)
+
     def _build_payload(
         self,
         *,
@@ -232,6 +263,54 @@ class OpenAICompatibleClient:
                 if attempt + 1 < self.max_retries:
                     time.sleep(1.5 * (attempt + 1))
         raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_error}")
+
+    def _stream_chat(self, payload: dict[str, Any]) -> Iterator[ChatStreamChunk]:
+        headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+        last_error: Exception | None = None
+        allow_thinking = "thinking" in payload or "reasoning_effort" in payload
+        for attempt in range(self.max_retries):
+            try:
+                request_payload = dict(payload)
+                if not allow_thinking:
+                    request_payload.pop("thinking", None)
+                    request_payload.pop("reasoning_effort", None)
+                with requests.post(
+                    self.chat_url,
+                    headers=headers,
+                    json=request_payload,
+                    timeout=self.timeout,
+                    stream=True,
+                ) as response:
+                    if response.status_code == 400 and allow_thinking:
+                        allow_thinking = False
+                        self._thinking_runtime_disabled = True
+                        continue
+                    response.raise_for_status()
+                    for line in response.iter_lines(decode_unicode=True):
+                        if not line:
+                            continue
+                        text = line.strip()
+                        if not text.startswith("data:"):
+                            continue
+                        data_text = text[5:].strip()
+                        if data_text == "[DONE]":
+                            return
+                        data = json.loads(data_text)
+                        choice = (data.get("choices") or [{}])[0]
+                        delta = choice.get("delta") or {}
+                        yield ChatStreamChunk(
+                            content=str(delta.get("content") or ""),
+                            reasoning_content=str(delta.get("reasoning_content") or ""),
+                            model=str(data.get("model") or self.model),
+                            usage=data.get("usage"),
+                            finish_reason=str(choice.get("finish_reason") or ""),
+                        )
+                    return
+            except (requests.RequestException, ValueError, KeyError, IndexError) as exc:
+                last_error = exc
+                if attempt + 1 < self.max_retries:
+                    time.sleep(1.5 * (attempt + 1))
+        raise RuntimeError(f"LLM stream failed after {self.max_retries} attempts: {last_error}")
 
 
 class MockLLMClient:

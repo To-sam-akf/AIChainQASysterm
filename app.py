@@ -22,6 +22,7 @@ load_dotenv()
 st.set_page_config(page_title="AI算力产业链知识图谱问答系统", layout="wide")
 CONVERSATION_DIR = Path("data/conversations")
 REASONING_EFFORTS = ["low", "medium", "high"]
+DEFAULT_DETAIL_PREVIEW_ROWS = 12
 
 
 @st.cache_data(show_spinner=False)
@@ -51,9 +52,13 @@ def env_bool(name: str, default: bool = False) -> bool:
 def ensure_conversation_state() -> None:
     st.session_state.setdefault("qa_turns", [])
     st.session_state.setdefault("saved_conversation_path", "")
+    model_name = os.getenv("LLM_MODEL", "").casefold()
+    thinking_default = "deepseek" in os.getenv("LLM_BASE_URL", "").casefold() and (
+        "reasoner" in model_name or "v4-pro" in model_name
+    )
     st.session_state.setdefault(
         "llm_thinking_enabled",
-        env_bool("LLM_THINKING_ENABLED", "deepseek" in os.getenv("LLM_BASE_URL", "").casefold()),
+        env_bool("LLM_THINKING_ENABLED", thinking_default),
     )
     effort = os.getenv("LLM_REASONING_EFFORT", "high").strip() or "high"
     st.session_state.setdefault("llm_reasoning_effort", effort if effort in REASONING_EFFORTS else "high")
@@ -230,7 +235,11 @@ def page_overview(graph: LocalKnowledgeGraph) -> None:
     st.write(" / ".join(f"`{item}`" for item in examples))
 
 
-def render_qa_details(result: dict) -> None:
+def preview_rows(rows: list[dict], limit: int = DEFAULT_DETAIL_PREVIEW_ROWS) -> list[dict]:
+    return rows[:limit]
+
+
+def render_qa_details(result: dict, *, preview_limit: int = DEFAULT_DETAIL_PREVIEW_ROWS) -> None:
     if result.get("contextual_question") and result["contextual_question"] != result.get("question"):
         st.caption(f"结合历史对话改写后的检索问题：{result['contextual_question']}")
 
@@ -255,19 +264,19 @@ def render_qa_details(result: dict) -> None:
     st.subheader("证据链")
     evidence_cards = result.get("evidence_cards") or result["evidence"]
     if evidence_cards:
-        st.dataframe(evidence_cards, width="stretch", hide_index=True)
+        st.dataframe(preview_rows(evidence_cards, preview_limit), width="stretch", hide_index=True)
     else:
         st.info("当前知识图谱中未找到相关证据。")
 
     st.subheader("Neo4j 查询结果")
     if result["graph_records"]:
-        st.dataframe(result["graph_records"], width="stretch", hide_index=True)
+        st.dataframe(preview_rows(result["graph_records"], preview_limit), width="stretch", hide_index=True)
     else:
         st.info("graph_records 为空。")
 
     st.subheader("本地 RAG 命中")
     if result["rag_hits"]:
-        st.dataframe(result["rag_hits"], width="stretch", hide_index=True)
+        st.dataframe(preview_rows(result["rag_hits"], preview_limit), width="stretch", hide_index=True)
     else:
         st.info("rag_hits 为空。")
 
@@ -365,15 +374,27 @@ def page_qa(engine: QAEngine) -> None:
         st.info("当前还没有问答记录。输入问题后，本轮和后续追问都会保留在这里。")
         return
 
-    for index, turn in enumerate(st.session_state["qa_turns"]):
+    turns = st.session_state["qa_turns"]
+    render_latest_only = env_bool("QA_UI_RENDER_LATEST_ONLY", True)
+    selected_detail_index = len(turns) - 1
+    if render_latest_only and len(turns) > 1:
+        selected_detail_index = st.selectbox(
+            "证据详情",
+            options=list(range(len(turns))),
+            index=len(turns) - 1,
+            format_func=lambda value: f"第 {value + 1} 轮：{short_text(turns[value].get('question', ''), 30)}",
+        )
+
+    for index, turn in enumerate(turns):
         st.markdown(f"**用户 {index + 1}：** {turn['question']}")
         thinking_label = "开启" if turn.get("thinking_enabled") else "关闭"
         effort = turn.get("reasoning_effort") or "无"
         st.caption(f"思考模式：{thinking_label}；思考强度：{effort}")
         st.markdown("**助手：**")
         st.write(turn["answer"])
-        with st.expander("证据、图谱与诊断", expanded=index == len(st.session_state["qa_turns"]) - 1):
-            render_qa_details(turn["result"])
+        if not render_latest_only or index == selected_detail_index:
+            with st.expander("证据、图谱与诊断", expanded=index == selected_detail_index):
+                render_qa_details(turn["result"])
         st.divider()
 
 

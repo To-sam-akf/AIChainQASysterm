@@ -49,22 +49,33 @@ def search_csv_graph(
     *,
     limit: int = 50,
 ) -> list[dict[str, Any]]:
-    rows = [row for row in graph.relations if row.get("relation") != "MENTIONED_IN"]
+    rows = graph.relation_candidates(exclude_relations={"MENTIONED_IN"})
     if plan.answer_type == "topic_to_company":
-        rows = [row for row in rows if row.get("head_type") == "Company"]
+        rows = graph.relation_candidates(
+            relations=plan.relations,
+            head_type="Company",
+            exclude_relations={"MENTIONED_IN"},
+        )
         rows = apply_core_filter(rows, plan)
-        rows = [row for row in rows if row.get("relation") in set(plan.relations)]
         rows = [row for row in rows if row_matches_plan(row, plan)]
         return normalize_graph_records(top_rows_by_company(rows, plan, max_per_company=2))[:limit]
     if plan.answer_type == "company_compare":
-        rows = [row for row in rows if row.get("head_type") == "Company" and row.get("head_name") in set(plan.companies)]
-        rows = [row for row in rows if row.get("relation") in set(plan.relations)]
+        rows = graph.relation_candidates(
+            companies=plan.companies,
+            relations=plan.relations,
+            head_type="Company",
+            exclude_relations={"MENTIONED_IN"},
+        )
         if plan.expanded_topics:
             matched = [row for row in rows if row_matches_plan(row, plan)]
             rows = matched or rows
         return normalize_graph_records(top_rows_by_company(rows, plan, max_per_company=8))[:limit]
     if plan.answer_type == "risk_analysis":
-        rows = [row for row in rows if row.get("head_type") == "Company" and row.get("head_name") in set(plan.companies)]
+        rows = graph.relation_candidates(
+            companies=plan.companies,
+            head_type="Company",
+            exclude_relations={"MENTIONED_IN"},
+        )
         risk_rows = [row for row in rows if row.get("relation") == "DISCLOSES_RISK"]
         business_rows = [row for row in rows if row.get("relation") in {"USES_TECHNOLOGY", "HAS_PRODUCT", "BELONGS_TO_CHAIN"} and row_matches_plan(row, plan)]
         return normalize_graph_records(top_rows(business_rows, plan, 12) + top_rows(risk_rows, plan, 14))[:limit]
@@ -80,9 +91,12 @@ def search_csv_graph(
             rows = matched or rows
         return normalize_graph_records(top_rows(rows, plan, limit))[:limit]
     if plan.companies:
-        rows = [row for row in rows if row.get("head_type") == "Company" and row.get("head_name") in set(plan.companies)]
-        if plan.relations:
-            rows = [row for row in rows if row.get("relation") in set(plan.relations)]
+        rows = graph.relation_candidates(
+            companies=plan.companies,
+            relations=plan.relations,
+            head_type="Company",
+            exclude_relations={"MENTIONED_IN"},
+        )
         if plan.expanded_topics:
             matched = [row for row in rows if row_matches_plan(row, plan)]
             rows = matched or rows
@@ -399,4 +413,3 @@ def unique(values: Iterable[str]) -> list[str]:
             seen.add(value)
             result.append(value)
     return result
-

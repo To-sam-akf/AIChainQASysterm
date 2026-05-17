@@ -38,6 +38,8 @@ def test_build_rag_index_and_search_hits_relevant_chunk(tmp_path: Path) -> None:
     assert hits
     assert hits[0].company == "浪潮信息"
     assert "AI服务器" in hits[0].snippet
+    cached_hits = index.search("哪些公司涉及AI服务器？", top_k=3)
+    assert cached_hits == hits
 
 
 def test_rag_index_hits_industry_whitepaper_terms(tmp_path: Path) -> None:

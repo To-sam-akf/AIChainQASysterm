@@ -3,6 +3,7 @@ from pathlib import Path
 
 from src.curated_graph import build_curated_graph
 from src.frontend_data import LocalKnowledgeGraph
+from src.llm_client import ChatStreamChunk, ChatTextResult
 from src.qa_engine import QAEngine
 from src.question_planner import heuristic_plan_question
 
@@ -147,3 +148,106 @@ def test_followup_question_uses_conversation_history() -> None:
     assert result["answer_type"] == "risk_analysis"
     assert "客户需求波动" in result["answer"]
     assert "海外市场波动" in result["answer"]
+
+
+class RecordingLLMClient:
+    def chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object) -> ChatTextResult:
+        del temperature, kwargs
+        system_prompt = messages[0]["content"]
+        if "追问改写器" in system_prompt:
+            return ChatTextResult(content="中际旭创和新易盛 继续说它们的主要风险")
+        return ChatTextResult(content="基于证据回答。")
+
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
+        del system_prompt, user_prompt, temperature, kwargs
+        return "基于证据回答。"
+
+
+class StreamingLLMClient(RecordingLLMClient):
+    def stream_chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object):
+        del messages, temperature, kwargs
+        yield ChatStreamChunk(content="结论：")
+        yield ChatStreamChunk(content="浪潮信息涉及 AI 服务器。")
+
+
+def test_fast_path_limits_llm_calls_on_first_turn() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=RecordingLLMClient())
+
+    result = engine.answer_question("哪些上市公司涉及AI服务器？")
+
+    assert result["diagnostics"]["llm_calls"]["total"] <= 1
+    assert result["diagnostics"]["planner_source"] == "heuristic"
+    assert result["cypher_source"] == "question_plan_csv"
+    assert "timings_ms" in result["diagnostics"]
+
+
+def test_independent_multiturn_question_skips_contextualizer_llm() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=RecordingLLMClient())
+
+    result = engine.answer_question(
+        "哪些上市公司涉及AI服务器？",
+        conversation_history=[
+            {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
+            {"role": "assistant", "content": "两家公司都涉及光模块业务。"},
+        ],
+    )
+
+    assert result["diagnostics"]["contextualized"] is False
+    assert result["diagnostics"]["llm_calls"]["total"] == 1
+
+
+def test_followup_question_uses_contextualizer_llm_when_needed() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "中际旭创", "relation": "DISCLOSES_RISK", "tail_type": "Risk", "tail_name": "客户需求波动", "evidence": "中际旭创披露客户需求和产品价格波动风险。", "source_title": "年报", "page": "88", "source_tier": "1", "section": "风险因素"},
+            {"head_type": "Company", "head_name": "新易盛", "relation": "DISCLOSES_RISK", "tail_type": "Risk", "tail_name": "海外市场波动", "evidence": "新易盛披露海外市场、汇率及客户需求变化风险。", "source_title": "年报", "page": "92", "source_tier": "1", "section": "风险因素"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=RecordingLLMClient())
+
+    result = engine.answer_question(
+        "继续说它们的主要风险",
+        conversation_history=[
+            {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
+            {"role": "assistant", "content": "两家公司都涉及光模块业务。"},
+        ],
+    )
+
+    assert result["diagnostics"]["contextualized"] is True
+    assert result["diagnostics"]["llm_calls"]["total"] == 2
+    assert result["answer_type"] == "risk_analysis"
+
+
+def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=StreamingLLMClient())
+
+    events = list(engine.answer_question_stream("哪些上市公司涉及AI服务器？", thinking_enabled=True, reasoning_effort="low"))
+
+    assert any(event.get("type") == "progress" for event in events)
+    assert [event.get("content") for event in events if event.get("type") == "answer_delta"] == [
+        "结论：",
+        "浪潮信息涉及 AI 服务器。",
+    ]
+    final = events[-1]
+    assert final["type"] == "final"
+    assert final["result"]["answer"] == "结论：浪潮信息涉及 AI 服务器。"
+    assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1

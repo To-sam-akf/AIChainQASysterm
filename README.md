@@ -126,18 +126,23 @@ python scripts/build_rag_index.py
 - `QA_EVIDENCE_TOP_N`：最终进入答案的证据卡片数量。
 - `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
+- `RAG_SEARCH_CACHE_SIZE`：本地 RAG 查询结果 LRU 缓存大小，默认 128。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
-- `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；关闭后使用本地启发式查询。
-- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 8。
-- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 16000。
-- `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，默认在 DeepSeek endpoint 下开启。
-- `LLM_REASONING_EFFORT`：DeepSeek 思考强度，默认 `high`。
+- `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
+- `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
+- `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
+- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 3。
+- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 4000。
+- `QA_UI_RENDER_LATEST_ONLY`：前端是否只默认渲染选中轮次的证据详情，默认开启。
+- `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，快问快答默认关闭。
+- `LLM_REASONING_EFFORT`：DeepSeek 思考强度，快问快答默认 `low`。
 
 运行专业问答回归评测：
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/benchmark_qa_speed.py
 ```
 
 如果要让评测也调用已配置的 LLM：
@@ -146,7 +151,52 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 ```
 
-## 第五阶段：前端展示
+## 第五阶段：React + FastAPI 前端展示
+
+推荐使用新的 React 工作台。后端 API 复用现有 `QAEngine`、本地图谱和 RAG 索引，并把问答历史自动保存到 `data/conversations/`，前端可以直接点击历史会话恢复并继续追问。
+
+安装 Python 依赖后启动 API：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn src.api:app --reload --port 8000
+```
+
+安装并启动前端：
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+浏览器打开 Vite 输出的地址（默认 `http://localhost:5173`）。Vite 会把 `/api` 请求代理到 `http://127.0.0.1:8000`。
+
+如果 8000 端口已被占用，可以把 API 启动到其他端口，并在启动 Vite 时指定代理目标：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn src.api:app --reload --port 8001
+cd web
+VITE_API_PROXY_TARGET=http://127.0.0.1:8001 npm run dev
+```
+
+React 工作台包括：
+
+- 智能问答：主流 chatbot 式对话流，支持连续追问、发送中状态、错误提示和证据详情抽屉。
+- 自动会话库：每轮问答自动落盘，侧栏可新建、恢复、重命名、删除、导出 Markdown。
+- 数据概览：实体、关系、报告数量、图谱/RAG/LLM 状态和分布。
+- 产业链图谱：按公司、技术、关系类型筛选子图和明细。
+- 模型设置：可切换 DeepSeek 思考模式和 `low`、`medium`、`high` 思考强度。
+
+生产构建：
+
+```bash
+cd web
+npm run build
+```
+
+### Streamlit 旧入口
+
+保留 Streamlit 版本作为轻量演示和回退入口：
 
 启动 Streamlit：
 
@@ -154,7 +204,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 streamlit run app.py
 ```
 
-前端直接进入系统，不做营销页。页面包括：
+Streamlit 页面包括：
 
 - 数据概览：实体、关系、报告数量和分布。
 - 智能问答：支持连续多轮追问，展示问题规划、专业答案、模型思考过程、Cypher/CSV 查询意图、图谱结果、本地 RAG 命中、证据卡片、诊断状态和子图。
