@@ -10,6 +10,7 @@ from typing import Any, Iterable
 
 from src.domain_lexicon import (
     BOTTLENECK_TERMS,
+    TECHNICAL_SOURCE_TYPES,
     company_groups_by_segment,
     company_segment,
     is_core_company,
@@ -20,7 +21,7 @@ from src.domain_lexicon import (
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
-from src.research_claims import ResearchHit
+from src.research_claims import ResearchHit, query_focus_terms
 
 
 @dataclass(frozen=True)
@@ -252,6 +253,8 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
             score += 1.0
         if hit.source_type == "authority_whitepaper":
             score += 1.0
+        if hit.source_type in TECHNICAL_SOURCE_TYPES and plan.answer_type in {"industry_bottleneck", "thematic_research"}:
+            score += 1.0
         if hit.company and hit.company in plan.companies:
             score += 1.2
         if plan.expanded_topics and any(normalize_topic(term) in normalize_topic(hit.snippet) for term in plan.expanded_topics):
@@ -276,10 +279,18 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
 
 
 def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> list[EvidenceCard]:
-    del plan
     cards = []
+    focus_terms = query_focus_terms(plan.question)
     for hit in hits:
         score = hit.score + (60.0 if hit.kind == "dossier" else 45.0)
+        if focus_terms:
+            text = f"{hit.title} {hit.text} {hit.source} {hit.section}"
+            if text_matches_terms(text, focus_terms):
+                score += 8.0 if hit.kind == "claim" else 2.0
+            elif hit.kind == "dossier":
+                score -= 18.0
+            else:
+                score -= 4.0
         cards.append(
             EvidenceCard(
                 kind=hit.kind,
@@ -430,13 +441,24 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
 
 def fallback_research_answer(plan: QuestionPlan, research_cards: list[EvidenceCard], all_cards: list[EvidenceCard]) -> str:
     topic = "、".join(plan.topics or unique([card.topic for card in research_cards])[:2]) or "该主题"
-    core_judgment = next((card.evidence.splitlines()[0] for card in research_cards if card.kind == "dossier"), "")
+    focus_terms = query_focus_terms(plan.question)
+    focused_claims = focus_cards(research_cards, focus_terms)
+    primary_cards = focused_claims or research_cards
+    core_judgment = ""
+    if focused_claims:
+        core_judgment = focused_claims[0].evidence.replace("\n", "；").strip()
+    if not core_judgment:
+        core_judgment = next((card.evidence.splitlines()[0] for card in research_cards if card.kind == "dossier"), "")
     if not core_judgment:
         core_judgment = f"{topic} 的判断需要同时看技术瓶颈、产业传导、公司直接敞口和可验证指标。"
-    technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈")) or format_claims_by_type(research_cards, {"mechanism", "supply_chain", "bottleneck"}, 4)
+    technical = format_claims_by_type(primary_cards, {"mechanism", "supply_chain", "bottleneck", "trend"}, 4)
+    if technical == "当前证据不足。":
+        technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈"))
     transmission = format_dossier_lines(research_cards, ("公司敞口",)) or format_claims_by_type(research_cards, {"company_exposure", "policy"}, 4)
-    indicators = format_dossier_lines(research_cards, ("领先指标",)) or format_claims_by_type(research_cards, {"indicator"}, 4)
-    boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or format_claims_by_type(research_cards, {"risk"}, 4)
+    indicators = format_claims_by_type(primary_cards, {"indicator"}, 4)
+    if indicators == "当前证据不足。":
+        indicators = format_dossier_lines(research_cards, ("领先指标",)) or indicators
+    boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or format_claims_by_type(primary_cards, {"risk"}, 4)
     return (
         f"核心判断：{core_judgment}\n\n"
         f"技术机理：{technical}\n\n"
@@ -460,6 +482,18 @@ def format_claims_by_type(cards: list[EvidenceCard], claim_types: set[str], limi
         if len(values) >= limit:
             break
     return "；".join(values) if values else "当前证据不足。"
+
+
+def focus_cards(cards: list[EvidenceCard], focus_terms: list[str]) -> list[EvidenceCard]:
+    if not focus_terms:
+        return []
+    focused = [
+        card
+        for card in cards
+        if card.kind == "claim"
+        and text_matches_terms(f"{card.title} {card.evidence} {card.source} {card.section}", focus_terms)
+    ]
+    return sorted(focused, key=lambda card: (-card.score, card.claim_type, card.source, card.page))
 
 
 def format_dossier_lines(cards: list[EvidenceCard], labels: tuple[str, ...]) -> str:

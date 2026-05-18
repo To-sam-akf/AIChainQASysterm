@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT_DIR))
 from src.curated_graph import DEFAULT_CURATED_DIR, build_curated_graph
 from src.frontend_data import DEFAULT_ENTITIES_CSV, DEFAULT_RELATIONS_CSV
 from src.research_claims import build_research_artifacts
+from src.text_cleaner import CHUNKS_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +34,7 @@ def main() -> int:
     claims, evidence_spans, dossiers = build_research_artifacts(
         relations_csv=args.output_dir / "relations.csv",
         output_dir=args.output_dir,
+        chunks_dir=CHUNKS_DIR,
     )
     print(
         f"Wrote curated entities={len(entities)} relations={len(relations)} "

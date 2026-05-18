@@ -1,4 +1,5 @@
 import csv
+import json
 from pathlib import Path
 
 from src.frontend_data import LocalKnowledgeGraph
@@ -8,6 +9,7 @@ from src.research_claims import (
     CLAIM_CSV_FIELDS,
     ResearchMemory,
     build_research_artifacts,
+    claims_from_technical_chunks,
 )
 
 
@@ -35,6 +37,13 @@ def write_relations(path: Path, rows: list[dict[str, str]]) -> None:
         writer = csv.DictWriter(file, fieldnames=RELATION_FIELDS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_chunks(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as file:
+        for row in rows:
+            file.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
 def test_build_research_artifacts_ranks_direct_liquid_cooling_exposure(tmp_path: Path) -> None:
@@ -88,6 +97,93 @@ def test_build_research_artifacts_ranks_direct_liquid_cooling_exposure(tmp_path:
     liquid = next(dossier for dossier in dossiers if dossier["topic"] == "液冷")
     assert "英维克" in liquid["company_exposure"]["core"]
     assert "欧陆通" in liquid["company_exposure"]["indirect"]
+
+
+def test_technical_chunks_generate_direct_claims_and_dossiers(tmp_path: Path) -> None:
+    chunks_dir = tmp_path / "chunks"
+    write_chunks(
+        chunks_dir / "industry_tech_sample.jsonl",
+        [
+            {
+                "chunk_id": "tech_legal",
+                "report_id": "industry_tech_ualink_200g_2025",
+                "kind": "industry",
+                "source_title": "UALink 200G 1.0 Specification",
+                "source_tier": "1",
+                "source_type": "open_specification",
+                "page": "2",
+                "section": "LEGAL NOTICE",
+                "year": "2025",
+                "text": "LEGAL NOTICE ALL RIGHTS RESERVED TRADEMARK NO LICENSE GOVERNING DOCUMENTS.",
+            },
+            {
+                "chunk_id": "tech_ualink",
+                "report_id": "industry_tech_ualink_200g_2025",
+                "kind": "industry",
+                "source_title": "UALink 200G 1.0 Specification",
+                "source_tier": "1",
+                "source_type": "open_specification",
+                "page": "20",
+                "section": "Scale Up",
+                "year": "2025",
+                "text": "UALink is a scale-up interconnect for AI accelerator pods. The 200G interface enables a switch fabric for low-latency accelerator-to-accelerator communication.",
+            },
+            {
+                "chunk_id": "tech_deepseek",
+                "report_id": "industry_tech_deepseek_v3_2025",
+                "kind": "industry",
+                "source_title": "DeepSeek-V3 Technical Report",
+                "source_tier": "2",
+                "source_type": "model_technical_report",
+                "page": "5",
+                "section": "FP8 Training",
+                "year": "2025",
+                "text": "DeepSeek-V3 validates FP8 mixed precision training on an extremely large-scale model and overcomes the communication bottleneck with compute-communication overlap, requiring 2.788M H800 GPU hours.",
+            },
+            {
+                "chunk_id": "tech_ucie",
+                "report_id": "industry_tech_ucie_2_whitepaper_2024",
+                "kind": "industry",
+                "source_title": "UCIe 2.0 Specification Continuing Innovation to Drive an Open Chiplet Ecosystem",
+                "source_tier": "1",
+                "source_type": "open_specification",
+                "page": "4",
+                "section": "Chiplet",
+                "year": "2024",
+                "text": "UCIe supports an open chiplet ecosystem and advanced packaging, enabling heterogeneous integration for AI accelerators.",
+            },
+            {
+                "chunk_id": "tech_thermal",
+                "report_id": "industry_tech_hir_thermal_2023",
+                "kind": "industry",
+                "source_title": "HIR 2023 Thermal",
+                "source_tier": "1",
+                "source_type": "technical_roadmap",
+                "page": "9",
+                "section": "Thermal Management",
+                "year": "2023",
+                "text": "Liquid cooling with cold plate and CDU architecture relieves thermal management constraints as AI accelerator power density rises.",
+            },
+        ],
+    )
+    relations = tmp_path / "relations.csv"
+    output = tmp_path / "curated"
+    write_relations(relations, [])
+
+    direct_claims = claims_from_technical_chunks(chunks_dir)
+    claims, _, dossiers = build_research_artifacts(relations_csv=relations, output_dir=output, chunks_dir=chunks_dir)
+
+    assert direct_claims
+    assert all("LEGAL NOTICE" not in claim["evidence_span"] for claim in direct_claims)
+    assert {claim["topic"] for claim in direct_claims} >= {"算力网络", "AI芯片", "液冷"}
+    assert not any(claim["companies"] for claim in direct_claims)
+    assert any(claim["claim_type"] == "indicator" and "GPU hours" in claim["evidence_span"] for claim in claims)
+    network = next(dossier for dossier in dossiers if dossier["topic"] == "算力网络")
+    chip = next(dossier for dossier in dossiers if dossier["topic"] == "AI芯片")
+    thermal = next(dossier for dossier in dossiers if dossier["topic"] == "液冷")
+    assert "UALink" in network["summary"]
+    assert "FP8" in chip["summary"] or "UCIe" in chip["summary"]
+    assert "Liquid cooling" in thermal["summary"]
 
 
 def test_research_memory_improves_topic_company_answer(tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ from typing import Any
 
 from src.extraction_schema import ENTITY_TYPES, RELATION_TYPES, sanitize_extraction_payload
 from src.data_config import load_companies
+from src.domain_lexicon import TECHNICAL_SOURCE_TYPES
 
 
 SYSTEM_PROMPT = """你是知识图谱构建助手。你只从给定文本中抽取明确出现的信息，不编造。
@@ -18,7 +19,7 @@ def core_company_names() -> tuple[str, ...]:
     return tuple(company.company for company in load_companies() if company.is_core_company)
 
 
-def kind_instructions(kind: str) -> str:
+def kind_instructions(kind: str, source_type: str = "") -> str:
     if kind == "annual":
         return """财报抽取重点：
 - 只把本报告对应上市公司作为 Company；子公司、供应商、客户、券商、境外科技公司不要抽成 Company。
@@ -30,6 +31,13 @@ def kind_instructions(kind: str) -> str:
 - Company 优先限制在核心上市公司白名单；非上市公司仅在研报明确作为产业主体分析时才抽取。
 - 保留券商研报原文证据，不输出投资建议、评级、目标价。"""
     if kind == "industry":
+        if source_type in TECHNICAL_SOURCE_TYPES:
+            return """专业技术源抽取重点：
+- 这类来源包括技术路线图、开放规范、benchmark 方法、技术论文和模型技术报告。
+- 优先抽取 Workload、Architecture、Bottleneck、LeadingIndicator、DemandDriver、SupplyConstraint、IndustryConcept、Technology、Standard。
+- 重点保留技术机理、性能/功耗/带宽/时延/吞吐指标、互联或封装路径、热管理约束、训练/推理效率瓶颈。
+- 优先抽取 DEFINES、ENABLES、DRIVES、DEPENDS_ON、RELIEVES、CONSTRAINS、HAS_INDICATOR、UPSTREAM_OF、DOWNSTREAM_OF。
+- 默认不要抽 Company；只有文本明确出现核心 A 股上市公司白名单中的公司时才输出 Company。"""
         return """权威行业知识抽取重点：
 - 优先抽取 IndustryConcept、ValueChainSegment、Technology、Policy、Standard。
 - 优先抽取 Workload、Architecture、Bottleneck、LeadingIndicator、DemandDriver、SupplyConstraint。
@@ -49,7 +57,7 @@ def build_user_prompt(chunk: dict[str, Any]) -> str:
 核心上市公司白名单：
 {core_companies}
 
-{kind_instructions(kind)}
+{kind_instructions(kind, str(chunk.get("source_type", "")))}
 
 关系约束：
 - Company USES_TECHNOLOGY Technology

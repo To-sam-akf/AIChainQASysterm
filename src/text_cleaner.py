@@ -46,6 +46,12 @@ DISCLAIMER_LINES = (
     "请务必仔细阅读正文后的",
     "法律声明及风险提示",
     "评级说明及声明",
+    "LEGAL NOTICE",
+    "ALL RIGHTS RESERVED",
+    "MERCHANTABILITY",
+    "FITNESS FOR A PARTICULAR PURPOSE",
+    "NO LICENSE",
+    "GOVERNING DOCUMENTS",
 )
 
 TABLE_FRAGMENT_PATTERNS = (
@@ -66,6 +72,8 @@ def is_noise_line(line: str) -> bool:
     if stripped in {"目录", "释义", "重要提示"}:
         return True
     if any(term in stripped for term in DISCLAIMER_LINES):
+        return True
+    if any(term in stripped.upper() for term in DISCLAIMER_LINES):
         return True
     if len(stripped) < 4 and re.fullmatch(r"[-_=—]+", stripped):
         return True

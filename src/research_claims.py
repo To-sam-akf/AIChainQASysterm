@@ -19,15 +19,17 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from src.domain_lexicon import (
+    TECHNICAL_SOURCE_TYPES,
     THEME_SYNONYMS,
     canonical_company_name,
+    company_lookup,
     company_segment,
     expanded_terms,
     infer_themes,
     normalize_topic,
     text_matches_terms,
 )
-from src.extraction_schema import read_csv, stable_id
+from src.extraction_schema import load_jsonl, read_csv, stable_id
 from src.frontend_data import RELATION_LABELS
 
 
@@ -111,6 +113,154 @@ DIRECT_TOPIC_TERMS = {
     "电源": ("电源", "ups", "服务器电源", "数据中心电源", "电力模块"),
 }
 
+TECHNICAL_REPORT_PREFIX = "industry_tech_"
+MAX_DIRECT_CLAIMS_PER_REPORT = 80
+
+TECHNICAL_HIGH_SIGNAL_TERMS = (
+    "UCIe",
+    "UALink",
+    "Ultra Ethernet",
+    "UET",
+    "RDMA",
+    "congestion control",
+    "Scale Up",
+    "Scale-Up",
+    "Scale Out",
+    "Scale-Out",
+    "SerDes",
+    "224G",
+    "PAM4",
+    "InfiniBand",
+    "NVLink",
+    "all-to-all",
+    "switch fabric",
+    "CPO",
+    "LPO",
+    "NPO",
+    "silicon photonics",
+    "integrated photonics",
+    "optical engine",
+    "HBM",
+    "chiplet",
+    "advanced packaging",
+    "heterogeneous integration",
+    "2.5D",
+    "3D integration",
+    "FP8",
+    "MoE",
+    "MLA",
+    "FlashAttention",
+    "PagedAttention",
+    "MLPerf",
+    "time-to-train",
+    "throughput",
+    "latency",
+    "KV cache",
+    "memory bandwidth",
+    "communication overhead",
+    "compute-communication overlap",
+    "memory wall",
+    "cold plate",
+    "liquid cooling",
+    "thermal management",
+    "CDU",
+    "rack manifold",
+    "power density",
+    "AI accelerator",
+    "GPU hours",
+)
+
+TECHNICAL_LOW_VALUE_TERMS = (
+    "LEGAL NOTICE",
+    "ALL RIGHTS RESERVED",
+    "MERCHANTABILITY",
+    "FITNESS FOR A PARTICULAR PURPOSE",
+    "TRADEMARK",
+    "INTELLECTUAL PROPERTY",
+    "NO LICENSE",
+    "GOVERNING DOCUMENTS",
+    "WARRANTIES",
+    "COPYRIGHT",
+    "REFERENCES",
+    "BIBLIOGRAPHY",
+    "ACM SIGCOMM",
+    "IEEE TRANSACTIONS",
+)
+
+TECHNICAL_MECHANISM_TERMS = (
+    "enable",
+    "enables",
+    "support",
+    "supports",
+    "achieve",
+    "achieves",
+    "improve",
+    "improves",
+    "reduce",
+    "reduces",
+    "accelerate",
+    "accelerates",
+    "efficient",
+    "efficiency",
+    "overlap",
+    "scale",
+    "scaling",
+    "优化",
+    "提升",
+    "降低",
+    "支撑",
+    "推动",
+    "提高",
+)
+
+TECHNICAL_BOTTLENECK_TERMS = (
+    "bottleneck",
+    "constraint",
+    "constrained",
+    "limited",
+    "limitation",
+    "overhead",
+    "latency",
+    "congestion",
+    "memory wall",
+    "bandwidth",
+    "power density",
+    "thermal",
+    "功耗",
+    "散热",
+    "瓶颈",
+    "约束",
+    "受限",
+    "带宽",
+    "拥塞",
+)
+
+TECHNICAL_INDICATOR_TERMS = (
+    "benchmark",
+    "throughput",
+    "latency",
+    "time-to-train",
+    "GPU hours",
+    "tokens",
+    "parameters",
+    "GB/s",
+    "Tb/s",
+    "GT/s",
+    "PAM4",
+    "kW",
+    "MW",
+    "PUE",
+    "指标",
+    "吞吐",
+    "时延",
+    "带宽",
+)
+
+DIRECT_METRIC_PATTERN = re.compile(
+    r"([-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:[KMBT])?\s*(?:GPU hours|tokens|parameters|GB/s|Tb/s|GT/s|W|kW|MW|PUE|ms|us|ns|%))",
+    flags=re.I,
+)
+
 
 @dataclass(frozen=True)
 class ResearchHit:
@@ -167,8 +317,16 @@ def build_research_artifacts(
     *,
     relations_csv: Path,
     output_dir: Path = DEFAULT_RESEARCH_DIR,
+    chunks_dir: Path | None = None,
+    include_direct_claims: bool = True,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Build claims, evidence spans, and segment dossiers from curated relations."""
+    """Build claims, evidence spans, and segment dossiers.
+
+    The base layer is derived from curated KG relations. For professional
+    technical sources, we also derive direct original-text claims from chunks so
+    roadmap/spec/paper evidence can inform mechanisms and bottlenecks even when
+    it is not naturally represented as company-centric triples.
+    """
     relations = read_csv(relations_csv)
     claims: list[dict[str, Any]] = []
     evidence_spans: list[dict[str, Any]] = []
@@ -176,6 +334,14 @@ def build_research_artifacts(
 
     for row in relations:
         for claim in claims_from_relation(row):
+            if claim["claim_id"] in seen_claims:
+                continue
+            seen_claims.add(claim["claim_id"])
+            claims.append(claim)
+            evidence_spans.append(evidence_span_from_claim(claim))
+
+    if include_direct_claims and chunks_dir is not None:
+        for claim in claims_from_technical_chunks(chunks_dir):
             if claim["claim_id"] in seen_claims:
                 continue
             seen_claims.add(claim["claim_id"])
@@ -282,6 +448,345 @@ def evidence_span_from_claim(claim: dict[str, Any]) -> dict[str, Any]:
         "as_of_date": claim.get("as_of_date", ""),
         "quality": quality,
     }
+
+
+def claims_from_technical_chunks(chunks_dir: Path) -> list[dict[str, Any]]:
+    """Derive original-text claims from professional technical source chunks."""
+    claims: list[dict[str, Any]] = []
+    report_counts: dict[str, int] = defaultdict(int)
+    if not chunks_dir.exists():
+        return claims
+    for path in sorted(chunks_dir.glob(f"{TECHNICAL_REPORT_PREFIX}*.jsonl")):
+        for chunk in load_jsonl(path):
+            report_id = str(chunk.get("report_id", ""))
+            if report_counts[report_id] >= MAX_DIRECT_CLAIMS_PER_REPORT:
+                continue
+            if not is_professional_technical_chunk(chunk):
+                continue
+            if looks_like_low_value_technical_chunk(chunk):
+                continue
+            evidence = select_technical_evidence(chunk)
+            if not evidence:
+                continue
+            topics = infer_technical_topics(chunk, evidence)
+            if not topics:
+                continue
+            claim_types = infer_technical_claim_types(evidence)
+            companies = companies_explicitly_in_text(evidence)
+            for topic in topics[:2]:
+                for claim_type in claim_types[:2]:
+                    claims.append(technical_claim_from_chunk(chunk, topic, claim_type, evidence, companies))
+                    report_counts[report_id] += 1
+                    if report_counts[report_id] >= MAX_DIRECT_CLAIMS_PER_REPORT:
+                        break
+                if report_counts[report_id] >= MAX_DIRECT_CLAIMS_PER_REPORT:
+                    break
+    return claims
+
+
+def is_professional_technical_chunk(chunk: dict[str, Any]) -> bool:
+    report_id = str(chunk.get("report_id", ""))
+    source_type = str(chunk.get("source_type", ""))
+    return report_id.startswith(TECHNICAL_REPORT_PREFIX) or source_type in TECHNICAL_SOURCE_TYPES
+
+
+def looks_like_low_value_technical_chunk(chunk: dict[str, Any]) -> bool:
+    text = re.sub(r"\s+", " ", str(chunk.get("text", "") or "")).strip()
+    if len(text) < 80:
+        return True
+    upper = text.upper()
+    if any(term in upper for term in TECHNICAL_LOW_VALUE_TERMS):
+        signal_terms = count_matching_terms(text, TECHNICAL_HIGH_SIGNAL_TERMS)
+        if signal_terms <= 1:
+            return True
+    section = normalize_topic(chunk.get("section", ""))
+    if section in {"contents", "目录"}:
+        return True
+    if text.count(". . .") >= 4 or text.count(" . . ") >= 8:
+        return True
+    if looks_like_low_quality_text(text):
+        return True
+    return count_matching_terms(text, TECHNICAL_HIGH_SIGNAL_TERMS) == 0
+
+
+def select_technical_evidence(chunk: dict[str, Any]) -> str:
+    text = re.sub(r"\s+", " ", str(chunk.get("text", "") or "")).strip()
+    candidates = split_evidence_candidates(text)
+    if not candidates:
+        return ""
+    scored: list[tuple[int, str]] = []
+    for candidate in candidates:
+        if len(candidate) < 35 or looks_like_low_quality_text(candidate):
+            continue
+        if any(term in candidate.upper() for term in TECHNICAL_LOW_VALUE_TERMS):
+            continue
+        if looks_like_reference_candidate(candidate):
+            continue
+        signal = count_matching_terms(candidate, TECHNICAL_HIGH_SIGNAL_TERMS)
+        if not signal:
+            continue
+        score = signal * 4
+        score += count_matching_terms(candidate, TECHNICAL_MECHANISM_TERMS)
+        score += count_matching_terms(candidate, TECHNICAL_BOTTLENECK_TERMS)
+        score += count_matching_terms(candidate, TECHNICAL_INDICATOR_TERMS)
+        if re.search(r"\d", candidate):
+            score += 2
+        scored.append((score, candidate))
+    if not scored:
+        return ""
+    scored.sort(key=lambda item: (-item[0], len(item[1])))
+    return clean_evidence(scored[0][1])
+
+
+def split_evidence_candidates(text: str) -> list[str]:
+    rough_parts = re.split(r"(?<=[。！？.!?])\s+|\n+", text)
+    candidates: list[str] = []
+    for part in rough_parts:
+        cleaned = re.sub(r"\s+", " ", part).strip(" -•\t")
+        if not cleaned:
+            continue
+        if len(cleaned) > 650:
+            chunks = re.split(r";\s+|；|,\s+(?=[A-Z])", cleaned)
+            candidates.extend(item.strip(" -•\t") for item in chunks if item.strip())
+        else:
+            candidates.append(cleaned)
+    return candidates
+
+
+def looks_like_reference_candidate(text: str) -> bool:
+    value = str(text or "")
+    if re.search(r"\bpp\.\s*\d", value, flags=re.I):
+        return True
+    if re.search(r"\b(?:Proceedings|Conference|SIGCOMM|arXiv preprint)\b", value, flags=re.I):
+        return True
+    if re.search(r"^[A-Z][A-Za-z\-]+,\s+\".+\"", value):
+        return True
+    if value.count(" et al.") >= 1 and re.search(r"\b20\d{2}\b", value):
+        return True
+    return False
+
+
+def infer_technical_topics(chunk: dict[str, Any], evidence: str) -> list[str]:
+    text = " ".join(
+        str(chunk.get(key, "") or "") for key in ("source_title", "source_type", "section", "context")
+    )
+    raw_text = f"{text} {evidence}"
+    topics = infer_themes(raw_text)
+    normalized = normalize_topic(raw_text)
+    if "ucie" in normalized or "chiplet" in normalized or "advancedpackaging" in normalized:
+        topics.append("AI芯片")
+    if "ualink" in normalized or "ultraethernet" in normalized or "uet" in normalized:
+        topics.append("算力网络")
+    if "flashattention" in normalized or "pagedattention" in normalized or "fp8" in normalized:
+        topics.append("AI芯片")
+    if "liquidcooling" in normalized or "coldplate" in normalized or "thermalmanagement" in normalized:
+        topics.append("液冷")
+    if "siliconphotonics" in normalized or "integratedphotonics" in normalized or "opticalengine" in normalized:
+        topics.append("光模块")
+    deduped: list[str] = []
+    for topic in topics:
+        if topic in THEME_SYNONYMS and topic not in deduped and technical_topic_supported(topic, raw_text, normalized):
+            deduped.append(topic)
+    return deduped
+
+
+def technical_topic_supported(topic: str, raw_text: str, normalized_text: str) -> bool:
+    if topic == "光模块":
+        return any(
+            term in normalized_text
+            for term in (
+                "光模块",
+                "高速光模块",
+                "硅光",
+                "光器件",
+                "光引擎",
+                "siliconphotonics",
+                "integratedphotonics",
+                "opticalengine",
+                "co-packagedoptics",
+            )
+        ) or bool(re.search(r"\b(?:CPO|LPO|NPO)\b", raw_text, flags=re.I))
+    if topic == "液冷":
+        return any(
+            term in normalized_text
+            for term in (
+                "液冷",
+                "冷板",
+                "温控",
+                "热管理",
+                "coldplate",
+                "liquidcooling",
+                "thermalmanagement",
+                "powerdensity",
+                "heat",
+                "thermal",
+            )
+        ) or bool(re.search(r"\bCDU\b", raw_text, flags=re.I))
+    if topic == "电源":
+        return any(term in normalized_text for term in ("电源", "ups", "powerdelivery", "powersupply"))
+    return True
+
+
+def infer_technical_claim_types(evidence: str) -> list[str]:
+    claim_types: list[str] = []
+    if count_matching_terms(evidence, TECHNICAL_BOTTLENECK_TERMS):
+        claim_types.append("bottleneck")
+    if has_direct_metric(evidence):
+        claim_types.append("indicator")
+    if any(term in normalize_topic(evidence) for term in ("upstream", "downstream", "supplychain", "packaging", "interconnect", "fabric", "cluster")):
+        claim_types.append("supply_chain")
+    if count_matching_terms(evidence, TECHNICAL_MECHANISM_TERMS):
+        claim_types.append("mechanism")
+    if not claim_types:
+        claim_types.append("trend")
+    return dedupe_strings(claim_types)
+
+
+def technical_claim_from_chunk(
+    chunk: dict[str, Any],
+    topic: str,
+    claim_type: str,
+    evidence: str,
+    companies: list[str],
+) -> dict[str, Any]:
+    metric, value, unit = infer_direct_metric_fields(evidence) if claim_type == "indicator" else ("", "", "")
+    source_report_id = str(chunk.get("report_id", ""))
+    claim_id = stable_id(
+        "claim",
+        "direct_technical",
+        claim_type,
+        topic,
+        source_report_id,
+        chunk.get("chunk_id", ""),
+        evidence[:160],
+    )
+    mechanism = infer_direct_mechanism(topic, claim_type, evidence)
+    return {
+        "claim_id": claim_id,
+        "claim_type": claim_type,
+        "topic": topic,
+        "claim_text": build_direct_claim_text(topic, claim_type, evidence, str(chunk.get("source_title", ""))),
+        "companies": companies,
+        "mechanism": mechanism,
+        "direction": "negative" if claim_type in {"bottleneck", "risk"} else "positive" if claim_type == "mechanism" else "neutral",
+        "horizon": infer_direct_horizon(evidence),
+        "metric": metric,
+        "value": value,
+        "unit": unit,
+        "source_report_id": source_report_id,
+        "source_title": str(chunk.get("source_title", "")),
+        "page": str(chunk.get("page", "")),
+        "section": str(chunk.get("section", "")),
+        "source_tier": str(chunk.get("source_tier", "")),
+        "evidence_span": evidence,
+        "confidence": "0.78" if chunk.get("source_tier") == "1" else "0.70",
+        "as_of_date": infer_direct_as_of_date(chunk, evidence),
+        "exposure_level": "mentioned" if companies else "",
+    }
+
+
+def build_direct_claim_text(topic: str, claim_type: str, evidence: str, source_title: str = "") -> str:
+    labels = {
+        "mechanism": "技术机理",
+        "bottleneck": "约束或瓶颈",
+        "indicator": "可跟踪指标",
+        "supply_chain": "产业传导",
+        "risk": "风险或反证",
+        "trend": "技术趋势",
+    }
+    label = labels.get(claim_type, "技术判断")
+    prefix = f"{source_title}：" if source_title and source_title not in evidence else ""
+    return f"{topic} 的{label}：{prefix}{evidence}"
+
+
+def infer_direct_mechanism(topic: str, claim_type: str, evidence: str) -> str:
+    if claim_type == "bottleneck":
+        return f"{topic} 受 {shorten(evidence, 80)} 约束"
+    if claim_type == "indicator":
+        return f"{topic} 可通过 {shorten(evidence, 80)} 跟踪"
+    if claim_type == "supply_chain":
+        return f"{topic} 的产业链传导涉及 {shorten(evidence, 80)}"
+    return f"{topic} 由 {shorten(evidence, 80)} 驱动"
+
+
+def infer_direct_metric_fields(evidence: str) -> tuple[str, str, str]:
+    metric = ""
+    value = ""
+    unit = ""
+    metric_terms = (
+        "GPU hours",
+        "tokens",
+        "parameters",
+        "throughput",
+        "latency",
+        "bandwidth",
+        "time-to-train",
+        "power density",
+        "GPU小时",
+        "吞吐",
+        "时延",
+        "带宽",
+    )
+    for term in metric_terms:
+        if term.lower() in evidence.lower():
+            metric = term
+            break
+    match = DIRECT_METRIC_PATTERN.search(evidence)
+    if match:
+        value = match.group(1).replace(",", "").strip()
+        unit_match = re.search(r"(GPU hours|tokens|parameters|GB/s|Tb/s|GT/s|W|kW|MW|PUE|ms|us|ns|%)$", value, flags=re.I)
+        if unit_match:
+            unit = unit_match.group(1)
+    return metric, value, unit
+
+
+def has_direct_metric(evidence: str) -> bool:
+    if DIRECT_METRIC_PATTERN.search(evidence):
+        return True
+    return bool(re.search(r"\d", evidence) and count_matching_terms(evidence, TECHNICAL_INDICATOR_TERMS))
+
+
+def infer_direct_horizon(evidence: str) -> str:
+    text = evidence.lower()
+    if any(term in text for term in ("2030", "long term", "roadmap", "future generation", "未来")):
+        return "long_term"
+    if any(term in text for term in ("2027", "2028", "next generation", "中期", "逐步")):
+        return "mid_term"
+    if any(term in text for term in ("2024", "2025", "2026", "current", "rev 1.0", "当前")):
+        return "near_term"
+    return ""
+
+
+def infer_direct_as_of_date(chunk: dict[str, Any], evidence: str) -> str:
+    text = " ".join(str(chunk.get(key, "") or "") for key in ("year", "source_title", "report_id"))
+    match = re.search(r"(20\d{2})", f"{text} {evidence}")
+    return match.group(1) if match else ""
+
+
+def companies_explicitly_in_text(text: str) -> list[str]:
+    lookup = company_lookup()
+    normalized = normalize_topic(text)
+    companies: list[str] = []
+    for company, aliases in lookup.aliases_by_company.items():
+        if any(normalize_topic(alias) in normalized for alias in aliases):
+            companies.append(company)
+    return companies
+
+
+def count_matching_terms(text: str, terms: Iterable[str]) -> int:
+    normalized = normalize_topic(text)
+    return sum(1 for term in terms if normalize_topic(term) in normalized)
+
+
+def dedupe_strings(values: Iterable[str]) -> list[str]:
+    result = []
+    seen = set()
+    for value in values:
+        key = str(value).casefold()
+        if value and key not in seen:
+            seen.add(key)
+            result.append(str(value))
+    return result
 
 
 def build_segment_dossiers(claims: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -420,6 +925,7 @@ class ResearchMemory:
 
     def _search_dossiers(self, question: str, topics: list[str], plan: Any) -> list[ResearchHit]:
         hits = []
+        focus_terms = query_focus_terms(question)
         for dossier in self.dossiers:
             topic = str(dossier.get("topic", ""))
             if topics and topic not in topics and not text_matches_terms(topic, topics):
@@ -430,6 +936,11 @@ class ResearchMemory:
             if getattr(plan, "answer_type", "") in {"industry_bottleneck", "thematic_research"}:
                 score += 2.0
             text = dossier_to_text(dossier)
+            if focus_terms:
+                if text_matches_terms(text, focus_terms):
+                    score += 4.0
+                else:
+                    score -= 8.0
             hits.append(
                 ResearchHit(
                     kind="dossier",
@@ -475,6 +986,15 @@ class ResearchMemory:
 def score_claim(claim: dict[str, Any], question: str, topics: list[str], plan: Any) -> float:
     text = " ".join(str(claim.get(key, "")) for key in ("topic", "claim_type", "claim_text", "evidence_span", "section"))
     score = topic_match_score(text, question, topics)
+    focus_terms = query_focus_terms(question)
+    if focus_terms:
+        focus_matches = sum(1 for term in focus_terms if text_matches_terms(text, [term]))
+        if focus_matches:
+            score += min(24.0, 12.0 * focus_matches)
+            if str(claim.get("source_report_id", "")).startswith(TECHNICAL_REPORT_PREFIX):
+                score += 3.0
+        else:
+            score -= 3.0
     claim_type = str(claim.get("claim_type", ""))
     score += CLAIM_TYPE_BONUS.get(claim_type, 0.8)
     if str(claim.get("source_tier", "")) == "1":
@@ -518,6 +1038,21 @@ def topic_match_score(text: str, question: str, topics: list[str]) -> float:
         if term_norm in q_norm:
             score += 0.2
     return score
+
+
+def query_focus_terms(question: str) -> list[str]:
+    normalized_question = normalize_topic(question)
+    terms = [
+        term
+        for term in TECHNICAL_HIGH_SIGNAL_TERMS
+        if normalize_topic(term) and normalize_topic(term) in normalized_question
+    ]
+    terms.extend(
+        token
+        for token in re.findall(r"[A-Za-z][A-Za-z0-9+.\-_/]{2,}", question)
+        if normalize_topic(token) not in {"what", "why", "how"}
+    )
+    return dedupe_strings(terms)
 
 
 def query_topics(question: str, plan_topics: Iterable[str], expanded_plan_topics: Iterable[str]) -> list[str]:
@@ -741,6 +1276,9 @@ def clean_evidence(value: str) -> str:
 def looks_like_low_quality_text(text: str) -> bool:
     value = str(text or "")
     if "免责声明" in value or "请务必" in value:
+        return True
+    upper = value.upper()
+    if any(term in upper for term in ("LEGAL NOTICE", "ALL RIGHTS RESERVED", "MERCHANTABILITY", "TRADEMARK")):
         return True
     if re.fullmatch(r"[\d\s,.%％+\-—/]+", value.strip()):
         return True
