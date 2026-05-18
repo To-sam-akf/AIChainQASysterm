@@ -16,6 +16,13 @@ ENTITY_TYPES = (
     "Product",
     "IndustryChain",
     "IndustryConcept",
+    "Workload",
+    "Architecture",
+    "Bottleneck",
+    "LeadingIndicator",
+    "DemandDriver",
+    "SupplyConstraint",
+    "CompanyExposure",
     "Policy",
     "Standard",
     "ValueChainSegment",
@@ -37,6 +44,12 @@ RELATION_TYPES = (
     "CONSTRAINS",
     "DEFINES",
     "SUPPORTED_BY_POLICY",
+    "DRIVES",
+    "DEPENDS_ON",
+    "RELIEVES",
+    "HAS_EXPOSURE",
+    "HAS_INDICATOR",
+    "BENEFITS_FROM",
 )
 
 CHAIN_ENTITY_TYPES = (
@@ -45,6 +58,11 @@ CHAIN_ENTITY_TYPES = (
     "Technology",
     "Product",
     "ValueChainSegment",
+    "Architecture",
+    "Workload",
+    "DemandDriver",
+    "SupplyConstraint",
+    "Bottleneck",
 )
 
 RELATION_SIGNATURES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
@@ -57,9 +75,15 @@ RELATION_SIGNATURES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
     "UPSTREAM_OF": (CHAIN_ENTITY_TYPES, CHAIN_ENTITY_TYPES),
     "DOWNSTREAM_OF": (CHAIN_ENTITY_TYPES, CHAIN_ENTITY_TYPES),
     "ENABLES": (("Technology", "Product", "IndustryConcept", "ValueChainSegment"), CHAIN_ENTITY_TYPES),
-    "CONSTRAINS": (("Risk", "Policy", "Standard", "IndustryConcept"), tuple(t for t in ENTITY_TYPES if t != "Report")),
-    "DEFINES": (("IndustryConcept", "Policy", "Standard"), ("IndustryConcept", "Technology", "ValueChainSegment")),
+    "CONSTRAINS": (("Risk", "Policy", "Standard", "IndustryConcept", "Bottleneck", "SupplyConstraint"), tuple(t for t in ENTITY_TYPES if t != "Report")),
+    "DEFINES": (("IndustryConcept", "Policy", "Standard"), ("IndustryConcept", "Technology", "ValueChainSegment", "Architecture", "Workload", "Bottleneck", "LeadingIndicator")),
     "SUPPORTED_BY_POLICY": (("Company", *CHAIN_ENTITY_TYPES), ("Policy",)),
+    "DRIVES": (("DemandDriver", "Workload", "Policy", "IndustryConcept"), tuple(t for t in ENTITY_TYPES if t != "Report")),
+    "DEPENDS_ON": (("Company", "Product", "Technology", "Architecture", "Workload", "IndustryConcept", "ValueChainSegment"), ("Technology", "Product", "Architecture", "SupplyConstraint", "LeadingIndicator", "IndustryConcept", "ValueChainSegment")),
+    "RELIEVES": (("Technology", "Product", "Architecture", "Policy"), ("Bottleneck", "SupplyConstraint", "Risk", "IndustryConcept")),
+    "HAS_EXPOSURE": (("Company",), ("CompanyExposure", "IndustryConcept", "Technology", "Product", "ValueChainSegment")),
+    "HAS_INDICATOR": (("Company", "IndustryConcept", "Technology", "Product", "ValueChainSegment"), ("LeadingIndicator", "Metric")),
+    "BENEFITS_FROM": (("Company", "Product", "Technology", "ValueChainSegment"), ("DemandDriver", "Workload", "IndustryConcept", "Policy")),
 }
 
 ENTITY_CSV_FIELDS = [

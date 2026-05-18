@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from src.curated_graph import DEFAULT_CURATED_DIR, build_curated_graph
 from src.frontend_data import DEFAULT_ENTITIES_CSV, DEFAULT_RELATIONS_CSV
+from src.research_claims import build_research_artifacts
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -29,10 +30,16 @@ def main() -> int:
         relations_csv=args.relations,
         output_dir=args.output_dir,
     )
-    print(f"Wrote curated entities={len(entities)} relations={len(relations)} -> {args.output_dir}")
+    claims, evidence_spans, dossiers = build_research_artifacts(
+        relations_csv=args.output_dir / "relations.csv",
+        output_dir=args.output_dir,
+    )
+    print(
+        f"Wrote curated entities={len(entities)} relations={len(relations)} "
+        f"claims={len(claims)} evidence_spans={len(evidence_spans)} dossiers={len(dossiers)} -> {args.output_dir}"
+    )
     return 0
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

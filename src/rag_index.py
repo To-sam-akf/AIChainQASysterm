@@ -169,7 +169,7 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
         return None
     search_text = "\n".join(
         str(chunk.get(key, "") or "")
-        for key in ("company", "source_title", "source_type", "section", "text")
+        for key in ("company", "source_title", "source_type", "section", "context", "text")
     )
     counts = Counter(tokenize(search_text))
     if not counts:

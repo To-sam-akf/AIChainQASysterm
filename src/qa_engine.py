@@ -20,6 +20,7 @@ from src.professional_qa import (
     build_professional_answer_prompt,
     cards_from_graph_records,
     cards_from_rag_hits,
+    cards_from_research_hits,
     fallback_professional_answer,
     legacy_evidence_rows,
     pseudo_cypher_for_plan,
@@ -28,13 +29,17 @@ from src.professional_qa import (
 )
 from src.question_planner import QuestionPlan, extract_companies, heuristic_plan_question, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
+from src.research_claims import DEFAULT_RESEARCH_DIR, ResearchHit, ResearchMemory
 
 
 NO_EVIDENCE_ANSWER = "当前知识库中未找到相关证据。"
 
 ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助手。
 只能根据提供的 Neo4j/CSV 图谱结果和本地 RAG 原文片段回答，不要编造证据外信息。
-答案用中文，面向资深投资者，按“结论、证据、研究要点、风险与边界”组织。
+当前日期是 2026-05-18。回答中不得臆造当前日期或把已给定报告年份误判为未来。
+答案用中文，面向资深投资者，按“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”组织。
+不要泛泛总结；涉及“哪些公司/谁受益”时必须按 core/direct/indirect/mentioned 敞口分层，直接敞口优先。
+涉及“为什么/瓶颈/趋势”时必须解释技术机理和商业传导；缺少证据的栏目明确写“当前证据不足”。
 可以给事实归纳、产业链位置、催化因素、风险和跟踪指标；禁止给股票买卖建议、目标价或收益预测。"""
 
 CONTEXTUALIZER_SYSTEM_PROMPT = """你是中国 AI 算力产业链问答系统的追问改写器。
@@ -50,6 +55,12 @@ TEMPLATE_RELATIONS = {
     "SUPPORTED_BY_POLICY",
     "CONSTRAINS",
     "ENABLES",
+    "DRIVES",
+    "DEPENDS_ON",
+    "RELIEVES",
+    "HAS_EXPOSURE",
+    "HAS_INDICATOR",
+    "BENEFITS_FROM",
 }
 
 
@@ -58,11 +69,13 @@ class QAEngineStatus:
     neo4j_enabled: bool
     rag_enabled: bool
     llm_enabled: bool
+    research_enabled: bool = False
     csv_graph_enabled: bool = False
     graph_backend: str = "neo4j"
     graph_data_dir: str = ""
     graph_error: str = ""
     rag_error: str = ""
+    research_error: str = ""
     llm_error: str = ""
 
 
@@ -96,6 +109,7 @@ class QAEngine:
         graph_client: Any | None = None,
         csv_graph: LocalKnowledgeGraph | None = None,
         rag_index: LocalRagIndex | None = None,
+        research_memory: ResearchMemory | None = None,
         enable_llm_cypher: bool = False,
         enable_llm_planner: bool = False,
         contextualizer_mode: str = "auto",
@@ -112,6 +126,7 @@ class QAEngine:
         self.graph_client = graph_client
         self.csv_graph = csv_graph
         self.rag_index = rag_index
+        self.research_memory = research_memory
         self.enable_llm_cypher = enable_llm_cypher
         self.enable_llm_planner = enable_llm_planner
         self.contextualizer_mode = normalize_contextualizer_mode(contextualizer_mode)
@@ -126,6 +141,7 @@ class QAEngine:
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
             rag_enabled=rag_index is not None,
+            research_enabled=research_memory is not None,
             llm_enabled=llm_client is not None,
             graph_backend="neo4j" if graph_client is not None else "csv" if csv_graph is not None else "none",
         )
@@ -159,6 +175,14 @@ class QAEngine:
             rag_index = LocalRagIndex.load(rag_index_dir)
         except Exception as exc:
             rag_error = str(exc)
+
+        research_memory = None
+        research_error = ""
+        try:
+            research_dir = Path(os.getenv("RESEARCH_ARTIFACT_DIR", str(DEFAULT_RESEARCH_DIR)))
+            research_memory = ResearchMemory.load(research_dir)
+        except Exception as exc:
+            research_error = str(exc)
 
         csv_graph = None
         graph_error = ""
@@ -195,11 +219,13 @@ class QAEngine:
             neo4j_enabled=neo4j_enabled,
             csv_graph_enabled=csv_graph is not None,
             rag_enabled=rag_index is not None,
+            research_enabled=research_memory is not None,
             llm_enabled=llm_client is not None,
             graph_backend=selected_backend,
             graph_data_dir=str(graph_data_dir),
             graph_error=graph_error,
             rag_error=rag_error,
+            research_error=research_error,
             llm_error=llm_error,
         )
         return cls(
@@ -207,6 +233,7 @@ class QAEngine:
             graph_client=graph_client,
             csv_graph=csv_graph,
             rag_index=rag_index,
+            research_memory=research_memory,
             enable_llm_cypher=enable_llm_cypher,
             enable_llm_planner=enable_llm_planner,
             contextualizer_mode=contextualizer_mode,
@@ -278,7 +305,15 @@ class QAEngine:
         record_timing(timings_ms, "rag", stage_start)
 
         stage_start = time.perf_counter()
-        raw_cards = [*cards_from_graph_records(graph_records, plan), *cards_from_rag_hits(rag_hits, plan)]
+        research_hits = self._search_research(contextual_question, plan, errors)
+        record_timing(timings_ms, "research", stage_start)
+
+        stage_start = time.perf_counter()
+        raw_cards = [
+            *cards_from_research_hits(research_hits, plan),
+            *cards_from_graph_records(graph_records, plan),
+            *cards_from_rag_hits(rag_hits, plan),
+        ]
         evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
@@ -301,6 +336,7 @@ class QAEngine:
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
+        research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = graph_records_to_subgraph(graph_records)
         record_timing(timings_ms, "render_payload", stage_start)
@@ -309,6 +345,7 @@ class QAEngine:
             "graph_backend": self.status.graph_backend,
             "graph_records": len(graph_records),
             "rag_hits": len(rag_hits),
+            "research_hits": len(research_hits),
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.rerank_top_n,
             "history_messages": len(history),
@@ -321,6 +358,7 @@ class QAEngine:
             "reasoning_effort": reasoning_effort or "",
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
+            "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
@@ -339,6 +377,7 @@ class QAEngine:
             "cypher_source": generated.source,
             "graph_records": graph_records,
             "rag_hits": rag_hit_rows,
+            "research_hits": research_hit_rows,
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
             "subgraph": subgraph,
@@ -417,9 +456,19 @@ class QAEngine:
         record_timing(timings_ms, "rag", stage_start)
 
         if thinking_enabled:
+            yield stream_progress("research", "正在召回投研 Claim 与产业链摘要")
+        stage_start = time.perf_counter()
+        research_hits = self._search_research(contextual_question, plan, errors)
+        record_timing(timings_ms, "research", stage_start)
+
+        if thinking_enabled:
             yield stream_progress("evidence", "正在筛选可支撑答案的证据")
         stage_start = time.perf_counter()
-        raw_cards = [*cards_from_graph_records(graph_records, plan), *cards_from_rag_hits(rag_hits, plan)]
+        raw_cards = [
+            *cards_from_research_hits(research_hits, plan),
+            *cards_from_graph_records(graph_records, plan),
+            *cards_from_rag_hits(rag_hits, plan),
+        ]
         evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
@@ -453,6 +502,7 @@ class QAEngine:
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
+        research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = graph_records_to_subgraph(graph_records)
         record_timing(timings_ms, "render_payload", stage_start)
@@ -461,6 +511,7 @@ class QAEngine:
             "graph_backend": self.status.graph_backend,
             "graph_records": len(graph_records),
             "rag_hits": len(rag_hits),
+            "research_hits": len(research_hits),
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.rerank_top_n,
             "history_messages": len(history),
@@ -473,6 +524,7 @@ class QAEngine:
             "reasoning_effort": reasoning_effort or "",
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
+            "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
@@ -493,6 +545,7 @@ class QAEngine:
                 "cypher_source": generated.source,
                 "graph_records": graph_records,
                 "rag_hits": rag_hit_rows,
+                "research_hits": research_hit_rows,
                 "evidence_cards": evidence_card_rows,
                 "evidence": evidence,
                 "subgraph": subgraph,
@@ -576,6 +629,19 @@ class QAEngine:
             return self.rag_index.search(query, top_k=max(self.rag_top_k, min(self.rerank_top_n, 20)), filters=filters)
         except Exception as exc:
             errors.append(f"RAG search failed: {exc}")
+            return []
+
+    def _search_research(self, question: str, plan: QuestionPlan, errors: list[str]) -> list[ResearchHit]:
+        if self.research_memory is None:
+            return []
+        try:
+            return self.research_memory.search(
+                question,
+                plan,
+                limit=max(self.evidence_top_n, min(self.rerank_top_n, 20)),
+            )
+        except Exception as exc:
+            errors.append(f"Research search failed: {exc}")
             return []
 
     def _contextualize_question(

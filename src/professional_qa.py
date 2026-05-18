@@ -20,6 +20,7 @@ from src.domain_lexicon import (
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
+from src.research_claims import ResearchHit
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,11 @@ class EvidenceCard:
     source_tier: str = ""
     score: float = 0.0
     reason: str = ""
+    topic: str = ""
+    claim_type: str = ""
+    exposure_level: str = ""
+    confidence: str = ""
+    as_of_date: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         row = asdict(self)
@@ -269,6 +275,33 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
     return cards
 
 
+def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> list[EvidenceCard]:
+    del plan
+    cards = []
+    for hit in hits:
+        score = hit.score + (60.0 if hit.kind == "dossier" else 45.0)
+        cards.append(
+            EvidenceCard(
+                kind=hit.kind,
+                title=hit.title,
+                evidence=hit.text,
+                source=hit.source,
+                page=hit.page,
+                section=hit.section,
+                company=hit.company,
+                source_tier=hit.source_tier,
+                score=round(score, 4),
+                reason="投研 Claim/Dossier 证据包" if hit.kind == "claim" else "产业链社区摘要",
+                topic=hit.topic,
+                claim_type=hit.claim_type,
+                exposure_level=hit.exposure_level,
+                confidence=hit.confidence,
+                as_of_date=hit.as_of_date,
+            )
+        )
+    return cards
+
+
 def rank_evidence_cards(cards: list[EvidenceCard], *, limit: int = 10) -> list[EvidenceCard]:
     deduped = []
     seen = set()
@@ -312,7 +345,12 @@ def build_professional_answer_prompt(
         "neo4j_or_csv_graph_records": graph_records[:30],
         "evidence_cards": [card.to_dict() for card in cards[:12]],
     }
-    return "请基于以下 Neo4j/CSV 图谱证据和 RAG 原文证据回答，不要使用证据外信息：\n" + json.dumps(
+    return (
+        "请基于以下证据包回答，不要使用证据外信息。优先使用 claim/dossier 形成投研逻辑，"
+        "再用 graph/rag 作为原文支撑。每个关键判断都要能对应证据。\n"
+        "输出结构固定为：核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据。\n"
+        "如果某一项没有证据，明确写“当前证据不足”，不要编造。\n"
+    ) + json.dumps(
         payload,
         ensure_ascii=False,
         indent=2,
@@ -322,6 +360,21 @@ def build_professional_answer_prompt(
 def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], graph_records: list[dict[str, Any]]) -> str:
     if not cards:
         return "当前知识库未找到足够证据支持回答。建议补充更精确的公司、产业链环节或报告范围后再检索。"
+    research_cards = [card for card in cards if card.kind in {"claim", "dossier"}]
+    if research_cards and plan.answer_type in {"thematic_research", "industry_bottleneck"}:
+        return fallback_research_answer(plan, research_cards, cards)
+    if research_cards and plan.answer_type == "topic_to_company":
+        exposure = format_exposure_ranking(research_cards, focus_topic(plan))
+        if exposure:
+            topic = "、".join(plan.topics or plan.expanded_topics[:2]) or "该主题"
+            return (
+                f"核心判断：{topic}相关公司需要按敞口强弱分层，而不是简单罗列。\n\n"
+                f"公司排序：{exposure}\n\n"
+                f"技术机理：{format_claims_by_type(research_cards, {'mechanism', 'supply_chain'}, 3)}\n\n"
+                f"领先指标：{format_claims_by_type(research_cards, {'indicator'}, 3)}\n\n"
+                f"反证/边界：{format_claims_by_type(research_cards, {'risk', 'bottleneck'}, 3)}\n\n"
+                f"证据：{format_evidence(cards, 5)}"
+            )
     if plan.answer_type == "topic_to_company":
         companies = unique([record.get("company", "") for record in graph_records if record.get("company")])
         groups = company_groups_by_segment(companies)
@@ -373,6 +426,85 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
         f"证据：{format_evidence(cards, 5)}\n\n"
         "研究要点：建议结合公司所处产业链环节、产品代际、客户验证、财务兑现和风险披露继续跟踪。"
     )
+
+
+def fallback_research_answer(plan: QuestionPlan, research_cards: list[EvidenceCard], all_cards: list[EvidenceCard]) -> str:
+    topic = "、".join(plan.topics or unique([card.topic for card in research_cards])[:2]) or "该主题"
+    core_judgment = next((card.evidence.splitlines()[0] for card in research_cards if card.kind == "dossier"), "")
+    if not core_judgment:
+        core_judgment = f"{topic} 的判断需要同时看技术瓶颈、产业传导、公司直接敞口和可验证指标。"
+    technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈")) or format_claims_by_type(research_cards, {"mechanism", "supply_chain", "bottleneck"}, 4)
+    transmission = format_dossier_lines(research_cards, ("公司敞口",)) or format_claims_by_type(research_cards, {"company_exposure", "policy"}, 4)
+    indicators = format_dossier_lines(research_cards, ("领先指标",)) or format_claims_by_type(research_cards, {"indicator"}, 4)
+    boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or format_claims_by_type(research_cards, {"risk"}, 4)
+    return (
+        f"核心判断：{core_judgment}\n\n"
+        f"技术机理：{technical}\n\n"
+        f"产业传导：{transmission}\n\n"
+        f"公司排序：{format_exposure_ranking(research_cards, focus_topic(plan)) or '当前证据不足以稳定排序。'}\n\n"
+        f"领先指标：{indicators}\n\n"
+        f"反证/边界：{boundaries}\n\n"
+        f"证据：{format_evidence(all_cards, 6)}"
+    )
+
+
+def format_claims_by_type(cards: list[EvidenceCard], claim_types: set[str], limit: int) -> str:
+    values = []
+    for card in cards:
+        if card.kind == "dossier":
+            continue
+        if card.claim_type in claim_types or (card.kind == "dossier" and not card.claim_type):
+            text = card.evidence.replace("\n", "；").strip()
+            if text and text not in values:
+                values.append(text[:180] + ("..." if len(text) > 180 else ""))
+        if len(values) >= limit:
+            break
+    return "；".join(values) if values else "当前证据不足。"
+
+
+def format_dossier_lines(cards: list[EvidenceCard], labels: tuple[str, ...]) -> str:
+    values = []
+    for card in cards:
+        if card.kind != "dossier":
+            continue
+        for line in card.evidence.splitlines():
+            line = line.strip()
+            if any(line.startswith(f"{label}：") for label in labels):
+                values.append(line.split("：", 1)[-1][:220])
+    return "；".join(values[:4])
+
+
+def focus_topic(plan: QuestionPlan) -> str:
+    return next((topic for topic in plan.topics if topic), "")
+
+
+def format_exposure_ranking(cards: list[EvidenceCard], topic: str = "") -> str:
+    grouped: dict[str, list[str]] = {"core": [], "direct": [], "indirect": [], "mentioned": []}
+    labels = {"core": "核心敞口", "direct": "直接敞口", "indirect": "间接敞口", "mentioned": "仅提及"}
+    for card in cards:
+        if topic and card.topic and card.topic != topic:
+            continue
+        if card.kind == "dossier":
+            for line in card.evidence.splitlines():
+                if not line.startswith("公司敞口："):
+                    continue
+                for part in line.split("：", 1)[-1].split("；"):
+                    if ":" not in part:
+                        continue
+                    level, names = part.split(":", 1)
+                    if level not in grouped:
+                        continue
+                    for name in names.split("、"):
+                        name = name.strip()
+                        if name and name not in grouped[level]:
+                            grouped[level].append(name)
+        if card.claim_type != "company_exposure" or not card.company:
+            continue
+        level = card.exposure_level if card.exposure_level in grouped else "mentioned"
+        if card.company not in grouped[level]:
+            grouped[level].append(card.company)
+    parts = [f"{labels[level]}：{'、'.join(names[:12])}" for level, names in grouped.items() if names]
+    return "；".join(parts)
 
 
 def format_evidence(cards: list[EvidenceCard], limit: int) -> str:

@@ -32,7 +32,8 @@ def kind_instructions(kind: str) -> str:
     if kind == "industry":
         return """权威行业知识抽取重点：
 - 优先抽取 IndustryConcept、ValueChainSegment、Technology、Policy、Standard。
-- 优先抽取 DEFINES、UPSTREAM_OF、DOWNSTREAM_OF、ENABLES、CONSTRAINS、SUPPORTED_BY_POLICY。
+- 优先抽取 Workload、Architecture、Bottleneck、LeadingIndicator、DemandDriver、SupplyConstraint。
+- 优先抽取 DEFINES、UPSTREAM_OF、DOWNSTREAM_OF、ENABLES、DRIVES、DEPENDS_ON、RELIEVES、CONSTRAINS、HAS_INDICATOR、SUPPORTED_BY_POLICY。
 - 除非文本明确关联核心上市公司，否则不要输出 Company；行业白皮书主要用于概念、政策、技术和产业链知识库。"""
     return "按报告文本抽取明确出现且有证据的 AI 算力产业链知识。"
 
@@ -61,6 +62,12 @@ def build_user_prompt(chunk: dict[str, Any]) -> str:
 - Risk/Policy/Standard/IndustryConcept CONSTRAINS 任意非 Report 实体
 - IndustryConcept/Policy/Standard DEFINES IndustryConcept/Technology/ValueChainSegment
 - Company/IndustryConcept/Technology/Product/ValueChainSegment SUPPORTED_BY_POLICY Policy
+- DemandDriver/Workload/Policy/IndustryConcept DRIVES 非 Report 实体
+- Company/Product/Technology/Architecture/Workload/IndustryConcept/ValueChainSegment DEPENDS_ON Technology/Product/Architecture/SupplyConstraint/LeadingIndicator/IndustryConcept/ValueChainSegment
+- Technology/Product/Architecture/Policy RELIEVES Bottleneck/SupplyConstraint/Risk/IndustryConcept
+- Company HAS_EXPOSURE CompanyExposure/IndustryConcept/Technology/Product/ValueChainSegment；properties 中可写 exposure_level=core/direct/indirect/mentioned
+- Company/IndustryConcept/Technology/Product/ValueChainSegment HAS_INDICATOR LeadingIndicator/Metric
+- Company/Product/Technology/ValueChainSegment BENEFITS_FROM DemandDriver/Workload/IndustryConcept/Policy
 - 不要输出 MENTIONED_IN；系统会自动根据 source_report_id 生成来源关系。
 - 不要输出 Report 实体；系统会自动根据 manifest 生成报告节点。
 
@@ -71,6 +78,7 @@ def build_user_prompt(chunk: dict[str, Any]) -> str:
 4. 每条关系尽量给出 confidence，范围 0 到 1。
 5. 每个文本块最多输出 30 个实体和 12 条关系，优先保留 Company 直接相关关系。
 6. Metric 实体必须在 properties 中包含 year、value、unit 至少一个字段；没有数值或年份证据时不要抽 Metric。
+7. 遇到技术机理、瓶颈、领先指标、需求驱动、供给约束时，优先用新增本体表达，不要只抽成泛化 Product。
 6. 输出 JSON 格式：
 {{
   "entities": [{{"type": "Company", "name": "公司名", "properties": {{}}}}],

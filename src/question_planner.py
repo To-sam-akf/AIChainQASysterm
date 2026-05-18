@@ -77,6 +77,7 @@ def build_planner_prompt(question: str, fallback: QuestionPlan) -> str:
 - companies: 问题中的核心 A 股公司名称
 - topics: 产业主题或产品技术关键词
 - relations: 需要查询的关系，限 USES_TECHNOLOGY/HAS_PRODUCT/BELONGS_TO_CHAIN/HAS_METRIC/DISCLOSES_RISK/SUPPORTED_BY_POLICY/CONSTRAINS
+- 对“为什么/瓶颈/趋势/受益/跟踪指标”类问题，可加入 DRIVES/DEPENDS_ON/RELIEVES/HAS_EXPOSURE/HAS_INDICATOR/BENEFITS_FROM
 - core_companies_only: “哪些公司/上市公司”默认 true
 
 可参考的启发式结果：
@@ -139,6 +140,12 @@ RELATIONS = {
     "DISCLOSES_RISK",
     "SUPPORTED_BY_POLICY",
     "CONSTRAINS",
+    "DRIVES",
+    "DEPENDS_ON",
+    "RELIEVES",
+    "HAS_EXPOSURE",
+    "HAS_INDICATOR",
+    "BENEFITS_FROM",
 }
 
 
@@ -252,6 +259,14 @@ def infer_relations(
         relations.append("DISCLOSES_RISK")
     if "政策" in question:
         relations.append("SUPPORTED_BY_POLICY")
+    if any(term in question for term in ("为什么", "驱动", "传导", "受益", "趋势")):
+        relations.extend(["DRIVES", "BENEFITS_FROM", "DEPENDS_ON"])
+    if any(term in question for term in ("瓶颈", "约束", "缓解")):
+        relations.extend(["CONSTRAINS", "RELIEVES"])
+    if any(term in question for term in ("敞口", "受益公司", "谁受益")):
+        relations.append("HAS_EXPOSURE")
+    if any(term in question for term in ("跟踪指标", "领先指标", "验证指标")):
+        relations.append("HAS_INDICATOR")
     if not relations:
         relations.extend(["USES_TECHNOLOGY", "HAS_PRODUCT", "BELONGS_TO_CHAIN"])
     return [rel for rel in unique_strings(relations) if rel in RELATIONS]

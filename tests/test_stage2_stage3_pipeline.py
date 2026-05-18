@@ -61,6 +61,27 @@ def test_text_chunking_preserves_source_fields_and_size() -> None:
     assert chunks[0]["report_id"] == "annual_000977_2025"
     assert chunks[0]["page"] == 12
     assert chunks[0]["source_title"] == "2025年年度报告"
+    assert chunks[0]["context"]
+
+
+def test_text_chunking_rejects_numeric_table_fragment_as_section() -> None:
+    pages = [
+        {
+            "report_id": "industry_1",
+            "kind": "industry",
+            "company": "",
+            "source_title": "绿色算力发展研究报告",
+            "source_url": "https://example.com",
+            "page": 19,
+            "text": "2. 50%\n在未来智算中心持续扩张情境下，局部地区为解决算力对电量的需求，电网扩容压力将加剧。",
+        }
+    ]
+
+    chunks = build_chunks_from_pages(pages, max_chars=300)
+
+    assert chunks
+    assert chunks[0]["section"] != "50%"
+    assert "算力" in chunks[0]["section"] or "AI" in chunks[0]["section"]
 
 
 def test_extraction_schema_accepts_valid_and_rejects_missing_evidence() -> None:

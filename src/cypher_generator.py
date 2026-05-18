@@ -16,6 +16,13 @@ GRAPH_SCHEMA = """节点:
 - Product(name, normalized_name)
 - IndustryChain(name, normalized_name)
 - IndustryConcept(name, normalized_name)
+- Workload(name, normalized_name)
+- Architecture(name, normalized_name)
+- Bottleneck(name, normalized_name)
+- LeadingIndicator(name, normalized_name)
+- DemandDriver(name, normalized_name)
+- SupplyConstraint(name, normalized_name)
+- CompanyExposure(name, normalized_name)
 - Policy(name, normalized_name)
 - Standard(name, normalized_name)
 - ValueChainSegment(name, normalized_name)
@@ -35,6 +42,12 @@ GRAPH_SCHEMA = """节点:
 - (Risk|Policy|Standard|IndustryConcept)-[:CONSTRAINS]->(任意非 Report 实体)
 - (IndustryConcept|Policy|Standard)-[:DEFINES]->(IndustryConcept|Technology|ValueChainSegment)
 - (Company|IndustryConcept|Technology|Product|ValueChainSegment)-[:SUPPORTED_BY_POLICY]->(Policy)
+- (DemandDriver|Workload|Policy|IndustryConcept)-[:DRIVES]->(非 Report 实体)
+- (Company|Product|Technology|Architecture|Workload|IndustryConcept|ValueChainSegment)-[:DEPENDS_ON]->(Technology|Product|Architecture|SupplyConstraint|LeadingIndicator|IndustryConcept|ValueChainSegment)
+- (Technology|Product|Architecture|Policy)-[:RELIEVES]->(Bottleneck|SupplyConstraint|Risk|IndustryConcept)
+- (Company)-[:HAS_EXPOSURE]->(CompanyExposure|IndustryConcept|Technology|Product|ValueChainSegment)
+- (Company|IndustryConcept|Technology|Product|ValueChainSegment)-[:HAS_INDICATOR]->(LeadingIndicator|Metric)
+- (Company|Product|Technology|ValueChainSegment)-[:BENEFITS_FROM]->(DemandDriver|Workload|IndustryConcept|Policy)
 
 关系属性:
 evidence, source_report_id, source_title, page, section, confidence
