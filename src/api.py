@@ -135,12 +135,14 @@ async def api_status(
         "graph_backend": engine.status.graph_backend,
         "neo4j_enabled": engine.status.neo4j_enabled,
         "rag_enabled": engine.status.rag_enabled,
+        "research_enabled": getattr(engine.status, "research_enabled", False),
         "llm_enabled": engine.status.llm_enabled,
         "csv_graph_enabled": engine.status.csv_graph_enabled,
         "graph_data_dir": engine.status.graph_data_dir,
         "errors": {
             "graph": engine.status.graph_error,
             "rag": engine.status.rag_error,
+            "research": getattr(engine.status, "research_error", ""),
             "llm": engine.status.llm_error,
         },
         "stats": {

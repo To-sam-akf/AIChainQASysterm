@@ -13,16 +13,119 @@ from src.extraction_schema import normalize_name
 
 
 THEME_SYNONYMS: dict[str, tuple[str, ...]] = {
-    "AI服务器": ("AI服务器", "智算服务器", "GPU服务器", "训练服务器", "推理服务器", "人工智能服务器"),
-    "光模块": ("光模块", "高速光模块", "800G", "1.6T", "硅光", "CPO", "LPO", "光器件", "光引擎"),
-    "液冷": ("液冷", "冷板", "冷板式液冷", "浸没式液冷", "液冷散热", "温控", "热管理", "CDU"),
-    "AI芯片": ("AI芯片", "GPU", "DCU", "CPU", "算力芯片", "推理芯片", "训练芯片", "加速卡"),
+    "AI服务器": (
+        "AI服务器",
+        "智算服务器",
+        "GPU服务器",
+        "训练服务器",
+        "推理服务器",
+        "人工智能服务器",
+        "OAI",
+        "OAM",
+        "Universal Baseboard",
+        "UBB",
+        "AI accelerator baseboard",
+    ),
+    "光模块": (
+        "光模块",
+        "高速光模块",
+        "800G",
+        "1.6T",
+        "硅光",
+        "CPO",
+        "LPO",
+        "NPO",
+        "光器件",
+        "光引擎",
+        "silicon photonics",
+        "integrated photonics",
+        "optical engine",
+        "co-packaged optics",
+    ),
+    "液冷": (
+        "液冷",
+        "冷板",
+        "冷板式液冷",
+        "浸没式液冷",
+        "液冷散热",
+        "温控",
+        "热管理",
+        "CDU",
+        "cold plate",
+        "liquid cooling",
+        "thermal management",
+        "rack manifold",
+        "quick disconnect",
+        "TIM",
+        "power density",
+    ),
+    "AI芯片": (
+        "AI芯片",
+        "GPU",
+        "DCU",
+        "CPU",
+        "算力芯片",
+        "推理芯片",
+        "训练芯片",
+        "加速卡",
+        "AI accelerator",
+        "HBM",
+        "chiplet",
+        "UCIe",
+        "advanced packaging",
+        "heterogeneous integration",
+        "2.5D",
+        "3D integration",
+        "FP8",
+        "MoE",
+        "MLA",
+        "FlashAttention",
+        "PagedAttention",
+        "DeepSeek",
+        "training efficiency",
+        "inference efficiency",
+    ),
     "国产算力": ("国产算力", "自主可控", "国产替代", "信创", "国产AI芯片", "国产服务器"),
-    "算力网络": ("算力网络", "交换机", "以太网", "Scale Up", "Scale-Out", "高速互联", "网络设备"),
+    "算力网络": (
+        "算力网络",
+        "交换机",
+        "以太网",
+        "Scale Up",
+        "Scale-Up",
+        "Scale Out",
+        "Scale-Out",
+        "高速互联",
+        "网络设备",
+        "UALink",
+        "Ultra Ethernet",
+        "UET",
+        "RDMA",
+        "congestion control",
+        "InfiniBand",
+        "NVLink",
+        "all-to-all",
+        "SerDes",
+        "224G",
+        "PAM4",
+        "switch fabric",
+        "PCIe",
+        "CXL",
+    ),
     "PCB": ("PCB", "印制电路板", "高多层板", "封装基板", "CCL", "覆铜板"),
-    "数据中心": ("数据中心", "智算中心", "AIDC", "IDC", "算力中心", "绿色数据中心"),
-    "电源": ("电源", "UPS", "服务器电源", "数据中心电源", "电力模块"),
+    "数据中心": ("数据中心", "智算中心", "AIDC", "IDC", "算力中心", "绿色数据中心", "AI cluster", "HPC cluster"),
+    "电源": ("电源", "UPS", "服务器电源", "数据中心电源", "电力模块", "power delivery"),
 }
+
+TECHNICAL_SOURCE_TYPES = {
+    "technical_roadmap",
+    "open_specification",
+    "manual_open_specification",
+    "benchmark_methodology",
+    "technical_paper",
+    "model_technical_report",
+}
+
+RESEARCH_SOURCE_TYPES = {"authority_whitepaper", "broker_research", "broker_research_seed", *TECHNICAL_SOURCE_TYPES}
 
 PROFESSIONAL_THEMES = tuple(THEME_SYNONYMS.keys())
 
@@ -113,6 +216,13 @@ DISCLAIMER_TERMS = (
     "证券研究报告",
     "投资建议",
     "风险提示",
+    "LEGAL NOTICE",
+    "ALL RIGHTS RESERVED",
+    "MERCHANTABILITY",
+    "FITNESS FOR A PARTICULAR PURPOSE",
+    "NO LICENSE",
+    "GOVERNING DOCUMENTS",
+    "TRADEMARK",
 )
 
 BOTTLENECK_TERMS = (
@@ -222,7 +332,9 @@ def is_noise_section(section: str) -> bool:
 
 
 def is_disclaimer_text(text: str) -> bool:
-    return any(term in str(text or "") for term in DISCLAIMER_TERMS)
+    value = str(text or "")
+    upper = value.upper()
+    return any(term in value or term in upper for term in DISCLAIMER_TERMS)
 
 
 def looks_like_definition_noise(row: dict[str, str]) -> bool:
@@ -255,4 +367,3 @@ def company_groups_by_segment(companies: Iterable[str]) -> dict[str, list[str]]:
         if company not in groups[segment]:
             groups[segment].append(company)
     return dict(groups)
-

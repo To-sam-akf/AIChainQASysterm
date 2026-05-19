@@ -876,6 +876,15 @@ def run_industry(args: argparse.Namespace, session: requests.Session, manifest: 
         candidate = industry_candidate(source)
         if args.dry_run:
             print(plan_candidate(candidate))
+        elif source.source_type == "manual_open_specification" and not candidate.local_path.exists():
+            manifest.upsert(
+                manifest_row(
+                    candidate,
+                    status="manual_reference",
+                    error=f"manual download required for {source.source_site}: {source.source_url}",
+                )
+            )
+            print(f"SKIP manual_reference {candidate.report_id}: {source.source_url}")
         else:
             result = download_report(session, candidate, manifest, refresh=args.refresh)
             print(result)

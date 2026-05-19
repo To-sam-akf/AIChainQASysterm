@@ -14,6 +14,7 @@ from scripts.prepare_stage1_data import (
     validate_pdf,
 )
 from src.data_config import load_industry_sources, load_research_keywords, validate_industry_sources
+from src.domain_lexicon import TECHNICAL_SOURCE_TYPES
 
 
 def test_company_list_has_expected_thirty_targets() -> None:
@@ -41,9 +42,12 @@ def test_industry_sources_have_downloadable_pdf_metadata() -> None:
     validate_industry_sources(sources)
 
     assert sources
-    assert all(source.pdf_url.endswith(".pdf") for source in sources)
+    assert all(source.pdf_url.startswith(("http://", "https://")) for source in sources)
     assert all(source.source_tier in {"1", "2", "3"} for source in sources)
-    assert {source.source_type for source in sources} == {"authority_whitepaper"}
+    source_types = {source.source_type for source in sources}
+    assert "authority_whitepaper" in source_types
+    assert source_types <= {"authority_whitepaper", *TECHNICAL_SOURCE_TYPES}
+    assert TECHNICAL_SOURCE_TYPES & source_types
 
     candidate = industry_candidate(sources[0])
     assert candidate.kind == "industry"

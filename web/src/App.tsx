@@ -769,7 +769,7 @@ function DetailDrawer(props: {
         ))}
       </div>
       <div className="drawer-body">
-        {props.tab === "evidence" && <DataTable rows={evidence} empty="当前没有证据卡片" />}
+        {props.tab === "evidence" && <EvidenceCards rows={evidence} empty="当前没有证据卡片" />}
         {props.tab === "cypher" && (
           <div className="code-stack">
             <pre>{result.cypher || "无 Cypher 查询"}</pre>
@@ -1370,6 +1370,7 @@ function GraphCanvas(props: { edges: GraphEdge[]; variant?: GraphVariant; empty:
                 <path className="graph-edge" d={graphPath(source, target, index)} markerEnd={`url(#${arrowId})`}>
                   <title>
                     {edge.source} - {edge.label} - {edge.target}
+                    {edge.citation_id ? ` · ${edge.citation_id}` : ""}
                   </title>
                 </path>
                 {layout.showEdgeLabels && (
@@ -1434,6 +1435,99 @@ function BarList(props: { title: string; data: Record<string, number> }) {
       ))}
     </div>
   );
+}
+
+const EVIDENCE_KIND_LABELS: Record<string, string> = {
+  dossier: "Dossier",
+  claim: "Claim",
+  graph: "Graph",
+  rag: "RAG"
+};
+
+const CLAIM_TYPE_LABELS: Record<string, string> = {
+  company_exposure: "公司敞口",
+  mechanism: "技术机理",
+  bottleneck: "瓶颈",
+  indicator: "领先指标",
+  risk: "风险",
+  supply_chain: "产业传导",
+  trend: "趋势",
+  policy: "政策"
+};
+
+const EXPOSURE_LABELS: Record<string, string> = {
+  core: "核心敞口",
+  direct: "直接敞口",
+  indirect: "间接敞口",
+  mentioned: "仅提及"
+};
+
+function EvidenceCards(props: { rows: Record<string, unknown>[]; empty: string }) {
+  if (!props.rows.length) return <div className="empty-table">{props.empty}</div>;
+  const groups = props.rows.reduce<Record<string, Record<string, unknown>[]>>((acc, row) => {
+    const kind = fieldText(row, "kind") || "other";
+    const label = EVIDENCE_KIND_LABELS[kind] ?? kind;
+    acc[label] = acc[label] ?? [];
+    acc[label].push(row);
+    return acc;
+  }, {});
+  return (
+    <div className="evidence-groups">
+      {Object.entries(groups).map(([label, rows]) => (
+        <section className="evidence-group" key={label}>
+          <div className="evidence-group-title">
+            <span>{label}</span>
+            <b>{rows.length}</b>
+          </div>
+          {rows.map((row, index) => (
+            <EvidenceCardView row={row} key={`${fieldText(row, "citation_id") || label}-${index}`} />
+          ))}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function EvidenceCardView(props: { row: Record<string, unknown> }) {
+  const row = props.row;
+  const citationId = fieldText(row, "citation_id");
+  const title = fieldText(row, "title") || fieldText(row, "source") || "证据";
+  const evidence = fieldText(row, "evidence");
+  const source = fieldText(row, "source");
+  const page = fieldText(row, "page");
+  const section = fieldText(row, "section");
+  const claimType = fieldText(row, "claim_type");
+  const exposureLevel = fieldText(row, "exposure_level");
+  const confidence = fieldText(row, "confidence");
+  const score = fieldText(row, "score");
+  return (
+    <article className="evidence-card">
+      <div className="evidence-card-head">
+        <div>
+          <span className="citation-pill">{citationId || "E?"}</span>
+          <strong>{title}</strong>
+        </div>
+        <div className="evidence-tags">
+          {claimType && <span>{CLAIM_TYPE_LABELS[claimType] ?? claimType}</span>}
+          {exposureLevel && <span>{EXPOSURE_LABELS[exposureLevel] ?? exposureLevel}</span>}
+        </div>
+      </div>
+      <p>{evidence || "无证据文本"}</p>
+      <div className="evidence-meta">
+        {source && <span>{source}</span>}
+        {page && <span>p.{page}</span>}
+        {section && <span>{section}</span>}
+        {confidence && <span>置信度 {confidence}</span>}
+        {score && <span>score {score}</span>}
+      </div>
+    </article>
+  );
+}
+
+function fieldText(row: Record<string, unknown>, key: string) {
+  const value = row[key];
+  if (value === null || value === undefined) return "";
+  return String(value);
 }
 
 function DataTable(props: { rows: Record<string, unknown>[]; empty: string }) {

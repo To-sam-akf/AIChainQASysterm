@@ -5,11 +5,12 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable
 
 from src.domain_lexicon import (
     BOTTLENECK_TERMS,
+    TECHNICAL_SOURCE_TYPES,
     company_groups_by_segment,
     company_segment,
     is_core_company,
@@ -20,10 +21,12 @@ from src.domain_lexicon import (
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
+from src.research_claims import ResearchHit, query_focus_terms
 
 
 @dataclass(frozen=True)
 class EvidenceCard:
+    citation_id: str
     kind: str
     title: str
     evidence: str
@@ -36,6 +39,11 @@ class EvidenceCard:
     source_tier: str = ""
     score: float = 0.0
     reason: str = ""
+    topic: str = ""
+    claim_type: str = ""
+    exposure_level: str = ""
+    confidence: str = ""
+    as_of_date: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         row = asdict(self)
@@ -221,6 +229,7 @@ def cards_from_graph_records(records: list[dict[str, Any]], plan: QuestionPlan) 
         }
         cards.append(
             EvidenceCard(
+                citation_id="",
                 kind="graph",
                 title=title,
                 evidence=evidence,
@@ -246,6 +255,8 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
             score += 1.0
         if hit.source_type == "authority_whitepaper":
             score += 1.0
+        if hit.source_type in TECHNICAL_SOURCE_TYPES and plan.answer_type in {"industry_bottleneck", "thematic_research"}:
+            score += 1.0
         if hit.company and hit.company in plan.companies:
             score += 1.2
         if plan.expanded_topics and any(normalize_topic(term) in normalize_topic(hit.snippet) for term in plan.expanded_topics):
@@ -254,6 +265,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
             score -= 5.0
         cards.append(
             EvidenceCard(
+                citation_id="",
                 kind="rag",
                 title=f"{hit.company or hit.source_type} 原文片段".strip(),
                 evidence=hit.snippet,
@@ -269,8 +281,59 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
     return cards
 
 
-def rank_evidence_cards(cards: list[EvidenceCard], *, limit: int = 10) -> list[EvidenceCard]:
-    deduped = []
+def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> list[EvidenceCard]:
+    cards = []
+    focus_terms = query_focus_terms(plan.question)
+    for hit in hits:
+        score = hit.score + (60.0 if hit.kind == "dossier" else 45.0)
+        if focus_terms:
+            text = f"{hit.title} {hit.text} {hit.source} {hit.section}"
+            if text_matches_terms(text, focus_terms):
+                score += 8.0 if hit.kind == "claim" else 2.0
+            elif hit.kind == "dossier":
+                score -= 18.0
+            else:
+                score -= 4.0
+        cards.append(
+            EvidenceCard(
+                citation_id="",
+                kind=hit.kind,
+                title=hit.title,
+                evidence=hit.text,
+                source=hit.source,
+                page=hit.page,
+                section=hit.section,
+                company=hit.company,
+                source_tier=hit.source_tier,
+                score=round(score, 4),
+                reason="投研 Claim/Dossier 证据包" if hit.kind == "claim" else "产业链社区摘要",
+                topic=hit.topic,
+                claim_type=hit.claim_type,
+                exposure_level=hit.exposure_level,
+                confidence=hit.confidence,
+                as_of_date=hit.as_of_date,
+            )
+        )
+    return cards
+
+
+def rank_evidence_cards(
+    cards: list[EvidenceCard],
+    *,
+    limit: int = 10,
+    plan: QuestionPlan | None = None,
+) -> list[EvidenceCard]:
+    ranked = dedupe_cards(cards)
+    if plan is not None:
+        ranked = filter_cards_for_plan(ranked, plan)
+        selected = select_cards_by_answer_type(ranked, plan, limit=limit)
+    else:
+        selected = ranked[:limit]
+    return assign_citation_ids(selected[:limit])
+
+
+def dedupe_cards(cards: list[EvidenceCard]) -> list[EvidenceCard]:
+    deduped: list[EvidenceCard] = []
     seen = set()
     for card in sorted(cards, key=lambda item: (-item.score, item.kind, item.source, item.page)):
         key = re.sub(r"\s+", "", card.evidence)[:80]
@@ -278,13 +341,135 @@ def rank_evidence_cards(cards: list[EvidenceCard], *, limit: int = 10) -> list[E
             continue
         seen.add(key)
         deduped.append(card)
-    return deduped[:limit]
+    return deduped
+
+
+def filter_cards_for_plan(cards: list[EvidenceCard], plan: QuestionPlan) -> list[EvidenceCard]:
+    if not plan.companies or plan.answer_type not in {"company_compare", "risk_analysis", "company_profile"}:
+        return cards
+    allowed = set(plan.companies)
+    output = []
+    for card in cards:
+        if card.kind == "dossier":
+            output.append(card)
+            continue
+        if card.company and card.company not in allowed:
+            continue
+        output.append(card)
+    return output
+
+
+def select_cards_by_answer_type(cards: list[EvidenceCard], plan: QuestionPlan, *, limit: int) -> list[EvidenceCard]:
+    if limit <= 0:
+        return []
+    if plan.answer_type == "company_compare":
+        return select_company_compare_cards(cards, plan, limit)
+    if plan.answer_type == "risk_analysis":
+        return select_risk_cards(cards, plan, limit)
+    if plan.answer_type == "topic_to_company":
+        return select_topic_company_cards(cards, plan, limit)
+    if plan.answer_type in {"industry_bottleneck", "thematic_research"}:
+        return select_research_mix_cards(cards, plan, limit)
+    return cards[:limit]
+
+
+def select_company_compare_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    per_company = 2 if limit >= 6 else 1
+    for company in plan.companies:
+        company_cards = [
+            card
+            for card in cards
+            if card.company == company and card.claim_type in {"company_exposure", "indicator", "risk", ""}
+        ]
+        selected.extend(company_cards[:per_company])
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: not card.company and card.kind in {"claim", "rag"}, 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_risk_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk" or card.relation == "DISCLOSES_RISK", 2, selected))
+    selected.extend(
+        cards_by_predicate(
+            cards,
+            lambda card: card.claim_type in {"company_exposure", "mechanism", "supply_chain"} or card.relation != "DISCLOSES_RISK",
+            3,
+            selected,
+        )
+    )
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "rag", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_topic_company_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "company_exposure", min(3, limit), selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type in {"mechanism", "supply_chain", "bottleneck"}, 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "indicator", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_research_mix_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    del plan
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "bottleneck", 2, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type in {"mechanism", "supply_chain", "trend"}, 2, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "indicator", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def cards_by_predicate(
+    cards: list[EvidenceCard],
+    predicate: Any,
+    limit: int,
+    selected: list[EvidenceCard],
+) -> list[EvidenceCard]:
+    if limit <= 0:
+        return []
+    selected_keys = {card_identity(card) for card in selected}
+    output = []
+    for card in cards:
+        if card_identity(card) in selected_keys or not predicate(card):
+            continue
+        output.append(card)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def fill_remaining(selected: list[EvidenceCard], cards: list[EvidenceCard], limit: int) -> list[EvidenceCard]:
+    output = list(selected)
+    seen = {card_identity(card) for card in output}
+    for card in cards:
+        if len(output) >= limit:
+            break
+        key = card_identity(card)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(card)
+    return output[:limit]
+
+
+def card_identity(card: EvidenceCard) -> tuple[str, str, str, str]:
+    return (card.kind, card.source, card.page, re.sub(r"\s+", "", card.evidence)[:100])
+
+
+def assign_citation_ids(cards: list[EvidenceCard]) -> list[EvidenceCard]:
+    return [replace(card, citation_id=f"E{index}") for index, card in enumerate(cards, start=1)]
 
 
 def legacy_evidence_rows(cards: list[EvidenceCard]) -> list[dict[str, Any]]:
     return [
         {
             "kind": card.kind,
+            "citation_id": card.citation_id,
             "source": card.source,
             "source_tier": card.source_tier,
             "page": card.page,
@@ -312,7 +497,13 @@ def build_professional_answer_prompt(
         "neo4j_or_csv_graph_records": graph_records[:30],
         "evidence_cards": [card.to_dict() for card in cards[:12]],
     }
-    return "请基于以下 Neo4j/CSV 图谱证据和 RAG 原文证据回答，不要使用证据外信息：\n" + json.dumps(
+    return (
+        "请基于以下证据包回答，不要使用证据外信息。优先使用 claim/dossier 形成投研逻辑，"
+        "再用 graph/rag 作为原文支撑。每个关键判断都要能对应证据。\n"
+        "答案中的关键判断必须标注证据编号，例如 [E1]、[E2]；不要引用不存在的编号。\n"
+        "输出结构固定为：核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据。\n"
+        "如果某一项没有证据，明确写“当前证据不足”，不要编造。\n"
+    ) + json.dumps(
         payload,
         ensure_ascii=False,
         indent=2,
@@ -322,6 +513,30 @@ def build_professional_answer_prompt(
 def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], graph_records: list[dict[str, Any]]) -> str:
     if not cards:
         return "当前知识库未找到足够证据支持回答。建议补充更精确的公司、产业链环节或报告范围后再检索。"
+    research_cards = [card for card in cards if card.kind in {"claim", "dossier"}]
+    if research_cards and plan.answer_type in {"thematic_research", "industry_bottleneck"}:
+        return fallback_research_answer(plan, research_cards, cards)
+    if research_cards and plan.answer_type == "topic_to_company":
+        exposure = format_exposure_ranking(research_cards, focus_topic(plan))
+        if exposure:
+            topic = "、".join(plan.topics or plan.expanded_topics[:2]) or "该主题"
+            technical = format_claims_by_type(research_cards, {"mechanism", "supply_chain", "bottleneck"}, 3)
+            if technical == "当前证据不足。":
+                technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈")) or technical
+            indicators = format_claims_by_type(research_cards, {"indicator"}, 3)
+            if indicators == "当前证据不足。":
+                indicators = format_dossier_lines(research_cards, ("领先指标",)) or indicators
+            boundaries = format_claims_by_type(research_cards, {"risk"}, 3)
+            if boundaries == "当前证据不足。":
+                boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or boundaries
+            return (
+                f"核心判断：{topic}相关公司需要按敞口强弱分层，而不是简单罗列。\n\n"
+                f"公司排序：{exposure}\n\n"
+                f"技术机理：{technical}\n\n"
+                f"领先指标：{indicators}\n\n"
+                f"反证/边界：{boundaries}\n\n"
+                f"证据：{format_evidence(cards, 5)}"
+            )
     if plan.answer_type == "topic_to_company":
         companies = unique([record.get("company", "") for record in graph_records if record.get("company")])
         groups = company_groups_by_segment(companies)
@@ -346,11 +561,16 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
                 ]
             )
             sections.append(f"{company}：{'、'.join(targets[:8]) or '当前证据不足'}")
+        relevant_cards = [
+            card
+            for card in cards
+            if not card.company or card.company in set(plan.companies)
+        ]
         return (
-            "结论：两家公司可从产品代际、客户结构、产业链位置和风险暴露四个维度比较。\n\n"
+            "结论：两家公司可从产品代际、产业链位置和风险暴露三个维度比较。\n\n"
             + "\n".join(sections)
-            + f"\n\n证据：{format_evidence(cards, 4)}\n\n"
-            "研究要点：重点看高端产品放量节奏、海外云厂商资本开支、价格压力和供应链约束。"
+            + f"\n\n证据：{format_evidence(relevant_cards or cards, 4)}\n\n"
+            "研究要点：以上差异只来自当前证据包；未入包的信息不外推。"
         )
     if plan.answer_type == "risk_analysis":
         company = "、".join(plan.companies) or "该公司"
@@ -359,7 +579,7 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
             f"结论：{company}的业务进展和风险需要分开看，当前证据中可确认的风险包括：{'、'.join(risks[:10]) or '见下方证据'}。\n\n"
             f"业务证据：{format_evidence([card for card in cards if card.relation != 'DISCLOSES_RISK'], 3)}\n\n"
             f"风险证据：{format_evidence([card for card in cards if card.relation == 'DISCLOSES_RISK'] or cards, 4)}\n\n"
-            "跟踪指标：订单交付、毛利率、应收账款、客户集中度、海外业务和政策变化。"
+            "跟踪指标：当前证据不足时不外推具体订单或财务指标。"
         )
     if plan.answer_type == "industry_bottleneck":
         return (
@@ -375,6 +595,110 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
     )
 
 
+def fallback_research_answer(plan: QuestionPlan, research_cards: list[EvidenceCard], all_cards: list[EvidenceCard]) -> str:
+    topic = "、".join(plan.topics or unique([card.topic for card in research_cards])[:2]) or "该主题"
+    focus_terms = query_focus_terms(plan.question)
+    focused_claims = focus_cards(research_cards, focus_terms)
+    primary_cards = focused_claims or research_cards
+    core_judgment = ""
+    if focused_claims:
+        core_judgment = with_citation(shorten_inline(focused_claims[0].evidence, 220), focused_claims[0])
+    if not core_judgment:
+        dossier_card = next((card for card in research_cards if card.kind == "dossier"), None)
+        if dossier_card:
+            core_judgment = with_citation(shorten_inline(dossier_card.evidence.splitlines()[0], 220), dossier_card)
+    if not core_judgment:
+        core_judgment = f"{topic} 的判断需要同时看技术瓶颈、产业传导、公司直接敞口和可验证指标。"
+    technical = format_claims_by_type(primary_cards, {"mechanism", "supply_chain", "bottleneck", "trend"}, 4)
+    if technical == "当前证据不足。":
+        technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈"))
+    transmission = format_dossier_lines(research_cards, ("公司敞口",)) or format_claims_by_type(research_cards, {"company_exposure", "policy"}, 4)
+    indicators = format_claims_by_type(primary_cards, {"indicator"}, 4)
+    if indicators == "当前证据不足。":
+        indicators = format_dossier_lines(research_cards, ("领先指标",)) or indicators
+    boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or format_claims_by_type(primary_cards, {"risk"}, 4)
+    return (
+        f"核心判断：{core_judgment}\n\n"
+        f"技术机理：{technical}\n\n"
+        f"产业传导：{transmission}\n\n"
+        f"公司排序：{format_exposure_ranking(research_cards, focus_topic(plan)) or '当前证据不足以稳定排序。'}\n\n"
+        f"领先指标：{indicators}\n\n"
+        f"反证/边界：{boundaries}\n\n"
+        f"证据：{format_evidence(all_cards, 6)}"
+    )
+
+
+def format_claims_by_type(cards: list[EvidenceCard], claim_types: set[str], limit: int) -> str:
+    values = []
+    for card in cards:
+        if card.kind == "dossier":
+            continue
+        if card.claim_type in claim_types or (card.kind == "dossier" and not card.claim_type):
+            text = with_citation(shorten_inline(card.evidence, 180), card)
+            if text and text not in values:
+                values.append(text)
+        if len(values) >= limit:
+            break
+    return "；".join(values) if values else "当前证据不足。"
+
+
+def focus_cards(cards: list[EvidenceCard], focus_terms: list[str]) -> list[EvidenceCard]:
+    if not focus_terms:
+        return []
+    focused = [
+        card
+        for card in cards
+        if card.kind == "claim"
+        and text_matches_terms(f"{card.title} {card.evidence} {card.source} {card.section}", focus_terms)
+    ]
+    return sorted(focused, key=lambda card: (-card.score, card.claim_type, card.source, card.page))
+
+
+def format_dossier_lines(cards: list[EvidenceCard], labels: tuple[str, ...]) -> str:
+    values = []
+    for card in cards:
+        if card.kind != "dossier":
+            continue
+        for line in card.evidence.splitlines():
+            line = line.strip()
+            if any(line.startswith(f"{label}：") for label in labels):
+                values.append(with_citation(shorten_inline(line.split("：", 1)[-1], 220), card))
+    return "；".join(values[:4])
+
+
+def focus_topic(plan: QuestionPlan) -> str:
+    return next((topic for topic in plan.topics if topic), "")
+
+
+def format_exposure_ranking(cards: list[EvidenceCard], topic: str = "") -> str:
+    grouped: dict[str, list[str]] = {"core": [], "direct": [], "indirect": [], "mentioned": []}
+    labels = {"core": "核心敞口", "direct": "直接敞口", "indirect": "间接敞口", "mentioned": "仅提及"}
+    for card in cards:
+        if topic and card.topic and card.topic != topic:
+            continue
+        if card.kind == "dossier":
+            for line in card.evidence.splitlines():
+                if not line.startswith("公司敞口："):
+                    continue
+                for part in line.split("：", 1)[-1].split("；"):
+                    if ":" not in part:
+                        continue
+                    level, names = part.split(":", 1)
+                    if level not in grouped:
+                        continue
+                    for name in names.split("、"):
+                        name = name.strip()
+                        if name and name not in grouped[level]:
+                            grouped[level].append(name)
+        if card.claim_type != "company_exposure" or not card.company:
+            continue
+        level = card.exposure_level if card.exposure_level in grouped else "mentioned"
+        if card.company not in grouped[level]:
+            grouped[level].append(card.company)
+    parts = [f"{labels[level]}：{'、'.join(names[:12])}" for level, names in grouped.items() if names]
+    return "；".join(parts)
+
+
 def format_evidence(cards: list[EvidenceCard], limit: int) -> str:
     if not cards:
         return "当前证据不足。"
@@ -384,8 +708,19 @@ def format_evidence(cards: list[EvidenceCard], limit: int) -> str:
         text = card.evidence.replace("\n", " ").strip()
         if len(text) > 120:
             text = text[:117] + "..."
-        parts.append(f"{source}：{text}")
+        citation = f"{card.citation_id} " if card.citation_id else ""
+        parts.append(f"{citation}{source or card.title}：{text}")
     return "；".join(parts) + "。"
+
+
+def with_citation(text: str, card: EvidenceCard) -> str:
+    text = text.strip()
+    return f"{text} [{card.citation_id}]" if text and card.citation_id else text
+
+
+def shorten_inline(value: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[: limit - 3] + "..." if len(text) > limit else text
 
 
 def pseudo_cypher_for_plan(plan: QuestionPlan, limit: int = 50) -> str:

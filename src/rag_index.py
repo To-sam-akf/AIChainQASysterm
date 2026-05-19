@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from src.extraction_schema import load_jsonl, write_jsonl
-from src.domain_lexicon import DISCLAIMER_TERMS, expanded_terms, is_disclaimer_text, normalize_topic
+from src.domain_lexicon import DISCLAIMER_TERMS, TECHNICAL_SOURCE_TYPES, expanded_terms, is_disclaimer_text, normalize_topic
 from src.text_cleaner import CHUNKS_DIR
 
 try:  # Optional speed/quality dependencies; deterministic fallback below.
@@ -70,6 +70,26 @@ DOMAIN_WORDS = (
     "覆铜板",
     "经营现金流",
     "研发投入",
+    "UCIe",
+    "UALink",
+    "Ultra Ethernet",
+    "UET",
+    "Scale Up",
+    "Scale-Out",
+    "SerDes",
+    "224G",
+    "PAM4",
+    "InfiniBand",
+    "NVLink",
+    "HBM",
+    "Chiplet",
+    "advanced packaging",
+    "FP8",
+    "FlashAttention",
+    "PagedAttention",
+    "MLPerf",
+    "cold plate",
+    "CDU",
 )
 _JIEBA_WORDS_ADDED = False
 
@@ -169,7 +189,7 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
         return None
     search_text = "\n".join(
         str(chunk.get(key, "") or "")
-        for key in ("company", "source_title", "source_type", "section", "text")
+        for key in ("company", "source_title", "source_type", "section", "context", "text")
     )
     counts = Counter(tokenize(search_text))
     if not counts:
@@ -453,6 +473,8 @@ class LocalRagIndex:
             score += 0.6
         if document.source_type == "authority_whitepaper":
             score += 0.8
+        if document.source_type in TECHNICAL_SOURCE_TYPES and is_technical_question(question):
+            score += 0.9
         if is_disclaimer_text(document.text):
             score -= 4.0
 
@@ -498,9 +520,11 @@ def expand_query(question: str) -> str:
 def source_priority(hit: RagHit) -> int:
     if hit.source_type == "authority_whitepaper":
         return 0
-    if hit.source_tier == "1":
+    if hit.source_type in TECHNICAL_SOURCE_TYPES:
         return 1
-    return 2
+    if hit.source_tier == "1":
+        return 2
+    return 3
 
 
 def is_low_value_hit(hit: RagHit) -> bool:
@@ -513,6 +537,33 @@ def is_low_value_hit(hit: RagHit) -> bool:
     if "目录" in normalized and len(hit.snippet) < 240:
         return True
     return False
+
+
+def is_technical_question(question: str) -> bool:
+    normalized = normalize_topic(question)
+    terms = (
+        "为什么",
+        "瓶颈",
+        "机理",
+        "传导",
+        "趋势",
+        "指标",
+        "ultraethernet",
+        "ualink",
+        "ucie",
+        "chiplet",
+        "fp8",
+        "flashattention",
+        "pagedattention",
+        "mlperf",
+        "serdes",
+        "scaleup",
+        "scaleout",
+        "cpo",
+        "液冷",
+        "算力网络",
+    )
+    return any(term in normalized for term in terms)
 
 
 def dedupe_hits(hits: list[RagHit]) -> list[RagHit]:

@@ -51,18 +51,24 @@ export interface GraphEdge {
   label: string;
   source_type: string;
   target_type: string;
+  source_kind?: string;
+  citation_id?: string;
+  claim_type?: string;
+  exposure_level?: string;
 }
 
 export interface ApiStatus {
   graph_backend: string;
   neo4j_enabled: boolean;
   rag_enabled: boolean;
+  research_enabled: boolean;
   llm_enabled: boolean;
   csv_graph_enabled: boolean;
   graph_data_dir: string;
   errors: {
     graph: string;
     rag: string;
+    research: string;
     llm: string;
   };
   stats: GraphStats;
