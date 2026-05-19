@@ -68,6 +68,41 @@ def test_rag_index_hits_industry_whitepaper_terms(tmp_path: Path) -> None:
     assert "液冷" in hits[0].snippet
 
 
+def test_rag_index_prioritizes_deep_technical_sources(tmp_path: Path) -> None:
+    chunks_dir = tmp_path / "chunks"
+    index_dir = tmp_path / "rag"
+    write_chunk(
+        chunks_dir / "whitepaper.jsonl",
+        chunk_id="chunk_whitepaper",
+        report_id="industry_caict_ai_core_technology_2021",
+        kind="industry",
+        company="",
+        source_title="人工智能核心技术产业白皮书",
+        source_tier="1",
+        source_type="authority_whitepaper",
+        section="AI算力",
+        text="AI accelerator interconnect bandwidth affects cluster performance.",
+    )
+    write_chunk(
+        chunks_dir / "roadmap.jsonl",
+        chunk_id="chunk_roadmap",
+        report_id="industry_tech_irds_outside_system_connectivity_2024",
+        kind="industry",
+        company="",
+        source_title="IRDS 2024 Outside System Connectivity",
+        source_tier="1",
+        source_type="technical_roadmap",
+        section="Interconnect bandwidth",
+        text="AI accelerator interconnect bandwidth affects cluster performance.",
+    )
+    build_rag_index(chunks_dir, index_dir)
+    index = LocalRagIndex.load(index_dir)
+
+    hits = index.search("AI accelerator interconnect bandwidth", top_k=2)
+
+    assert [hit.source_type for hit in hits] == ["technical_roadmap", "authority_whitepaper"]
+
+
 def test_cypher_guard_allows_read_query_and_rejects_writes() -> None:
     cypher = "MATCH (c:Company)-[r]->(x) RETURN c.name AS company, r.evidence AS evidence"
 

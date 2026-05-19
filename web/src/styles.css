@@ -425,6 +425,7 @@ button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 6px;
   min-height: 32px;
   border: 1px solid rgba(28, 33, 38, 0.13);
   border-radius: 999px;

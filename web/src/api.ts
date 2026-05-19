@@ -73,7 +73,8 @@ export async function sendMessage(
   id: string,
   question: string,
   thinkingEnabled: boolean,
-  reasoningEffort: string
+  reasoningEffort: string,
+  webSearchEnabled: boolean
 ): Promise<Conversation> {
   const payload = await request<{ conversation: Conversation }>(
     `/api/conversations/${encodeURIComponent(id)}/messages`,
@@ -82,7 +83,8 @@ export async function sendMessage(
       body: JSON.stringify({
         question,
         thinking_enabled: thinkingEnabled,
-        reasoning_effort: reasoningEffort
+        reasoning_effort: reasoningEffort,
+        web_search_enabled: webSearchEnabled
       })
     }
   );
@@ -94,6 +96,7 @@ export async function streamMessage(
   question: string,
   thinkingEnabled: boolean,
   reasoningEffort: string,
+  webSearchEnabled: boolean,
   onEvent: (event: MessageStreamEvent) => void
 ): Promise<Conversation> {
   const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages/stream`, {
@@ -104,7 +107,8 @@ export async function streamMessage(
     body: JSON.stringify({
       question,
       thinking_enabled: thinkingEnabled,
-      reasoning_effort: reasoningEffort
+      reasoning_effort: reasoningEffort,
+      web_search_enabled: webSearchEnabled
     })
   });
   if (!response.ok) {

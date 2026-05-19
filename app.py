@@ -60,6 +60,11 @@ def ensure_conversation_state() -> None:
         "llm_thinking_enabled",
         env_bool("LLM_THINKING_ENABLED", thinking_default),
     )
+    web_search_default = "deepseek" in os.getenv("LLM_BASE_URL", "").casefold()
+    st.session_state.setdefault(
+        "qa_web_search_enabled",
+        env_bool("QA_WEB_SEARCH_ENABLED", web_search_default),
+    )
     effort = os.getenv("LLM_REASONING_EFFORT", "high").strip() or "high"
     st.session_state.setdefault("llm_reasoning_effort", effort if effort in REASONING_EFFORTS else "high")
     st.session_state.setdefault("qa_question_input", "")
@@ -154,6 +159,11 @@ def render_conversation_sidebar() -> None:
             options=REASONING_EFFORTS,
             key="llm_reasoning_effort",
             disabled=not st.session_state.get("llm_thinking_enabled", False),
+        )
+        st.toggle(
+            "启用联网检索",
+            key="qa_web_search_enabled",
+            help="开启后先联网检索公开信息，并作为“联网补充”交给 DeepSeek；知识库证据仍为主依据。",
         )
 
         st.header("对话记录")
@@ -299,14 +309,17 @@ def submit_question(engine: QAEngine, question: str) -> None:
     history = conversation_messages_from_turns(st.session_state["qa_turns"])
     thinking_enabled = bool(st.session_state.get("llm_thinking_enabled", False))
     reasoning_effort = current_reasoning_effort()
+    web_search_enabled = bool(st.session_state.get("qa_web_search_enabled", False))
     result = engine.answer_question(
         question,
         conversation_history=history,
         thinking_enabled=thinking_enabled,
         reasoning_effort=reasoning_effort,
+        web_search_enabled=web_search_enabled,
     )
     result["diagnostics"]["thinking_enabled"] = thinking_enabled
     result["diagnostics"]["reasoning_effort"] = reasoning_effort or ""
+    result["diagnostics"]["web_search_enabled"] = web_search_enabled
     st.session_state["qa_result"] = result
     st.session_state["qa_turns"].append(
         {
@@ -315,6 +328,7 @@ def submit_question(engine: QAEngine, question: str) -> None:
             "answer": result["answer"],
             "thinking_enabled": thinking_enabled,
             "reasoning_effort": reasoning_effort or "",
+            "web_search_enabled": web_search_enabled,
             "result": result,
         }
     )
@@ -389,7 +403,8 @@ def page_qa(engine: QAEngine) -> None:
         st.markdown(f"**用户 {index + 1}：** {turn['question']}")
         thinking_label = "开启" if turn.get("thinking_enabled") else "关闭"
         effort = turn.get("reasoning_effort") or "无"
-        st.caption(f"思考模式：{thinking_label}；思考强度：{effort}")
+        web_label = "开启" if turn.get("web_search_enabled") else "关闭"
+        st.caption(f"思考模式：{thinking_label}；思考强度：{effort}；联网检索：{web_label}")
         st.markdown("**助手：**")
         st.write(turn["answer"])
         if not render_latest_only or index == selected_detail_index:
