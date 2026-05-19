@@ -1011,6 +1011,12 @@ def score_claim(claim: dict[str, Any], question: str, topics: list[str], plan: A
     plan_companies = set(getattr(plan, "companies", []) or [])
     if companies and plan_companies and plan_companies & set(companies):
         score += 2.5
+    if companies and plan_companies and not (plan_companies & set(companies)) and getattr(plan, "answer_type", "") in {
+        "company_compare",
+        "risk_analysis",
+        "company_profile",
+    }:
+        score -= 20.0
     answer_type = getattr(plan, "answer_type", "")
     if answer_type == "industry_bottleneck" and claim_type in {"bottleneck", "mechanism", "indicator"}:
         score += 2.0
@@ -1057,18 +1063,24 @@ def query_focus_terms(question: str) -> list[str]:
 
 def query_topics(question: str, plan_topics: Iterable[str], expanded_plan_topics: Iterable[str]) -> list[str]:
     del expanded_plan_topics
-    topics = [topic for topic in plan_topics if topic in THEME_SYNONYMS]
+    plan_topic_list = list(plan_topics)
+    topics = [topic for topic in plan_topic_list if topic in THEME_SYNONYMS]
     topics.extend(infer_themes(question))
     if "国产" in question and "算力" in question:
         topics.append("国产算力")
     if not topics and "算力" in question:
-        topics.extend(["AI服务器", "AI芯片", "数据中心", "光模块", "液冷", "算力网络", "电源"])
+        if any(term in question for term in ("瓶颈", "约束", "制约", "卡点", "最大")):
+            topics.extend(["AI芯片", "算力网络", "液冷"])
+        else:
+            topics.extend(["AI服务器", "AI芯片", "算力网络"])
     result = []
     seen = set()
     for topic in topics:
         if topic and topic not in seen:
             seen.add(topic)
             result.append(topic)
+        if len(result) >= 3 and not plan_topic_list:
+            break
     return result
 
 

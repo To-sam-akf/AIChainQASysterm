@@ -2,41 +2,56 @@
 
 AI 算力产业链知识图谱问答系统。
 
-## 当前版本：V1 投研推理型 GraphRAG
+## 当前版本：V1.2 稳定版证据包增强的投研 GraphRAG
 
-V1 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + 图谱 + RAG”的混合链路。系统现在会从 `data/curated/relations.csv` 派生：
+V1.2 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + 图谱 + RAG”的混合链路，并把新增的专业技术源纳入知识图谱构建。系统现在会同时使用两类 Claim 来源：
+
+- 从 `data/curated/relations.csv` 派生公司、主题、产业链和风险相关 Claim。
+- 从 `data/chunks/industry_tech_*.jsonl` 的高信号原文 chunk 直接抽取技术机理 Claim，覆盖 technical roadmap、open specification、manual open specification、benchmark methodology、technical paper、model technical report 等行业技术源。
+
+当前构建产物包括：
 
 - `data/curated/claims.csv`：投研原子判断，包含主题、公司、敞口强度、机理、指标、风险、证据、置信度和时点。
 - `data/curated/evidence_spans.csv`：可引用证据片段。
 - `data/curated/segment_dossiers.jsonl`：按 AI 服务器、AI 芯片、光模块、液冷、数据中心、电源、PCB 等主题生成的产业链摘要。
 
-问答链路会优先使用 Claim/Dossier 组织“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”，再用图谱关系和 RAG 原文片段补充事实来源。液冷这类主题已能区分核心敞口、直接敞口、间接敞口和仅提及公司，避免把服务器、电源、IDC、PCB 等间接受益环节与液冷主业公司混在同一层级。
+本次构建后的 curated 层包含 6881 个实体、10521 条关系、11591 条 Claim、11591 条证据片段和 9 个主题 dossier；本地 RAG 索引包含 4858 个 chunk。
 
-### V1 仍未完善的地方
+问答链路会优先使用 Claim/Dossier 组织“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”，再用图谱关系和 RAG 原文片段补充事实来源。液冷这类主题已能区分核心敞口、直接敞口、间接敞口和仅提及公司，避免把服务器、电源、IDC、PCB 等间接受益环节与液冷主业公司混在同一层级。对于 `Ultra Ethernet`、`UALink`、`UCIe/Chiplet`、`DeepSeek-V3`、`FlashAttention`、`PagedAttention`、`MLPerf`、`CPO/LPO/硅光`、`冷板/CDU` 等技术问题，检索和答案组织会优先引用 roadmap、spec、paper 和 benchmark 报告中的原文级技术 Claim。
 
-- Claim 层目前主要由规则从 curated 三元组派生，不是重新对原文做专门的“投研 Claim 抽取”。它能显著改善结构，但深度、准确性和冲突识别仍受原三元组质量约束。
+V1.2 本轮稳定化新增：
+
+- evidence pack 不再简单按分数截断，而是按问题类型分配 Claim/Dossier/Graph/RAG 证据预算，避免同类证据挤占全部上下文。
+- 每条证据卡片带 `citation_id`，答案和前端证据抽屉可用 `E1/E2/...` 对齐关键判断。
+- 回答子图由图谱记录和已选证据卡共同生成；即使答案主要来自 Claim/Dossier，React 工作台的“子图”也能展示公司、主题、风险和指标关系。
+- 本地回归评测扩展到 15 个投研问题，并检查证据卡、引用编号和子图是否生成。
+
+### V1.2 仍未完善的地方
+
+- 原文级 Claim 抽取已经先覆盖 `industry_tech_*` 专业技术源，但年报、券商研报和普通行业白皮书仍主要依赖关系派生 Claim。后续需要把原文级抽取扩展到更多来源，并加入 LLM 审校和人工校验。
 - Segment dossier 是确定性聚合摘要，不是 LLM 多文档综合后的高质量社区报告；部分机理句仍会带有原始抽取噪声，需要进一步做 LLM 审校和人工校验。
 - 公司敞口分级已经可用，但仍是启发式规则。复杂场景下，例如“液冷兼容设计”“数据中心节能”“光模块上游材料”，还需要更细的敞口 taxonomy 和人工标注样本。
 - 当前检索仍以 BM25、规则打分和 CSV 图谱为主，尚未接入 dense embedding、cross-encoder reranker 或真正的 GraphRAG global/local/DRIFT search。
 - 反证和冲突处理只是预留字段，尚未系统识别“券商乐观判断 vs 年报风险披露”“老报告 vs 新报告”“技术路线 A vs B”的矛盾。
 - 指标抽取还偏粗，不能稳定区分订单、合同负债、产能、毛利率、ASP、客户结构、资本开支、渗透率等投研指标。
 - 评测集仍偏 smoke test，能保证主流程不退化，但还不能衡量“是否产生超前 insight”。需要扩展高难投研问题和分维度评分。
-- API 测试在当前沙箱里 `TestClient` 请求有挂起现象；其他 47 个测试和 QA 回归通过。后续需要单独定位 FastAPI/TestClient 与运行环境的兼容问题。
+- 本次专业技术源并入的核心回归已通过；API 测试在当前沙箱里 `TestClient` 请求仍有挂起现象，后续需要单独定位 FastAPI/TestClient 与运行环境的兼容问题。
 
 ## 下一步：完全体升级计划
 
 完全体目标是把系统做成“面向 AI 算力产业链上市公司的证据驱动投研分析引擎”，而不只是问答演示。核心标准是：答案能稳定给出技术因果链、产业传导路径、公司敞口排序、可验证领先指标、风险反证和证据边界。
 
-### 1. 原文级 Claim 抽取重做
+### 1. 原文级 Claim 抽取扩展与审校
 
-- 在 `scripts/extract_knowledge.py` 之外新增专门的 Claim 抽取流水线，从 chunk 原文直接抽取投研判断，而不是从三元组二次派生。
-- Claim schema 固定为：`claim_text`、`claim_type`、`topic`、`companies`、`exposure_level`、`mechanism`、`direction`、`horizon`、`metric/value/unit`、`source`、`evidence_span`、`confidence`、`as_of_date`。
+- 当前已经在 `scripts/build_research_artifacts.py` 中合并“关系派生 Claim”和“专业技术源原文直抽 Claim”。下一步要把直抽能力从 `industry_tech_*` 扩展到年报、券商研报和普通行业源。
+- Claim schema 继续固定为：`claim_text`、`claim_type`、`topic`、`companies`、`exposure_level`、`mechanism`、`direction`、`horizon`、`metric/value/unit`、`source`、`evidence_span`、`confidence`、`as_of_date`。
 - 抽取时强制区分：
   - 技术机理：为什么某技术重要。
   - 产业传导：需求如何从训练/推理、数据中心、芯片、互联传到上市公司。
   - 公司敞口：core/direct/indirect/mentioned。
   - 领先指标：订单、收入、毛利率、产能、客户导入、资本开支、PUE、功率密度、端口速率、渗透率。
   - 反证风险：技术路线替代、供给约束、客户集中、价格压力、政策约束、需求不及预期。
+- 技术源默认不抽公司敞口，除非原文明确出现核心 A 股上市公司，避免把全球规范、论文或 benchmark 中的通用技术结论误映射到股票标的。
 
 ### 2. 主题社区报告升级
 
@@ -60,7 +75,7 @@ V1 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + 图�
 
 - 为 `claims.csv` 增加 `review_status`、`reviewer_note`、`quality_flags`、`conflict_group_id`。
 - 建立人工校验表或轻量前端：支持按主题查看 Claim、合并重复 Claim、调整敞口强度、标记噪声和冲突。
-- 建立实体别名和技术 taxonomy：例如 `CPO/共封装光学`、`LPO/线性驱动可插拔`、`冷板/浸没/喷淋`、`Scale Up/Scale Out`。
+- 持续完善实体别名和技术 taxonomy。当前已初步覆盖 `UCIe`、`UALink`、`Ultra Ethernet/UET`、`Scale Up/Scale Out`、`SerDes`、`CPO/LPO/硅光`、`HBM`、`Chiplet`、`advanced packaging`、`FP8`、`FlashAttention`、`PagedAttention`、`MLPerf`、`cold plate/CDU` 等术语，后续需要继续做别名归一、主题映射和人工样本校验。
 - 对年报财务表格、研报图表和白皮书指标做结构化解析，不再只依赖正文 OCR 文本。
 
 ### 5. 答案生成器升级
@@ -97,7 +112,7 @@ V1 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + 图�
 
 ## 第一阶段：数据准备
 
-初始化并下载最新可用年报、公开 AI 算力产业链研报和权威行业白皮书：
+初始化并下载最新可用年报、公开 AI 算力产业链研报、权威行业白皮书和专业技术源：
 
 ```bash
 python scripts/prepare_stage1_data.py --kind all --max-research 10
@@ -115,11 +130,13 @@ python scripts/prepare_stage1_data.py --kind industry --dry-run
 
 - `data/raw_pdfs/annual/`：30 家核心上市公司的最新可用年报。
 - `data/raw_pdfs/research/`：公开可直接访问的 AI 算力产业链研报。
-- `data/raw_pdfs/industry/`：中国信通院等权威机构白皮书、政策和标准资料。
+- `data/raw_pdfs/industry/`：中国信通院等权威机构白皮书、政策、标准资料，以及 IRDS/HIR、UCIe、UALink、Ultra Ethernet、OCP/OIF、MLPerf、arXiv 论文和模型技术报告等专业技术源。
 - `data/metadata/companies_extended.csv`：30 家核心上市公司、别名和产业链环节。
 - `data/metadata/research_keywords.csv`：研报检索关键词配置。
-- `data/metadata/industry_sources.csv`：权威行业知识源配置。
+- `data/metadata/industry_sources.csv`：行业知识源配置，支持 `authority_whitepaper`、`technical_roadmap`、`open_specification`、`manual_open_specification`、`benchmark_methodology`、`technical_paper`、`model_technical_report` 等类型。
 - `data/metadata/reports_manifest.csv`：PDF 来源、状态、SHA256、文件大小和页数。
+
+手工下载或暂缺直链的开放规范可以保留为 `manual_open_specification`；如果本地文件尚未补齐，manifest 会保留 `manual_reference` 状态，不阻塞已下载技术源入库。
 
 ## 第二、三阶段：知识抽取与图谱构建
 
@@ -149,6 +166,7 @@ python scripts/parse_pdfs.py --manifest data/metadata/reports_manifest.csv
 python scripts/extract_knowledge.py --kind research --contains 算力 --limit-chunks 20 --sleep 0.3
 python scripts/extract_knowledge.py --kind annual --contains 服务器 --limit-chunks 50 --resume --sleep 0.3
 python scripts/extract_knowledge.py --kind industry --contains 智能算力 --limit-chunks 50 --resume --sleep 0.3
+python scripts/extract_knowledge.py --kind industry --contains UCIe --limit-chunks 20 --resume --sleep 0.3
 ```
 
 一次性跑完
@@ -187,10 +205,11 @@ python scripts/load_neo4j.py --dry-run
 - 节点：`IndustryConcept`、`Policy`、`Standard`、`ValueChainSegment`。
 - 关系：`UPSTREAM_OF`、`DOWNSTREAM_OF`、`ENABLES`、`CONSTRAINS`、`DEFINES`、`SUPPORTED_BY_POLICY`。
 - 关系保留 `source_tier`，公司实体保留 `is_core_company`，用于区分核心上市公司和一般提及主体。
+- 技术源抽取提示会更偏向 ontology-only：优先抽技术、瓶颈、指标、标准和产业环节；只有原文明确出现核心 A 股上市公司时才抽 `Company`。
 
 ## 第四阶段：Neo4j + 本地 RAG + LLM 问答
 
-先生成专业版 curated 图谱。该步骤会从 `data/verified/` 自动图谱中过滤非核心上市公司噪声、目录/释义页误抽取关系和低价值会计科目指标：
+先生成专业版 curated 图谱。该步骤会从 `data/verified/` 自动图谱中过滤非核心上市公司噪声、目录/释义页误抽取关系和低价值会计科目指标，并同步生成投研 Claim、证据片段和主题 dossier：
 
 ```bash
 python scripts/build_curated_graph.py
@@ -202,17 +221,28 @@ python scripts/build_curated_graph.py
 python scripts/build_rag_index.py
 ```
 
-生成投研推理层。该步骤从 `data/curated/relations.csv` 派生 Claim、可引用证据片段和产业链主题 dossier，用于回答“为什么、瓶颈、谁最受益、跟踪指标”等深度投研问题：
+如果只想重建投研推理层，可以单独运行：
 
 ```bash
 python scripts/build_research_artifacts.py
+```
+
+默认会合并两类来源：
+
+- 从 `data/curated/relations.csv` 派生公司、主题、产业链和风险 Claim。
+- 从 `data/chunks/industry_tech_*.jsonl` 选择性直抽 `mechanism`、`bottleneck`、`indicator`、`supply_chain`、`risk` 等技术 Claim，并过滤英文法律声明、版权页、目录页、参考文献和纯表格噪声。
+
+如果需要回到只使用关系派生 Claim 的旧行为，可以运行：
+
+```bash
+python scripts/build_research_artifacts.py --no-direct-claims
 ```
 
 专业问答链路：
 
 - `QuestionPlan` 先解析问题意图、公司、主题、关系、是否比较、是否只看核心上市公司。
 - 图谱检索默认读取 `data/curated/`；Neo4j 可用时作为增强后端，不可用时自动降级 CSV。
-- 本地 RAG 使用 `jieba + BM25` 检索原文块，带同义词扩展、来源优先级、噪声过滤和去重。
+- 本地 RAG 使用 `jieba + BM25` 检索原文块，带同义词扩展、来源优先级、噪声过滤和去重。技术问题会提升 roadmap、spec、paper、benchmark 类证据权重；普通公司敞口问题仍优先年报和券商研报。
 - 结构化证据会统一成 `evidence_cards`，再生成“结论、证据、研究要点、风险与边界”格式答案。
 - 投研增强证据会额外读取 `claims.csv`、`evidence_spans.csv` 和 `segment_dossiers.jsonl`，优先组织“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”格式答案。
 - 答案只做事实归纳和研究框架，不提供买卖建议、目标价或收益预测。
@@ -241,7 +271,8 @@ python scripts/build_research_artifacts.py
 运行专业问答回归评测：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_frontend_data.py tests/test_research_claims.py tests/test_rag_qa.py tests/test_professional_qa.py
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/load_neo4j.py --dry-run
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/benchmark_qa_speed.py
 ```
@@ -251,6 +282,18 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/benchmark_qa_speed.py
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 ```
+
+本次稳定版增强后的核心回归结果：
+
+- `tests/test_frontend_data.py`、`tests/test_research_claims.py`、`tests/test_rag_qa.py`、`tests/test_professional_qa.py` 共 26 个测试通过。
+- `scripts/evaluate_qa.py` 扩展为 15 个稳定版样例，当前 30/30 通过，并检查 evidence cards、citation id 和 answer subgraph。
+- `scripts/load_neo4j.py --dry-run` 校验通过，当前 curated CSV 可导入。
+
+可重点抽样的问题：
+
+- `Ultra Ethernet 对算力网络有什么意义？`
+- `DeepSeek-V3 对训练算力瓶颈有什么启示？`
+- `UCIe/Chiplet 对国产算力产业链的传导是什么？`
 
 ## 第五阶段：React + FastAPI 前端展示
 

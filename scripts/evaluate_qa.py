@@ -19,26 +19,106 @@ EVAL_CASES = [
         "question": "哪些公司涉及AI服务器？",
         "must_include": ["浪潮信息", "中科曙光"],
         "must_exclude": ["Amazon", "Meta", "AMD"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
     },
     {
         "question": "液冷产业链有哪些上市公司，各自处于什么环节？",
         "must_include": ["英维克", "申菱环境", "高澜股份"],
         "must_exclude": ["阿里巴巴", "中国移动"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
     },
     {
         "question": "中际旭创和新易盛在光模块业务上的差异是什么？",
         "must_include": ["中际旭创", "新易盛", "光模块"],
-        "must_exclude": [],
+        "must_exclude": ["华工科技"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
     },
     {
         "question": "英维克液冷业务进展和主要风险是什么？",
         "must_include": ["英维克", "风险"],
         "must_exclude": ["长期股权投资"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
     },
     {
         "question": "AI算力产业链当前最大的瓶颈是什么？",
         "must_include": ["算力", "瓶颈"],
         "must_exclude": [],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "Ultra Ethernet 对算力网络有什么意义？",
+        "must_include": ["Ultra Ethernet", "算力网络"],
+        "must_exclude": ["商誉减值"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "DeepSeek-V3 对训练算力瓶颈有什么启示？",
+        "must_include": ["DeepSeek", "瓶颈"],
+        "must_exclude": ["买入", "目标价"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "UCIe/Chiplet 对国产算力产业链的传导是什么？",
+        "must_include": ["UCIe", "Chiplet"],
+        "must_exclude": ["目标价"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "CPO/LPO/硅光对光模块产业链有什么影响？",
+        "must_include": ["光模块"],
+        "must_exclude": ["长期股权投资"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "寒武纪在AI芯片业务上的主要风险是什么？",
+        "must_include": ["寒武纪", "风险"],
+        "must_exclude": ["Amazon"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "光模块产业链有哪些核心上市公司？",
+        "must_include": ["中际旭创", "新易盛"],
+        "must_exclude": ["Meta"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "国产算力产业链的主要传导路径是什么？",
+        "must_include": ["国产算力"],
+        "must_exclude": ["目标价"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "AI服务器需求如何传导到液冷？",
+        "must_include": ["AI服务器", "液冷"],
+        "must_exclude": ["买卖建议"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "PCB/CCL 在AI算力产业链中处于什么位置？",
+        "must_include": ["PCB"],
+        "must_exclude": ["目标价"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
+    },
+    {
+        "question": "哪些指标可以跟踪液冷产业链兑现？",
+        "must_include": ["液冷"],
+        "must_exclude": ["当前知识库中未找到"],
+        "evidence_min": 1,
+        "subgraph_min": 1,
     },
 ]
 
@@ -50,7 +130,10 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def score_answer(answer: str, must_include: list[str], must_exclude: list[str]) -> tuple[int, list[str]]:
+def score_answer(result: dict, case: dict) -> tuple[int, list[str]]:
+    answer = result.get("answer", "")
+    must_include = case.get("must_include", [])
+    must_exclude = case.get("must_exclude", [])
     failures = []
     for term in must_include:
         if term not in answer:
@@ -58,6 +141,14 @@ def score_answer(answer: str, must_include: list[str], must_exclude: list[str]) 
     for term in must_exclude:
         if term and term in answer:
             failures.append(f"unexpected:{term}")
+    evidence_cards = result.get("evidence_cards", [])
+    subgraph = result.get("subgraph", [])
+    if len(evidence_cards) < case.get("evidence_min", 0):
+        failures.append(f"evidence_lt:{case.get('evidence_min', 0)}")
+    if len(subgraph) < case.get("subgraph_min", 0):
+        failures.append(f"subgraph_lt:{case.get('subgraph_min', 0)}")
+    if evidence_cards and not all(card.get("citation_id") for card in evidence_cards):
+        failures.append("missing_citation_id")
     if not failures:
         return 2, failures
     if len(failures) < len(must_include) + len(must_exclude):
@@ -76,7 +167,7 @@ def main() -> int:
         for case in EVAL_CASES:
             result = engine.answer_question(case["question"])
             answer = result["answer"]
-            score, failures = score_answer(answer, case["must_include"], case["must_exclude"])
+            score, failures = score_answer(result, case)
             results.append(
                 {
                     "question": case["question"],
@@ -86,6 +177,8 @@ def main() -> int:
                     "graph_records": len(result.get("graph_records", [])),
                     "rag_hits": len(result.get("rag_hits", [])),
                     "evidence_cards": len(result.get("evidence_cards", [])),
+                    "subgraph": len(result.get("subgraph", [])),
+                    "unsupported_terms": result.get("diagnostics", {}).get("unsupported_terms", []),
                     "answer": answer,
                 }
             )

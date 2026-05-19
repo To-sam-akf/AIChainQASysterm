@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -21,6 +22,7 @@ from src.professional_qa import (
     cards_from_graph_records,
     cards_from_rag_hits,
     cards_from_research_hits,
+    assign_citation_ids,
     fallback_professional_answer,
     legacy_evidence_rows,
     pseudo_cypher_for_plan,
@@ -36,7 +38,7 @@ NO_EVIDENCE_ANSWER = "当前知识库中未找到相关证据。"
 
 ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助手。
 只能根据提供的 Neo4j/CSV 图谱结果和本地 RAG 原文片段回答，不要编造证据外信息。
-当前日期是 2026-05-18。回答中不得臆造当前日期或把已给定报告年份误判为未来。
+当前日期是 2026-05-19。回答中不得臆造当前日期或把已给定报告年份误判为未来。
 答案用中文，面向资深投资者，按“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”组织。
 不要泛泛总结；涉及“哪些公司/谁受益”时必须按 core/direct/indirect/mentioned 敞口分层，直接敞口优先。
 涉及“为什么/瓶颈/趋势”时必须解释技术机理和商业传导；缺少证据的栏目明确写“当前证据不足”。
@@ -314,9 +316,10 @@ class QAEngine:
             *cards_from_graph_records(graph_records, plan),
             *cards_from_rag_hits(rag_hits, plan),
         ]
-        evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
+        evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n, plan=plan)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
+        evidence_cards = assign_citation_ids(evidence_cards)
         record_timing(timings_ms, "evidence", stage_start)
 
         stage_start = time.perf_counter()
@@ -338,7 +341,8 @@ class QAEngine:
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
         research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
-        subgraph = graph_records_to_subgraph(graph_records)
+        subgraph = answer_subgraph(graph_records, evidence_cards)
+        unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
         record_timing(timings_ms, "render_payload", stage_start)
 
         diagnostics = {
@@ -360,6 +364,7 @@ class QAEngine:
             "rag_error": self.status.rag_error,
             "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
+            "unsupported_terms": unsupported_terms,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -469,9 +474,10 @@ class QAEngine:
             *cards_from_graph_records(graph_records, plan),
             *cards_from_rag_hits(rag_hits, plan),
         ]
-        evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n)
+        evidence_cards = rank_evidence_cards(raw_cards, limit=self.evidence_top_n, plan=plan)
         if plan.answer_type == "risk_analysis":
             evidence_cards = ensure_relation_cards(evidence_cards, raw_cards, "DISCLOSES_RISK", limit=self.evidence_top_n)
+        evidence_cards = assign_citation_ids(evidence_cards)
         record_timing(timings_ms, "evidence", stage_start)
         if thinking_enabled:
             yield stream_progress("evidence", f"已保留 {len(evidence_cards)} 条高相关证据，开始组织答案")
@@ -504,7 +510,8 @@ class QAEngine:
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
         research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
-        subgraph = graph_records_to_subgraph(graph_records)
+        subgraph = answer_subgraph(graph_records, evidence_cards)
+        unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
         record_timing(timings_ms, "render_payload", stage_start)
 
         diagnostics = {
@@ -526,6 +533,7 @@ class QAEngine:
             "rag_error": self.status.rag_error,
             "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
+            "unsupported_terms": unsupported_terms,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -1058,6 +1066,232 @@ def graph_records_to_subgraph(records: list[dict[str, Any]]) -> list[dict[str, s
             }
         )
     return subgraph_edges(relation_rows)
+
+
+def answer_subgraph(records: list[dict[str, Any]], evidence_cards: list[Any]) -> list[dict[str, str]]:
+    edges: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+
+    def add_edge(
+        source: str,
+        target: str,
+        label: str,
+        *,
+        source_type: str = "",
+        target_type: str = "",
+        source_kind: str = "",
+        citation_id: str = "",
+        claim_type: str = "",
+        exposure_level: str = "",
+    ) -> None:
+        source = str(source or "").strip()
+        target = str(target or "").strip()
+        label = str(label or "").strip()
+        if not source or not target or not label:
+            return
+        key = (source, target, label, citation_id)
+        if key in seen:
+            return
+        seen.add(key)
+        edges.append(
+            {
+                "source": source,
+                "target": target,
+                "label": label,
+                "source_type": source_type,
+                "target_type": target_type,
+                "source_kind": source_kind,
+                "citation_id": citation_id,
+                "claim_type": claim_type,
+                "exposure_level": exposure_level,
+            }
+        )
+
+    for record in records:
+        company = str(record.get("company") or "")
+        target = str(record.get("target") or "")
+        relation = str(record.get("relation") or "")
+        target_labels = record.get("target_labels") or []
+        target_type = target_labels[0] if isinstance(target_labels, list) and target_labels else ""
+        add_edge(
+            company,
+            target,
+            RELATION_LABELS.get(relation, relation),
+            source_type="Company",
+            target_type=target_type,
+            source_kind="graph",
+        )
+
+    for card in evidence_cards:
+        kind = str(getattr(card, "kind", "") or "")
+        citation_id = str(getattr(card, "citation_id", "") or "")
+        claim_type = str(getattr(card, "claim_type", "") or "")
+        exposure_level = str(getattr(card, "exposure_level", "") or "")
+        topic = str(getattr(card, "topic", "") or "")
+        company = str(getattr(card, "company", "") or "")
+        relation = str(getattr(card, "relation", "") or "")
+        target = str(getattr(card, "target", "") or "")
+
+        if kind == "dossier":
+            add_dossier_edges(card, add_edge)
+            continue
+        if kind == "graph" and company and target:
+            add_edge(
+                company,
+                target,
+                RELATION_LABELS.get(relation, relation),
+                source_type="Company",
+                target_type=target_type_for_claim(claim_type, relation),
+                source_kind=kind,
+                citation_id=citation_id,
+                claim_type=claim_type,
+                exposure_level=exposure_level,
+            )
+            continue
+        if company:
+            claim_target = target_for_claim(card)
+            add_edge(
+                company,
+                claim_target,
+                label_for_claim(card),
+                source_type="Company",
+                target_type=target_type_for_claim(claim_type, relation),
+                source_kind=kind,
+                citation_id=citation_id,
+                claim_type=claim_type,
+                exposure_level=exposure_level,
+            )
+            continue
+        if topic:
+            add_edge(
+                topic,
+                target_for_claim(card),
+                label_for_claim(card),
+                source_type="ValueChainSegment",
+                target_type=target_type_for_claim(claim_type, relation),
+                source_kind=kind,
+                citation_id=citation_id,
+                claim_type=claim_type,
+                exposure_level=exposure_level,
+            )
+    return edges[:100]
+
+
+def add_dossier_edges(card: Any, add_edge: Any) -> None:
+    citation_id = str(getattr(card, "citation_id", "") or "")
+    topic = str(getattr(card, "topic", "") or getattr(card, "title", "") or "")
+    evidence = str(getattr(card, "evidence", "") or "")
+    exposure_labels = {"core": "核心敞口", "direct": "直接敞口", "indirect": "间接敞口", "mentioned": "仅提及"}
+    for line in evidence.splitlines():
+        line = line.strip()
+        if line.startswith("公司敞口："):
+            for part in line.split("：", 1)[-1].split("；"):
+                if ":" not in part:
+                    continue
+                level, names = part.split(":", 1)
+                label = exposure_labels.get(level, "敞口")
+                for name in names.split("、")[:10]:
+                    add_edge(
+                        name,
+                        topic,
+                        label,
+                        source_type="Company",
+                        target_type="ValueChainSegment",
+                        source_kind="dossier",
+                        citation_id=citation_id,
+                        exposure_level=level,
+                    )
+        elif line.startswith("技术机理："):
+            add_edge(topic, "技术机理", "支撑", source_type="ValueChainSegment", target_type="IndustryConcept", source_kind="dossier", citation_id=citation_id, claim_type="mechanism")
+        elif line.startswith("瓶颈："):
+            add_edge(topic, "瓶颈", "约束", source_type="ValueChainSegment", target_type="Risk", source_kind="dossier", citation_id=citation_id, claim_type="bottleneck")
+        elif line.startswith("领先指标："):
+            add_edge(topic, "领先指标", "指标", source_type="ValueChainSegment", target_type="Metric", source_kind="dossier", citation_id=citation_id, claim_type="indicator")
+        elif line.startswith("风险与反证："):
+            add_edge(topic, "风险与反证", "风险", source_type="ValueChainSegment", target_type="Risk", source_kind="dossier", citation_id=citation_id, claim_type="risk")
+
+
+def label_for_claim(card: Any) -> str:
+    claim_type = str(getattr(card, "claim_type", "") or "")
+    relation = str(getattr(card, "relation", "") or "")
+    exposure_level = str(getattr(card, "exposure_level", "") or "")
+    if claim_type == "company_exposure":
+        return {"core": "核心敞口", "direct": "直接敞口", "indirect": "间接敞口", "mentioned": "仅提及"}.get(exposure_level, "敞口")
+    if claim_type == "risk":
+        return "风险"
+    if claim_type == "indicator":
+        return "指标"
+    if claim_type == "bottleneck":
+        return "约束"
+    if claim_type in {"mechanism", "supply_chain", "trend"}:
+        return "支撑"
+    if relation:
+        return RELATION_LABELS.get(relation, relation)
+    return "证据支持"
+
+
+def target_for_claim(card: Any) -> str:
+    claim_type = str(getattr(card, "claim_type", "") or "")
+    target = str(getattr(card, "target", "") or "")
+    topic = str(getattr(card, "topic", "") or "")
+    if target:
+        return target
+    if claim_type == "risk":
+        return f"{topic}风险" if topic else "风险"
+    if claim_type == "indicator":
+        return f"{topic}指标" if topic else "指标"
+    if claim_type == "bottleneck":
+        return f"{topic}瓶颈" if topic else "瓶颈"
+    return topic or str(getattr(card, "title", "") or "证据")
+
+
+def target_type_for_claim(claim_type: str, relation: str = "") -> str:
+    if relation == "DISCLOSES_RISK" or claim_type in {"risk", "bottleneck"}:
+        return "Risk"
+    if relation == "HAS_METRIC" or claim_type == "indicator":
+        return "Metric"
+    if claim_type == "company_exposure":
+        return "ValueChainSegment"
+    return "IndustryConcept"
+
+
+def detect_unsupported_terms(answer: str, evidence_cards: list[Any]) -> list[str]:
+    evidence_text = normalize_for_support(
+        " ".join(
+            " ".join(
+                str(getattr(card, key, "") or "")
+                for key in ("title", "evidence", "source", "section", "company", "target", "topic")
+            )
+            for card in evidence_cards
+        )
+    )
+    unsupported: list[str] = []
+    for company in extract_companies(answer):
+        if normalize_for_support(company) not in evidence_text:
+            unsupported.append(company)
+    for term in re.findall(r"20\d{2}|[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|亿元|万元|元|万只|台|GB/s|Tb/s|GT/s|kW|MW|PUE)", answer, flags=re.I):
+        normalized = normalize_for_support(term)
+        if normalized and normalized not in evidence_text:
+            unsupported.append(term.strip())
+    for term in ("订单", "合同负债", "产能", "毛利率", "ASP", "客户结构", "资本开支", "PUE", "功率密度", "端口速率", "渗透率"):
+        if term in answer and normalize_for_support(term) not in evidence_text:
+            unsupported.append(term)
+    return unique_texts(unsupported)[:20]
+
+
+def normalize_for_support(value: str) -> str:
+    return re.sub(r"\s+", "", str(value or "").casefold())
+
+
+def unique_texts(values: list[str]) -> list[str]:
+    output = []
+    seen = set()
+    for value in values:
+        value = value.strip()
+        if value and value not in seen:
+            seen.add(value)
+            output.append(value)
+    return output
 
 
 def ensure_relation_cards(cards: list[Any], raw_cards: list[Any], relation: str, *, limit: int) -> list[Any]:

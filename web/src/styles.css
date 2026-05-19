@@ -823,6 +823,103 @@ button {
   background: rgba(255, 255, 255, 0.62);
 }
 
+.evidence-groups {
+  display: grid;
+  gap: 16px;
+}
+
+.evidence-group {
+  display: grid;
+  gap: 10px;
+}
+
+.evidence-group-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #46515b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.evidence-group-title b {
+  border: 1px solid rgba(29, 34, 39, 0.12);
+  border-radius: 999px;
+  padding: 2px 8px;
+  color: #68717a;
+  background: rgba(255, 255, 255, 0.64);
+}
+
+.evidence-card {
+  border: 1px solid rgba(29, 34, 39, 0.12);
+  border-radius: 8px;
+  padding: 13px;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.evidence-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.evidence-card-head > div:first-child {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.evidence-card strong {
+  color: #1f2933;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.citation-pill {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 8px;
+  color: #f8f1e6;
+  background: #17202a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.evidence-tags,
+.evidence-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.evidence-tags span,
+.evidence-meta span {
+  border: 1px solid rgba(31, 111, 112, 0.16);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #276160;
+  background: rgba(230, 247, 244, 0.68);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.evidence-card p {
+  margin: 10px 0;
+  color: #303941;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.evidence-meta span {
+  color: #68717a;
+  background: rgba(248, 250, 252, 0.8);
+  border-color: rgba(29, 34, 39, 0.1);
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

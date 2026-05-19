@@ -6,6 +6,7 @@ from src.frontend_data import LocalKnowledgeGraph
 from src.llm_client import ChatStreamChunk, ChatTextResult
 from src.qa_engine import QAEngine
 from src.question_planner import heuristic_plan_question
+from src.research_claims import ResearchMemory
 
 
 ENTITY_FIELDS = [
@@ -43,6 +44,39 @@ def write_csv(path: Path, fields: list[str], rows: list[dict[str, str]]) -> None
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def research_claim(
+    claim_id: str,
+    *,
+    topic: str,
+    claim_type: str,
+    claim_text: str,
+    companies: list[str] | None = None,
+    exposure_level: str = "",
+) -> dict[str, object]:
+    return {
+        "claim_id": claim_id,
+        "claim_type": claim_type,
+        "topic": topic,
+        "claim_text": claim_text,
+        "companies": companies or [],
+        "mechanism": "",
+        "direction": "neutral",
+        "horizon": "",
+        "metric": "",
+        "value": "",
+        "unit": "",
+        "source_report_id": "report_1",
+        "source_title": "测试报告",
+        "page": "1",
+        "section": "正文",
+        "source_tier": "1",
+        "evidence_span": claim_text,
+        "confidence": "0.9",
+        "as_of_date": "2026",
+        "exposure_level": exposure_level,
+    }
 
 
 def test_curated_graph_filters_noncore_companies_definition_noise_and_low_value_metrics(tmp_path: Path) -> None:
@@ -122,6 +156,123 @@ def test_company_compare_fallback_covers_both_companies() -> None:
     assert "中际旭创" in result["answer"]
     assert "新易盛" in result["answer"]
     assert result["answer_type"] == "company_compare"
+
+
+def test_research_only_evidence_builds_answer_subgraph() -> None:
+    memory = ResearchMemory(
+        [
+            research_claim(
+                "c1",
+                topic="算力网络",
+                claim_type="mechanism",
+                claim_text="Ultra Ethernet 通过拥塞控制和传输优化支撑 AI 集群横向扩展。",
+            )
+        ],
+        [],
+    )
+    engine = QAEngine(research_memory=memory, csv_graph=None, rag_index=None, llm_client=None)
+
+    result = engine.answer_question("Ultra Ethernet 对算力网络有什么意义？")
+
+    assert result["evidence_cards"][0]["citation_id"] == "E1"
+    assert result["subgraph"]
+    assert any(edge["source_kind"] == "claim" for edge in result["subgraph"])
+
+
+def test_company_compare_evidence_excludes_unasked_companies() -> None:
+    memory = ResearchMemory(
+        [
+            research_claim(
+                "c1",
+                topic="光模块",
+                claim_type="company_exposure",
+                claim_text="中际旭创 对 光模块 的公司敞口为 core：拥有 1.6T 光模块。",
+                companies=["中际旭创"],
+                exposure_level="core",
+            ),
+            research_claim(
+                "c2",
+                topic="光模块",
+                claim_type="company_exposure",
+                claim_text="新易盛 对 光模块 的公司敞口为 core：拥有 800G 光模块。",
+                companies=["新易盛"],
+                exposure_level="core",
+            ),
+            research_claim(
+                "c3",
+                topic="光模块",
+                claim_type="company_exposure",
+                claim_text="华工科技 对 光模块 的公司敞口为 core：拥有硅光方案。",
+                companies=["华工科技"],
+                exposure_level="core",
+            ),
+        ],
+        [],
+    )
+    engine = QAEngine(research_memory=memory, csv_graph=None, rag_index=None, llm_client=None)
+
+    result = engine.answer_question("中际旭创和新易盛在光模块业务上的差异是什么？")
+    companies = {card.get("company") for card in result["evidence_cards"] if card.get("company")}
+
+    assert companies <= {"中际旭创", "新易盛"}
+    assert "华工科技" not in result["answer"]
+
+
+def test_topic_company_keeps_mixed_research_evidence_types() -> None:
+    memory = ResearchMemory(
+        [
+            research_claim(
+                "c1",
+                topic="AI服务器",
+                claim_type="company_exposure",
+                claim_text="浪潮信息 对 AI服务器 的公司敞口为 core：拥有 AI 服务器产品。",
+                companies=["浪潮信息"],
+                exposure_level="core",
+            ),
+            research_claim(
+                "c2",
+                topic="AI服务器",
+                claim_type="mechanism",
+                claim_text="AI服务器 机理/传导：训练和推理需求提升服务器功率密度。",
+            ),
+            research_claim(
+                "c3",
+                topic="AI服务器",
+                claim_type="indicator",
+                claim_text="AI服务器 的可跟踪指标：机柜功率密度和交付能力。",
+            ),
+            research_claim(
+                "c4",
+                topic="AI服务器",
+                claim_type="risk",
+                claim_text="AI服务器 相关业务中的风险：供给约束和需求不及预期。",
+            ),
+        ],
+        [],
+    )
+    engine = QAEngine(research_memory=memory, csv_graph=None, rag_index=None, llm_client=None)
+
+    result = engine.answer_question("AI服务器产业链有哪些上市公司？")
+    claim_types = {card.get("claim_type") for card in result["evidence_cards"]}
+
+    assert {"company_exposure", "mechanism", "indicator", "risk"} <= claim_types
+
+
+def test_broad_bottleneck_question_limits_research_topics() -> None:
+    memory = ResearchMemory(
+        [
+            research_claim(f"c{index}", topic=topic, claim_type="bottleneck", claim_text=f"{topic} 的瓶颈是供给和交付约束。")
+            for index, topic in enumerate(["AI芯片", "算力网络", "液冷", "光模块", "数据中心"], start=1)
+        ],
+        [],
+    )
+    engine = QAEngine(research_memory=memory, csv_graph=None, rag_index=None, llm_client=None)
+
+    result = engine.answer_question("AI算力产业链当前最大的瓶颈是什么？")
+    topics = {card.get("topic") for card in result["evidence_cards"] if card.get("topic")}
+
+    assert len(topics) <= 3
+    assert len(result["answer"]) < 2500
 
 
 def test_followup_question_uses_conversation_history() -> None:

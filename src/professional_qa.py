@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any, Iterable
 
 from src.domain_lexicon import (
@@ -26,6 +26,7 @@ from src.research_claims import ResearchHit, query_focus_terms
 
 @dataclass(frozen=True)
 class EvidenceCard:
+    citation_id: str
     kind: str
     title: str
     evidence: str
@@ -228,6 +229,7 @@ def cards_from_graph_records(records: list[dict[str, Any]], plan: QuestionPlan) 
         }
         cards.append(
             EvidenceCard(
+                citation_id="",
                 kind="graph",
                 title=title,
                 evidence=evidence,
@@ -263,6 +265,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
             score -= 5.0
         cards.append(
             EvidenceCard(
+                citation_id="",
                 kind="rag",
                 title=f"{hit.company or hit.source_type} 原文片段".strip(),
                 evidence=hit.snippet,
@@ -293,6 +296,7 @@ def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> lis
                 score -= 4.0
         cards.append(
             EvidenceCard(
+                citation_id="",
                 kind=hit.kind,
                 title=hit.title,
                 evidence=hit.text,
@@ -313,8 +317,23 @@ def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> lis
     return cards
 
 
-def rank_evidence_cards(cards: list[EvidenceCard], *, limit: int = 10) -> list[EvidenceCard]:
-    deduped = []
+def rank_evidence_cards(
+    cards: list[EvidenceCard],
+    *,
+    limit: int = 10,
+    plan: QuestionPlan | None = None,
+) -> list[EvidenceCard]:
+    ranked = dedupe_cards(cards)
+    if plan is not None:
+        ranked = filter_cards_for_plan(ranked, plan)
+        selected = select_cards_by_answer_type(ranked, plan, limit=limit)
+    else:
+        selected = ranked[:limit]
+    return assign_citation_ids(selected[:limit])
+
+
+def dedupe_cards(cards: list[EvidenceCard]) -> list[EvidenceCard]:
+    deduped: list[EvidenceCard] = []
     seen = set()
     for card in sorted(cards, key=lambda item: (-item.score, item.kind, item.source, item.page)):
         key = re.sub(r"\s+", "", card.evidence)[:80]
@@ -322,13 +341,135 @@ def rank_evidence_cards(cards: list[EvidenceCard], *, limit: int = 10) -> list[E
             continue
         seen.add(key)
         deduped.append(card)
-    return deduped[:limit]
+    return deduped
+
+
+def filter_cards_for_plan(cards: list[EvidenceCard], plan: QuestionPlan) -> list[EvidenceCard]:
+    if not plan.companies or plan.answer_type not in {"company_compare", "risk_analysis", "company_profile"}:
+        return cards
+    allowed = set(plan.companies)
+    output = []
+    for card in cards:
+        if card.kind == "dossier":
+            output.append(card)
+            continue
+        if card.company and card.company not in allowed:
+            continue
+        output.append(card)
+    return output
+
+
+def select_cards_by_answer_type(cards: list[EvidenceCard], plan: QuestionPlan, *, limit: int) -> list[EvidenceCard]:
+    if limit <= 0:
+        return []
+    if plan.answer_type == "company_compare":
+        return select_company_compare_cards(cards, plan, limit)
+    if plan.answer_type == "risk_analysis":
+        return select_risk_cards(cards, plan, limit)
+    if plan.answer_type == "topic_to_company":
+        return select_topic_company_cards(cards, plan, limit)
+    if plan.answer_type in {"industry_bottleneck", "thematic_research"}:
+        return select_research_mix_cards(cards, plan, limit)
+    return cards[:limit]
+
+
+def select_company_compare_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    per_company = 2 if limit >= 6 else 1
+    for company in plan.companies:
+        company_cards = [
+            card
+            for card in cards
+            if card.company == company and card.claim_type in {"company_exposure", "indicator", "risk", ""}
+        ]
+        selected.extend(company_cards[:per_company])
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: not card.company and card.kind in {"claim", "rag"}, 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_risk_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk" or card.relation == "DISCLOSES_RISK", 2, selected))
+    selected.extend(
+        cards_by_predicate(
+            cards,
+            lambda card: card.claim_type in {"company_exposure", "mechanism", "supply_chain"} or card.relation != "DISCLOSES_RISK",
+            3,
+            selected,
+        )
+    )
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "rag", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_topic_company_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "company_exposure", min(3, limit), selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type in {"mechanism", "supply_chain", "bottleneck"}, 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "indicator", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def select_research_mix_cards(cards: list[EvidenceCard], plan: QuestionPlan, limit: int) -> list[EvidenceCard]:
+    del plan
+    selected: list[EvidenceCard] = []
+    selected.extend(cards_by_predicate(cards, lambda card: card.kind == "dossier", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "bottleneck", 2, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type in {"mechanism", "supply_chain", "trend"}, 2, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "indicator", 1, selected))
+    selected.extend(cards_by_predicate(cards, lambda card: card.claim_type == "risk", 1, selected))
+    return fill_remaining(selected, cards, limit)
+
+
+def cards_by_predicate(
+    cards: list[EvidenceCard],
+    predicate: Any,
+    limit: int,
+    selected: list[EvidenceCard],
+) -> list[EvidenceCard]:
+    if limit <= 0:
+        return []
+    selected_keys = {card_identity(card) for card in selected}
+    output = []
+    for card in cards:
+        if card_identity(card) in selected_keys or not predicate(card):
+            continue
+        output.append(card)
+        if len(output) >= limit:
+            break
+    return output
+
+
+def fill_remaining(selected: list[EvidenceCard], cards: list[EvidenceCard], limit: int) -> list[EvidenceCard]:
+    output = list(selected)
+    seen = {card_identity(card) for card in output}
+    for card in cards:
+        if len(output) >= limit:
+            break
+        key = card_identity(card)
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(card)
+    return output[:limit]
+
+
+def card_identity(card: EvidenceCard) -> tuple[str, str, str, str]:
+    return (card.kind, card.source, card.page, re.sub(r"\s+", "", card.evidence)[:100])
+
+
+def assign_citation_ids(cards: list[EvidenceCard]) -> list[EvidenceCard]:
+    return [replace(card, citation_id=f"E{index}") for index, card in enumerate(cards, start=1)]
 
 
 def legacy_evidence_rows(cards: list[EvidenceCard]) -> list[dict[str, Any]]:
     return [
         {
             "kind": card.kind,
+            "citation_id": card.citation_id,
             "source": card.source,
             "source_tier": card.source_tier,
             "page": card.page,
@@ -359,6 +500,7 @@ def build_professional_answer_prompt(
     return (
         "请基于以下证据包回答，不要使用证据外信息。优先使用 claim/dossier 形成投研逻辑，"
         "再用 graph/rag 作为原文支撑。每个关键判断都要能对应证据。\n"
+        "答案中的关键判断必须标注证据编号，例如 [E1]、[E2]；不要引用不存在的编号。\n"
         "输出结构固定为：核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据。\n"
         "如果某一项没有证据，明确写“当前证据不足”，不要编造。\n"
     ) + json.dumps(
@@ -378,12 +520,21 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
         exposure = format_exposure_ranking(research_cards, focus_topic(plan))
         if exposure:
             topic = "、".join(plan.topics or plan.expanded_topics[:2]) or "该主题"
+            technical = format_claims_by_type(research_cards, {"mechanism", "supply_chain", "bottleneck"}, 3)
+            if technical == "当前证据不足。":
+                technical = format_dossier_lines(research_cards, ("技术机理", "瓶颈")) or technical
+            indicators = format_claims_by_type(research_cards, {"indicator"}, 3)
+            if indicators == "当前证据不足。":
+                indicators = format_dossier_lines(research_cards, ("领先指标",)) or indicators
+            boundaries = format_claims_by_type(research_cards, {"risk"}, 3)
+            if boundaries == "当前证据不足。":
+                boundaries = format_dossier_lines(research_cards, ("风险与反证", "证据缺口")) or boundaries
             return (
                 f"核心判断：{topic}相关公司需要按敞口强弱分层，而不是简单罗列。\n\n"
                 f"公司排序：{exposure}\n\n"
-                f"技术机理：{format_claims_by_type(research_cards, {'mechanism', 'supply_chain'}, 3)}\n\n"
-                f"领先指标：{format_claims_by_type(research_cards, {'indicator'}, 3)}\n\n"
-                f"反证/边界：{format_claims_by_type(research_cards, {'risk', 'bottleneck'}, 3)}\n\n"
+                f"技术机理：{technical}\n\n"
+                f"领先指标：{indicators}\n\n"
+                f"反证/边界：{boundaries}\n\n"
                 f"证据：{format_evidence(cards, 5)}"
             )
     if plan.answer_type == "topic_to_company":
@@ -410,11 +561,16 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
                 ]
             )
             sections.append(f"{company}：{'、'.join(targets[:8]) or '当前证据不足'}")
+        relevant_cards = [
+            card
+            for card in cards
+            if not card.company or card.company in set(plan.companies)
+        ]
         return (
-            "结论：两家公司可从产品代际、客户结构、产业链位置和风险暴露四个维度比较。\n\n"
+            "结论：两家公司可从产品代际、产业链位置和风险暴露三个维度比较。\n\n"
             + "\n".join(sections)
-            + f"\n\n证据：{format_evidence(cards, 4)}\n\n"
-            "研究要点：重点看高端产品放量节奏、海外云厂商资本开支、价格压力和供应链约束。"
+            + f"\n\n证据：{format_evidence(relevant_cards or cards, 4)}\n\n"
+            "研究要点：以上差异只来自当前证据包；未入包的信息不外推。"
         )
     if plan.answer_type == "risk_analysis":
         company = "、".join(plan.companies) or "该公司"
@@ -423,7 +579,7 @@ def fallback_professional_answer(plan: QuestionPlan, cards: list[EvidenceCard], 
             f"结论：{company}的业务进展和风险需要分开看，当前证据中可确认的风险包括：{'、'.join(risks[:10]) or '见下方证据'}。\n\n"
             f"业务证据：{format_evidence([card for card in cards if card.relation != 'DISCLOSES_RISK'], 3)}\n\n"
             f"风险证据：{format_evidence([card for card in cards if card.relation == 'DISCLOSES_RISK'] or cards, 4)}\n\n"
-            "跟踪指标：订单交付、毛利率、应收账款、客户集中度、海外业务和政策变化。"
+            "跟踪指标：当前证据不足时不外推具体订单或财务指标。"
         )
     if plan.answer_type == "industry_bottleneck":
         return (
@@ -446,9 +602,11 @@ def fallback_research_answer(plan: QuestionPlan, research_cards: list[EvidenceCa
     primary_cards = focused_claims or research_cards
     core_judgment = ""
     if focused_claims:
-        core_judgment = focused_claims[0].evidence.replace("\n", "；").strip()
+        core_judgment = with_citation(shorten_inline(focused_claims[0].evidence, 220), focused_claims[0])
     if not core_judgment:
-        core_judgment = next((card.evidence.splitlines()[0] for card in research_cards if card.kind == "dossier"), "")
+        dossier_card = next((card for card in research_cards if card.kind == "dossier"), None)
+        if dossier_card:
+            core_judgment = with_citation(shorten_inline(dossier_card.evidence.splitlines()[0], 220), dossier_card)
     if not core_judgment:
         core_judgment = f"{topic} 的判断需要同时看技术瓶颈、产业传导、公司直接敞口和可验证指标。"
     technical = format_claims_by_type(primary_cards, {"mechanism", "supply_chain", "bottleneck", "trend"}, 4)
@@ -476,9 +634,9 @@ def format_claims_by_type(cards: list[EvidenceCard], claim_types: set[str], limi
         if card.kind == "dossier":
             continue
         if card.claim_type in claim_types or (card.kind == "dossier" and not card.claim_type):
-            text = card.evidence.replace("\n", "；").strip()
+            text = with_citation(shorten_inline(card.evidence, 180), card)
             if text and text not in values:
-                values.append(text[:180] + ("..." if len(text) > 180 else ""))
+                values.append(text)
         if len(values) >= limit:
             break
     return "；".join(values) if values else "当前证据不足。"
@@ -504,7 +662,7 @@ def format_dossier_lines(cards: list[EvidenceCard], labels: tuple[str, ...]) -> 
         for line in card.evidence.splitlines():
             line = line.strip()
             if any(line.startswith(f"{label}：") for label in labels):
-                values.append(line.split("：", 1)[-1][:220])
+                values.append(with_citation(shorten_inline(line.split("：", 1)[-1], 220), card))
     return "；".join(values[:4])
 
 
@@ -550,8 +708,19 @@ def format_evidence(cards: list[EvidenceCard], limit: int) -> str:
         text = card.evidence.replace("\n", " ").strip()
         if len(text) > 120:
             text = text[:117] + "..."
-        parts.append(f"{source}：{text}")
+        citation = f"{card.citation_id} " if card.citation_id else ""
+        parts.append(f"{citation}{source or card.title}：{text}")
     return "；".join(parts) + "。"
+
+
+def with_citation(text: str, card: EvidenceCard) -> str:
+    text = text.strip()
+    return f"{text} [{card.citation_id}]" if text and card.citation_id else text
+
+
+def shorten_inline(value: str, limit: int) -> str:
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    return text[: limit - 3] + "..." if len(text) > limit else text
 
 
 def pseudo_cypher_for_plan(plan: QuestionPlan, limit: int = 50) -> str:
