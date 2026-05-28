@@ -22,6 +22,8 @@ class FakeEngine:
             rag_error="",
             llm_error="",
         )
+        self.enable_agent = True
+        self.agent_max_steps = 4
 
     def answer_question(
         self,
@@ -163,6 +165,8 @@ def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
 
         assert status_response.status_code == 200
         assert status_response.json()["stats"]["companies"] == 1
+        assert status_response.json()["settings"]["agent_enabled"] is True
+        assert status_response.json()["settings"]["agent_max_steps"] == 4
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
     finally:

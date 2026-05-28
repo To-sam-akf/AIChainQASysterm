@@ -76,6 +76,8 @@ export interface ApiStatus {
     thinking_enabled: boolean;
     reasoning_effort: string;
     reasoning_efforts: string[];
+    agent_enabled: boolean;
+    agent_max_steps: number;
   };
 }
 

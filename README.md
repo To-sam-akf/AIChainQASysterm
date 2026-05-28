@@ -261,6 +261,8 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
 - `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
+- `QA_ENABLE_AGENT`：是否启用规则优先的最小智能体 Runner；默认开启，可设为 `false` 回退旧 workflow。
+- `QA_AGENT_MAX_STEPS`：Agent ReAct 循环最大步数，默认 4，实现上限 4。
 - `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
 - `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 3。
 - `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 4000。

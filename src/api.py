@@ -22,7 +22,7 @@ from src.conversation_store import (
 from src.curated_graph import DEFAULT_CURATED_DIR
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, render_svg_graph, subgraph_edges
 from src.llm_client import load_dotenv
-from src.qa_engine import QAEngine
+from src.qa_engine import QAEngine, normalize_agent_max_steps
 
 
 REASONING_EFFORTS = ["low", "medium", "high"]
@@ -67,6 +67,14 @@ def default_thinking_enabled() -> bool:
 def default_reasoning_effort() -> str:
     effort = os.getenv("LLM_REASONING_EFFORT", "low").strip() or "low"
     return effort if effort in REASONING_EFFORTS else "low"
+
+
+def default_agent_enabled() -> bool:
+    return env_bool("QA_ENABLE_AGENT", True)
+
+
+def default_agent_max_steps() -> int:
+    return normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
 
 
 @lru_cache(maxsize=1)
@@ -157,6 +165,8 @@ async def api_status(
             "thinking_enabled": default_thinking_enabled(),
             "reasoning_effort": default_reasoning_effort(),
             "reasoning_efforts": REASONING_EFFORTS,
+            "agent_enabled": getattr(engine, "enable_agent", default_agent_enabled()),
+            "agent_max_steps": getattr(engine, "agent_max_steps", default_agent_max_steps()),
         },
     }
 

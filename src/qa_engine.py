@@ -8,6 +8,7 @@ import re
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,9 +37,9 @@ from src.research_claims import DEFAULT_RESEARCH_DIR, ResearchHit, ResearchMemor
 
 NO_EVIDENCE_ANSWER = "当前知识库中未找到相关证据。"
 
-ANSWER_SYSTEM_PROMPT = """你是中国 AI 算力产业链专业投研问答助手。
+ANSWER_SYSTEM_PROMPT_TEMPLATE = """你是中国 AI 算力产业链专业投研问答助手。
 只能根据提供的 Neo4j/CSV 图谱结果和本地 RAG 原文片段回答，不要编造证据外信息。
-当前日期是 2026-05-19。回答中不得臆造当前日期或把已给定报告年份误判为未来。
+当前日期是 {current_date}。回答中不得臆造当前日期或把已给定报告年份误判为未来。
 答案用中文，面向资深投资者，按“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”组织。
 不要泛泛总结；涉及“哪些公司/谁受益”时必须按 core/direct/indirect/mentioned 敞口分层，直接敞口优先。
 涉及“为什么/瓶颈/趋势”时必须解释技术机理和商业传导；缺少证据的栏目明确写“当前证据不足”。
@@ -64,6 +65,10 @@ TEMPLATE_RELATIONS = {
     "HAS_INDICATOR",
     "BENEFITS_FROM",
 }
+
+
+def answer_system_prompt(current_date: str | None = None) -> str:
+    return ANSWER_SYSTEM_PROMPT_TEMPLATE.format(current_date=current_date or datetime.now().date().isoformat())
 
 
 @dataclass
@@ -122,6 +127,8 @@ class QAEngine:
         core_companies_only: bool = True,
         history_max_turns: int = 3,
         history_max_chars: int = 4000,
+        enable_agent: bool = True,
+        agent_max_steps: int = 4,
         status: QAEngineStatus | None = None,
     ) -> None:
         self.llm_client = llm_client
@@ -139,6 +146,8 @@ class QAEngine:
         self.core_companies_only = core_companies_only
         self.history_max_turns = history_max_turns
         self.history_max_chars = history_max_chars
+        self.enable_agent = enable_agent
+        self.agent_max_steps = normalize_agent_max_steps(agent_max_steps)
         self.status = status or QAEngineStatus(
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
@@ -161,6 +170,8 @@ class QAEngine:
         contextualizer_mode = normalize_contextualizer_mode(os.getenv("QA_CONTEXTUALIZER_MODE", "auto"))
         history_max_turns = int(os.getenv("QA_HISTORY_MAX_TURNS", "3"))
         history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "4000"))
+        enable_agent = os.getenv("QA_ENABLE_AGENT", "true").casefold() != "false"
+        agent_max_steps = normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
 
         llm_client = None
@@ -246,6 +257,8 @@ class QAEngine:
             core_companies_only=core_companies_only,
             history_max_turns=history_max_turns,
             history_max_chars=history_max_chars,
+            enable_agent=enable_agent,
+            agent_max_steps=agent_max_steps,
             status=status,
         )
 
@@ -254,6 +267,30 @@ class QAEngine:
             self.graph_client.close()
 
     def answer_question(
+        self,
+        question: str,
+        conversation_history: list[dict[str, str]] | None = None,
+        *,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> dict[str, Any]:
+        if self.enable_agent:
+            from src.agent_runner import AgentRunner
+
+            return AgentRunner(self, max_steps=self.agent_max_steps).run(
+                question,
+                conversation_history=conversation_history,
+                thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
+            )
+        return self._answer_question_workflow(
+            question,
+            conversation_history=conversation_history,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+        )
+
+    def _answer_question_workflow(
         self,
         question: str,
         conversation_history: list[dict[str, str]] | None = None,
@@ -365,6 +402,11 @@ class QAEngine:
             "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
+            "agent_enabled": False,
+            "agent_max_steps": self.agent_max_steps,
+            "agent_steps": 0,
+            "agent_trace": [],
+            "agent_verification": {"status": "skipped", "checks": {}},
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -391,6 +433,31 @@ class QAEngine:
         }
 
     def answer_question_stream(
+        self,
+        question: str,
+        conversation_history: list[dict[str, str]] | None = None,
+        *,
+        thinking_enabled: bool | None = None,
+        reasoning_effort: str | None = None,
+    ) -> Iterator[dict[str, Any]]:
+        if self.enable_agent:
+            from src.agent_runner import AgentRunner
+
+            yield from AgentRunner(self, max_steps=self.agent_max_steps).run_stream(
+                question,
+                conversation_history=conversation_history,
+                thinking_enabled=thinking_enabled,
+                reasoning_effort=reasoning_effort,
+            )
+            return
+        yield from self._answer_question_stream_workflow(
+            question,
+            conversation_history=conversation_history,
+            thinking_enabled=thinking_enabled,
+            reasoning_effort=reasoning_effort,
+        )
+
+    def _answer_question_stream_workflow(
         self,
         question: str,
         conversation_history: list[dict[str, str]] | None = None,
@@ -534,6 +601,11 @@ class QAEngine:
             "research_error": self.status.research_error,
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
+            "agent_enabled": False,
+            "agent_max_steps": self.agent_max_steps,
+            "agent_steps": 0,
+            "agent_trace": [],
+            "agent_verification": {"status": "skipped", "checks": {}},
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -713,7 +785,7 @@ class QAEngine:
                 if history and hasattr(llm_client, "chat_messages"):
                     response = llm_client.chat_messages(
                         messages=[
-                            {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+                            {"role": "system", "content": answer_system_prompt()},
                             *history,
                             {"role": "user", "content": user_prompt},
                         ],
@@ -723,14 +795,14 @@ class QAEngine:
                     return response.content, response.reasoning_content
                 if hasattr(llm_client, "chat_text_with_metadata"):
                     response = llm_client.chat_text_with_metadata(
-                        system_prompt=ANSWER_SYSTEM_PROMPT,
+                        system_prompt=answer_system_prompt(),
                         user_prompt=user_prompt,
                         temperature=0.2,
                         **llm_options,
                     )
                     return response.content, response.reasoning_content
                 return llm_client.chat_text(
-                    system_prompt=ANSWER_SYSTEM_PROMPT,
+                    system_prompt=answer_system_prompt(),
                     user_prompt=user_prompt,
                     temperature=0.2,
                     **llm_options,
@@ -771,7 +843,7 @@ class QAEngine:
             chunks: list[str] = []
             try:
                 messages = [
-                    {"role": "system", "content": ANSWER_SYSTEM_PROMPT},
+                    {"role": "system", "content": answer_system_prompt()},
                     *history,
                     {"role": "user", "content": user_prompt},
                 ]
@@ -829,6 +901,14 @@ def normalize_contextualizer_mode(value: str) -> str:
     if mode not in {"auto", "heuristic", "llm"}:
         return "auto"
     return mode
+
+
+def normalize_agent_max_steps(value: Any) -> int:
+    try:
+        steps = int(value)
+    except (TypeError, ValueError):
+        steps = 4
+    return max(1, min(steps, 4))
 
 
 def record_timing(timings_ms: dict[str, float], name: str, started_at: float) -> None:

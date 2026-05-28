@@ -104,7 +104,7 @@ def is_valid_section_title(value: str) -> bool:
         return False
     return True
 
-
+# 去页码、目录、免责声明、空行等噪声
 def clean_text(text: str) -> str:
     text = text.replace("\u3000", " ").replace("\x00", "")
     text = re.sub(r"[ \t]+", " ", text)
