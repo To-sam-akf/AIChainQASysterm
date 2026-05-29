@@ -23,6 +23,7 @@ from src.curated_graph import DEFAULT_CURATED_DIR
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, render_svg_graph, subgraph_edges
 from src.llm_client import load_dotenv
 from src.qa_engine import QAEngine, normalize_agent_max_steps
+from src.research_claims import DEFAULT_RESEARCH_DIR, write_claim_review
 
 
 REASONING_EFFORTS = ["low", "medium", "high"]
@@ -47,6 +48,27 @@ class MessageCreateRequest(BaseModel):
     question: str
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
+
+
+class ClaimReviewRequest(BaseModel):
+    claim_text: str | None = None
+    claim_type: str | None = None
+    topic: str | None = None
+    companies: list[str] | str | None = None
+    mechanism: str | None = None
+    direction: str | None = None
+    horizon: str | None = None
+    metric: str | None = None
+    value: str | None = None
+    unit: str | None = None
+    evidence_span: str | None = None
+    confidence: str | None = None
+    as_of_date: str | None = None
+    exposure_level: str | None = None
+    review_status: str | None = None
+    reviewer_note: str | None = None
+    quality_flags: str | None = None
+    conflict_group_id: str | None = None
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -129,6 +151,10 @@ def public_stream_payload(event: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
+def research_artifact_dir() -> Path:
+    return Path(os.getenv("RESEARCH_ARTIFACT_DIR", str(DEFAULT_RESEARCH_DIR)))
+
+
 router = APIRouter(prefix="/api")
 
 
@@ -139,11 +165,16 @@ async def api_status(
 ) -> dict[str, Any]:
     entity_counts = graph.entity_counts()
     relation_counts = graph.relation_counts()
+    research_stats: dict[str, Any] = {}
+    research_memory = getattr(engine, "research_memory", None)
+    if research_memory is not None and hasattr(research_memory, "claim_stats"):
+        research_stats = research_memory.claim_stats()
     return {
         "graph_backend": engine.status.graph_backend,
         "neo4j_enabled": engine.status.neo4j_enabled,
         "rag_enabled": engine.status.rag_enabled,
         "research_enabled": getattr(engine.status, "research_enabled", False),
+        "embedding_enabled": getattr(engine.status, "embedding_enabled", False),
         "llm_enabled": engine.status.llm_enabled,
         "csv_graph_enabled": engine.status.csv_graph_enabled,
         "graph_data_dir": engine.status.graph_data_dir,
@@ -151,6 +182,7 @@ async def api_status(
             "graph": engine.status.graph_error,
             "rag": engine.status.rag_error,
             "research": getattr(engine.status, "research_error", ""),
+            "embedding": getattr(engine.status, "embedding_error", ""),
             "llm": engine.status.llm_error,
         },
         "stats": {
@@ -160,6 +192,7 @@ async def api_status(
             "relations": len(graph.relations),
             "entity_counts": dict(entity_counts),
             "relation_counts": {RELATION_LABELS.get(key, key): value for key, value in relation_counts.items()},
+            "research": research_stats,
         },
         "settings": {
             "thinking_enabled": default_thinking_enabled(),
@@ -357,6 +390,31 @@ async def export_conversation(
         "Content-Disposition": f"attachment; filename={ascii_fallback}; filename*=UTF-8''{quote(filename)}"
     }
     return Response(content=content, media_type=media_type, headers=headers)
+
+
+@router.post("/research/claims/{claim_id}/review")
+async def review_claim(
+    claim_id: str,
+    request: ClaimReviewRequest,
+    engine: QAEngine = Depends(get_qa_engine),
+) -> dict[str, Any]:
+    updates = request.model_dump(exclude_none=True)
+    if not updates:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No claim updates provided")
+    research_memory = getattr(engine, "research_memory", None)
+    if research_memory is None or not hasattr(research_memory, "get_claim"):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Research memory is not available")
+    try:
+        research_memory.get_claim(claim_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found") from exc
+
+    review = write_claim_review(research_artifact_dir(), claim_id, updates)
+    try:
+        claim = research_memory.review_claim(claim_id, review)
+    except KeyError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found") from exc
+    return {"claim": claim, "review": review}
 
 
 @router.get("/graph/summary")

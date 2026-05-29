@@ -11,6 +11,7 @@ from src.professional_qa import EvidenceCard, assign_citation_ids, legacy_eviden
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
 from src.research_claims import ResearchHit
+from src.semantic_index import SemanticHit
 
 
 MAX_AGENT_STEPS = 4
@@ -41,6 +42,7 @@ class AgentRetrievalState:
     graph_records: list[dict[str, Any]] = field(default_factory=list)
     rag_hits: list[RagHit] = field(default_factory=list)
     research_hits: list[ResearchHit] = field(default_factory=list)
+    semantic_hits: list[SemanticHit] = field(default_factory=list)
     generated: Any | None = None
 
 
@@ -123,7 +125,7 @@ class AgentRunner:
             yield stream_progress("agent_plan", trace[-1].observation)
 
         if thinking_enabled:
-            yield stream_progress("agent_retrieve", "Agent 正在调用图谱、RAG 和投研证据工具")
+            yield stream_progress("agent_retrieve", "Agent 正在调用图谱、RAG、投研证据和语义召回工具")
         retrieval_state = self._retrieve(generated, contextual_question, plan, tools, trace, timings_ms)
         if thinking_enabled:
             yield stream_progress("agent_retrieve", trace[-1].observation)
@@ -139,6 +141,7 @@ class AgentRunner:
             retrieval_state.research_hits,
             retrieval_state.graph_records,
             retrieval_state.rag_hits,
+            retrieval_state.semantic_hits,
             plan,
         )
         evidence_cards = assign_citation_ids(evidence_cards)
@@ -272,20 +275,28 @@ class AgentRunner:
         research_hits, research_call = tools.search_research(contextual_question, plan)
         self._record_timing(timings_ms, "research", stage_start)
 
+        stage_start = time.perf_counter()
+        semantic_hits, semantic_call = tools.search_semantic(contextual_question, plan)
+        self._record_timing(timings_ms, "semantic", stage_start)
+
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
                 phase="retrieve",
-                thought="同时利用结构化图谱、原文 RAG 和投研 Claim/Dossier 做第一轮召回。",
-                action="query_graph -> search_rag -> search_research",
-                tool_calls=[graph_call, rag_call, research_call],
-                observation=f"召回图谱 {len(graph_records)} 条、RAG {len(rag_hits)} 条、投研证据 {len(research_hits)} 条。",
+                thought="同时利用结构化图谱、原文 RAG、投研 Claim/Dossier 和 embedding 语义索引做第一轮召回。",
+                action="query_graph -> search_rag -> search_research -> search_semantic",
+                tool_calls=[graph_call, rag_call, research_call, semantic_call],
+                observation=(
+                    f"召回图谱 {len(graph_records)} 条、RAG {len(rag_hits)} 条、"
+                    f"投研证据 {len(research_hits)} 条、语义证据 {len(semantic_hits)} 条。"
+                ),
             )
         )
         return AgentRetrievalState(
             graph_records=graph_records,
             rag_hits=rag_hits,
             research_hits=research_hits,
+            semantic_hits=semantic_hits,
             generated=generated,
         )
 
@@ -331,9 +342,15 @@ class AgentRunner:
         self._record_timing(timings_ms, "supplement_research", stage_start)
         tool_calls.append(research_call)
 
+        stage_start = time.perf_counter()
+        semantic_hits, semantic_call = tools.search_semantic(supplemental_question, supplement_plan)
+        self._record_timing(timings_ms, "supplement_semantic", stage_start)
+        tool_calls.append(semantic_call)
+
         state.graph_records = merge_graph_records(state.graph_records, graph_records)
         state.rag_hits = merge_rag_hits(state.rag_hits, rag_hits)
         state.research_hits = merge_research_hits(state.research_hits, research_hits)
+        state.semantic_hits = merge_semantic_hits(state.semantic_hits, semantic_hits)
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
@@ -343,7 +360,7 @@ class AgentRunner:
                 tool_calls=tool_calls,
                 observation=(
                     f"补检后累计图谱 {len(state.graph_records)} 条、RAG {len(state.rag_hits)} 条、"
-                    f"投研证据 {len(state.research_hits)} 条。"
+                    f"投研证据 {len(state.research_hits)} 条、语义证据 {len(state.semantic_hits)} 条。"
                 ),
             )
         )
@@ -371,6 +388,7 @@ class AgentRunner:
             state.research_hits,
             state.graph_records,
             state.rag_hits,
+            state.semantic_hits,
             plan,
         )
         evidence_cards = assign_citation_ids(evidence_cards)
@@ -442,6 +460,7 @@ class AgentRunner:
         history_count: int,
     ) -> dict[str, Any]:
         from src.qa_engine import answer_subgraph, detect_unsupported_terms
+        from src.research_agent import build_research_outputs
 
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)
@@ -450,6 +469,13 @@ class AgentRunner:
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(state.graph_records, evidence_cards)
         unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
+        research_outputs = build_research_outputs(
+            question=contextual_question,
+            plan=plan,
+            evidence_cards=evidence_cards,
+            graph_records=state.graph_records,
+            verification=verification,
+        )
         self._record_timing(timings_ms, "render_payload", stage_start)
 
         diagnostics = {
@@ -457,6 +483,9 @@ class AgentRunner:
             "graph_records": len(state.graph_records),
             "rag_hits": len(state.rag_hits),
             "research_hits": len(state.research_hits),
+            "embedding_hits": len(state.semantic_hits),
+            "embedding_enabled": bool(getattr(self.engine.status, "embedding_enabled", False)),
+            "embedding_error": getattr(self.engine.status, "embedding_error", ""),
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.engine.rerank_top_n,
             "history_messages": history_count,
@@ -497,6 +526,7 @@ class AgentRunner:
             "research_hits": research_hit_rows,
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
+            "research_outputs": research_outputs,
             "subgraph": subgraph,
             "diagnostics": diagnostics,
             "errors": errors,
@@ -543,25 +573,35 @@ def has_risk_evidence(state: AgentRetrievalState) -> bool:
         return True
     if any(hit.claim_type == "risk" for hit in state.research_hits):
         return True
+    if any(hit.claim_type == "risk" for hit in state.semantic_hits):
+        return True
     risk_terms = ("风险", "不确定", "波动", "不及预期")
-    return any(any(term in hit.snippet for term in risk_terms) for hit in state.rag_hits)
+    return any(any(term in hit.snippet for term in risk_terms) for hit in state.rag_hits) or any(
+        any(term in hit.text for term in risk_terms) for hit in state.semantic_hits
+    )
 
 
 def has_company_exposure(state: AgentRetrievalState) -> bool:
     if any(record.get("company") for record in state.graph_records):
         return True
-    return any(hit.claim_type == "company_exposure" and hit.company for hit in state.research_hits)
+    return any(hit.claim_type == "company_exposure" and hit.company for hit in state.research_hits) or any(
+        hit.claim_type == "company_exposure" and hit.company for hit in state.semantic_hits
+    )
 
 
 def has_mechanism_evidence(state: AgentRetrievalState) -> bool:
     mechanism_types = {"mechanism", "bottleneck", "supply_chain", "trend", "indicator"}
     if any(hit.claim_type in mechanism_types for hit in state.research_hits):
         return True
+    if any(hit.claim_type in mechanism_types for hit in state.semantic_hits):
+        return True
     mechanism_relations = {"CONSTRAINS", "ENABLES", "DRIVES", "DEPENDS_ON", "HAS_INDICATOR"}
     if any(record.get("relation") in mechanism_relations for record in state.graph_records):
         return True
     mechanism_terms = ("机理", "瓶颈", "传导", "指标", "带宽", "功耗", "散热")
-    return any(any(term in hit.snippet for term in mechanism_terms) for hit in state.rag_hits)
+    return any(any(term in hit.snippet for term in mechanism_terms) for hit in state.rag_hits) or any(
+        any(term in hit.text for term in mechanism_terms) for hit in state.semantic_hits
+    )
 
 
 def missing_companies(plan: QuestionPlan, state: AgentRetrievalState) -> list[str]:
@@ -574,6 +614,7 @@ def missing_companies(plan: QuestionPlan, state: AgentRetrievalState) -> list[st
     }
     covered.update(hit.company for hit in state.research_hits if hit.company)
     covered.update(hit.company for hit in state.rag_hits if hit.company)
+    covered.update(hit.company for hit in state.semantic_hits if hit.company)
     return [company for company in plan.companies if company not in covered]
 
 
@@ -614,6 +655,18 @@ def merge_research_hits(existing: list[ResearchHit], additions: list[ResearchHit
     seen = {(hit.kind, hit.title, hit.company, hit.text[:120]) for hit in output}
     for hit in additions:
         key = (hit.kind, hit.title, hit.company, hit.text[:120])
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(hit)
+    return output
+
+
+def merge_semantic_hits(existing: list[SemanticHit], additions: list[SemanticHit]) -> list[SemanticHit]:
+    output = list(existing)
+    seen = {(hit.kind, hit.ref_id or hit.doc_id, hit.text[:120]) for hit in output}
+    for hit in additions:
+        key = (hit.kind, hit.ref_id or hit.doc_id, hit.text[:120])
         if key in seen:
             continue
         seen.add(key)

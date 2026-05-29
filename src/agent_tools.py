@@ -18,6 +18,7 @@ from src.professional_qa import (
 from src.question_planner import QuestionPlan, heuristic_plan_question, plan_question
 from src.rag_index import RagHit
 from src.research_claims import ResearchHit
+from src.semantic_index import SemanticHit
 
 
 @dataclass(frozen=True)
@@ -130,11 +131,29 @@ class AgentTools:
             len,
         )
 
+    def search_semantic(self, question: str, plan: QuestionPlan) -> tuple[list[SemanticHit], AgentToolCall]:
+        def run() -> list[SemanticHit]:
+            semantic_index = getattr(self.engine, "semantic_index", None)
+            if semantic_index is None:
+                return []
+            query = semantic_query_text(question, plan)
+            top_k = int(getattr(self.engine, "semantic_top_k", 8))
+            return semantic_index.search(query, top_k=top_k)
+
+        result, call = self._call(
+            "search_semantic",
+            {"question": question[:160], "answer_type": plan.answer_type},
+            run,
+            len,
+        )
+        return result or [], call
+
     def rank_evidence(
         self,
         research_hits: list[ResearchHit],
         graph_records: list[dict[str, Any]],
         rag_hits: list[RagHit],
+        semantic_hits: list[SemanticHit],
         plan: QuestionPlan,
     ) -> tuple[list[EvidenceCard], list[EvidenceCard], AgentToolCall]:
         def run() -> tuple[list[EvidenceCard], list[EvidenceCard]]:
@@ -144,6 +163,7 @@ class AgentTools:
                 *cards_from_research_hits(research_hits, plan),
                 *cards_from_graph_records(graph_records, plan),
                 *cards_from_rag_hits(rag_hits, plan),
+                *cards_from_semantic_hits(semantic_hits, plan),
             ]
             evidence_cards = rank_evidence_cards(raw_cards, limit=self.engine.evidence_top_n, plan=plan)
             if plan.answer_type == "risk_analysis":
@@ -238,6 +258,47 @@ class AgentTools:
             error=error,
         )
         return result, call
+
+
+def semantic_query_text(question: str, plan: QuestionPlan) -> str:
+    parts = [question, plan.answer_type, *plan.companies, *plan.expanded_topics]
+    return " ".join(part for part in parts if part).strip()
+
+
+def cards_from_semantic_hits(hits: list[SemanticHit], plan: QuestionPlan) -> list[EvidenceCard]:
+    del plan
+    cards: list[EvidenceCard] = []
+    for hit in hits:
+        kind = hit.kind if hit.kind in {"rag", "claim", "dossier"} else "rag"
+        base_score = {
+            "claim": 52.0,
+            "dossier": 55.0,
+            "rag": 12.0,
+        }.get(kind, 10.0)
+        cards.append(
+            EvidenceCard(
+                citation_id="",
+                kind=kind,
+                title=hit.title,
+                evidence=hit.text,
+                claim_id=hit.ref_id if kind == "claim" else "",
+                source=hit.source,
+                page=hit.page,
+                section=hit.section,
+                company=hit.company,
+                source_tier=hit.source_tier,
+                score=round(base_score + hit.score * 10.0, 4),
+                reason="语义向量召回",
+                topic=hit.topic,
+                claim_type=hit.claim_type,
+                exposure_level=hit.exposure_level,
+                confidence=hit.confidence,
+                as_of_date=hit.as_of_date,
+                semantic_score=hit.score,
+                semantic_ref_id=hit.ref_id or hit.doc_id,
+            )
+        )
+    return cards
 
 
 def verify_answer_support(

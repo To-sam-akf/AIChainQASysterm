@@ -791,7 +791,7 @@ button {
 
 .drawer-tabs {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 6px;
   padding: 0 24px 14px;
 }
@@ -914,10 +914,212 @@ button {
   line-height: 1.65;
 }
 
+.evidence-span {
+  border-left: 3px solid rgba(31, 111, 112, 0.35);
+  padding-left: 10px;
+  color: #52606b !important;
+  background: rgba(248, 250, 252, 0.54);
+}
+
 .evidence-meta span {
   color: #68717a;
   background: rgba(248, 250, 252, 0.8);
   border-color: rgba(29, 34, 39, 0.1);
+}
+
+.review-note {
+  margin-top: 10px;
+  border-radius: 8px;
+  padding: 9px 10px;
+  color: #47515a;
+  background: rgba(248, 250, 252, 0.84);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.research-output {
+  display: grid;
+  gap: 18px;
+}
+
+.research-section {
+  display: grid;
+  gap: 10px;
+}
+
+.research-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #46515b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.research-report {
+  display: grid;
+  gap: 14px;
+}
+
+.research-report-section {
+  border-bottom: 1px solid rgba(29, 34, 39, 0.1);
+  padding-bottom: 12px;
+}
+
+.research-report-section h4 {
+  margin: 0 0 8px;
+  color: #1f2933;
+}
+
+.research-report-section p {
+  margin: 0 0 8px;
+  color: #303941;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.research-table,
+.research-list {
+  display: grid;
+  gap: 10px;
+}
+
+.research-row,
+.research-list-item {
+  border: 1px solid rgba(29, 34, 39, 0.12);
+  border-radius: 8px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.research-row > div:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.research-row strong {
+  color: #1f2933;
+}
+
+.research-row span,
+.research-list-item span {
+  color: #68717a;
+  font-size: 12px;
+}
+
+.research-row p,
+.research-list-item p {
+  margin: 9px 0;
+  color: #303941;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.research-row dl {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 6px 10px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.research-row dt {
+  color: #68717a;
+  font-weight: 700;
+}
+
+.research-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.research-list-item div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.research-list-item span {
+  border: 1px solid rgba(31, 111, 112, 0.16);
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #276160;
+  background: rgba(230, 247, 244, 0.68);
+}
+
+.claim-review {
+  margin-top: 12px;
+  border-top: 1px solid rgba(29, 34, 39, 0.1);
+  padding-top: 10px;
+}
+
+.claim-review summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: #1f6f70;
+  font-size: 12px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.claim-review summary::-webkit-details-marker {
+  display: none;
+}
+
+.claim-review form {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.claim-review label {
+  display: grid;
+  gap: 6px;
+  color: #68717a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.claim-review input,
+.claim-review select,
+.claim-review textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(26, 31, 36, 0.16);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #20262c;
+  background: rgba(255, 255, 255, 0.78);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.claim-review textarea {
+  resize: vertical;
+}
+
+.review-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.claim-review button {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 12px;
+  color: #f8f1e6;
+  background: #17202a;
 }
 
 table {
@@ -1196,7 +1398,7 @@ pre {
 
 .status-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 1px;
   margin-bottom: 16px;
   overflow: hidden;

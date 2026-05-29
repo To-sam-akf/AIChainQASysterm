@@ -30,6 +30,7 @@ class EvidenceCard:
     kind: str
     title: str
     evidence: str
+    claim_id: str = ""
     source: str = ""
     page: str = ""
     section: str = ""
@@ -44,6 +45,11 @@ class EvidenceCard:
     exposure_level: str = ""
     confidence: str = ""
     as_of_date: str = ""
+    evidence_span: str = ""
+    review_status: str = ""
+    reviewer_note: str = ""
+    semantic_score: float = 0.0
+    semantic_ref_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         row = asdict(self)
@@ -233,6 +239,7 @@ def cards_from_graph_records(records: list[dict[str, Any]], plan: QuestionPlan) 
                 kind="graph",
                 title=title,
                 evidence=evidence,
+                claim_id="",
                 source=str(record.get("source", "")),
                 page=str(record.get("page", "")),
                 section=str(record.get("section", "")),
@@ -269,6 +276,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
                 kind="rag",
                 title=f"{hit.company or hit.source_type} 原文片段".strip(),
                 evidence=hit.snippet,
+                claim_id="",
                 source=hit.source_title,
                 page=str(hit.page),
                 section=hit.section,
@@ -300,6 +308,7 @@ def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> lis
                 kind=hit.kind,
                 title=hit.title,
                 evidence=hit.text,
+                claim_id=hit.claim_id,
                 source=hit.source,
                 page=hit.page,
                 section=hit.section,
@@ -312,6 +321,9 @@ def cards_from_research_hits(hits: list[ResearchHit], plan: QuestionPlan) -> lis
                 exposure_level=hit.exposure_level,
                 confidence=hit.confidence,
                 as_of_date=hit.as_of_date,
+                evidence_span=hit.evidence_span,
+                review_status=hit.review_status,
+                reviewer_note=hit.reviewer_note,
             )
         )
     return cards
@@ -470,6 +482,7 @@ def legacy_evidence_rows(cards: list[EvidenceCard]) -> list[dict[str, Any]]:
         {
             "kind": card.kind,
             "citation_id": card.citation_id,
+            "claim_id": card.claim_id,
             "source": card.source,
             "source_tier": card.source_tier,
             "page": card.page,
@@ -480,6 +493,8 @@ def legacy_evidence_rows(cards: list[EvidenceCard]) -> list[dict[str, Any]]:
             "relation": RELATION_LABELS.get(card.relation, card.relation),
             "target": card.target,
             "reason": card.reason,
+            "review_status": card.review_status,
+            "reviewer_note": card.reviewer_note,
         }
         for card in cards
     ]

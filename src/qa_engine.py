@@ -32,7 +32,9 @@ from src.professional_qa import (
 )
 from src.question_planner import QuestionPlan, extract_companies, heuristic_plan_question, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
+from src.research_agent import build_research_outputs
 from src.research_claims import DEFAULT_RESEARCH_DIR, ResearchHit, ResearchMemory
+from src.semantic_index import DEFAULT_SEMANTIC_DIR, SemanticIndex
 
 
 NO_EVIDENCE_ANSWER = "当前知识库中未找到相关证据。"
@@ -77,12 +79,14 @@ class QAEngineStatus:
     rag_enabled: bool
     llm_enabled: bool
     research_enabled: bool = False
+    embedding_enabled: bool = False
     csv_graph_enabled: bool = False
     graph_backend: str = "neo4j"
     graph_data_dir: str = ""
     graph_error: str = ""
     rag_error: str = ""
     research_error: str = ""
+    embedding_error: str = ""
     llm_error: str = ""
 
 
@@ -117,10 +121,12 @@ class QAEngine:
         csv_graph: LocalKnowledgeGraph | None = None,
         rag_index: LocalRagIndex | None = None,
         research_memory: ResearchMemory | None = None,
+        semantic_index: SemanticIndex | None = None,
         enable_llm_cypher: bool = False,
         enable_llm_planner: bool = False,
         contextualizer_mode: str = "auto",
         rag_top_k: int = 6,
+        semantic_top_k: int = 8,
         graph_limit: int = 50,
         rerank_top_n: int = 12,
         evidence_top_n: int = 6,
@@ -136,10 +142,12 @@ class QAEngine:
         self.csv_graph = csv_graph
         self.rag_index = rag_index
         self.research_memory = research_memory
+        self.semantic_index = semantic_index
         self.enable_llm_cypher = enable_llm_cypher
         self.enable_llm_planner = enable_llm_planner
         self.contextualizer_mode = normalize_contextualizer_mode(contextualizer_mode)
         self.rag_top_k = rag_top_k
+        self.semantic_top_k = semantic_top_k
         self.graph_limit = graph_limit
         self.rerank_top_n = rerank_top_n
         self.evidence_top_n = evidence_top_n
@@ -153,6 +161,7 @@ class QAEngine:
             csv_graph_enabled=csv_graph is not None,
             rag_enabled=rag_index is not None,
             research_enabled=research_memory is not None,
+            embedding_enabled=semantic_index is not None,
             llm_enabled=llm_client is not None,
             graph_backend="neo4j" if graph_client is not None else "csv" if csv_graph is not None else "none",
         )
@@ -161,6 +170,7 @@ class QAEngine:
     def from_env(cls) -> "QAEngine":
         load_dotenv()
         rag_top_k = int(os.getenv("RAG_TOP_K", "6"))
+        semantic_top_k = int(os.getenv("SEMANTIC_TOP_K", "8"))
         graph_limit = int(os.getenv("QA_GRAPH_LIMIT", "50"))
         rerank_top_n = int(os.getenv("QA_RERANK_TOP_N", "12"))
         evidence_top_n = int(os.getenv("QA_EVIDENCE_TOP_N", "6"))
@@ -196,6 +206,18 @@ class QAEngine:
             research_memory = ResearchMemory.load(research_dir)
         except Exception as exc:
             research_error = str(exc)
+
+        semantic_index = None
+        embedding_error = ""
+        try:
+            from src.embedding_client import OpenAICompatibleEmbeddingClient, embedding_configured
+
+            if embedding_configured():
+                embedding_client = OpenAICompatibleEmbeddingClient()
+                semantic_index_dir = Path(os.getenv("EMBEDDING_INDEX_DIR", str(DEFAULT_SEMANTIC_DIR)))
+                semantic_index = SemanticIndex.load(semantic_index_dir, embedding_client=embedding_client)
+        except Exception as exc:
+            embedding_error = str(exc)
 
         csv_graph = None
         graph_error = ""
@@ -233,12 +255,14 @@ class QAEngine:
             csv_graph_enabled=csv_graph is not None,
             rag_enabled=rag_index is not None,
             research_enabled=research_memory is not None,
+            embedding_enabled=semantic_index is not None,
             llm_enabled=llm_client is not None,
             graph_backend=selected_backend,
             graph_data_dir=str(graph_data_dir),
             graph_error=graph_error,
             rag_error=rag_error,
             research_error=research_error,
+            embedding_error=embedding_error,
             llm_error=llm_error,
         )
         return cls(
@@ -247,10 +271,12 @@ class QAEngine:
             csv_graph=csv_graph,
             rag_index=rag_index,
             research_memory=research_memory,
+            semantic_index=semantic_index,
             enable_llm_cypher=enable_llm_cypher,
             enable_llm_planner=enable_llm_planner,
             contextualizer_mode=contextualizer_mode,
             rag_top_k=rag_top_k,
+            semantic_top_k=semantic_top_k,
             graph_limit=graph_limit,
             rerank_top_n=rerank_top_n,
             evidence_top_n=evidence_top_n,
@@ -380,6 +406,14 @@ class QAEngine:
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(graph_records, evidence_cards)
         unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
+        verification = {"status": "skipped", "checks": {"unsupported_terms": unsupported_terms}}
+        research_outputs = build_research_outputs(
+            question=contextual_question,
+            plan=plan,
+            evidence_cards=evidence_cards,
+            graph_records=graph_records,
+            verification=verification,
+        )
         record_timing(timings_ms, "render_payload", stage_start)
 
         diagnostics = {
@@ -387,6 +421,8 @@ class QAEngine:
             "graph_records": len(graph_records),
             "rag_hits": len(rag_hits),
             "research_hits": len(research_hits),
+            "embedding_hits": 0,
+            "embedding_enabled": bool(getattr(self.status, "embedding_enabled", False)),
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.rerank_top_n,
             "history_messages": len(history),
@@ -400,13 +436,14 @@ class QAEngine:
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
             "research_error": self.status.research_error,
+            "embedding_error": getattr(self.status, "embedding_error", ""),
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
             "agent_enabled": False,
             "agent_max_steps": self.agent_max_steps,
             "agent_steps": 0,
             "agent_trace": [],
-            "agent_verification": {"status": "skipped", "checks": {}},
+            "agent_verification": verification,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -427,6 +464,7 @@ class QAEngine:
             "research_hits": research_hit_rows,
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
+            "research_outputs": research_outputs,
             "subgraph": subgraph,
             "diagnostics": diagnostics,
             "errors": errors,
@@ -579,6 +617,14 @@ class QAEngine:
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(graph_records, evidence_cards)
         unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
+        verification = {"status": "skipped", "checks": {"unsupported_terms": unsupported_terms}}
+        research_outputs = build_research_outputs(
+            question=contextual_question,
+            plan=plan,
+            evidence_cards=evidence_cards,
+            graph_records=graph_records,
+            verification=verification,
+        )
         record_timing(timings_ms, "render_payload", stage_start)
 
         diagnostics = {
@@ -586,6 +632,8 @@ class QAEngine:
             "graph_records": len(graph_records),
             "rag_hits": len(rag_hits),
             "research_hits": len(research_hits),
+            "embedding_hits": 0,
+            "embedding_enabled": bool(getattr(self.status, "embedding_enabled", False)),
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.rerank_top_n,
             "history_messages": len(history),
@@ -599,13 +647,14 @@ class QAEngine:
             "graph_error": self.status.graph_error,
             "rag_error": self.status.rag_error,
             "research_error": self.status.research_error,
+            "embedding_error": getattr(self.status, "embedding_error", ""),
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
             "agent_enabled": False,
             "agent_max_steps": self.agent_max_steps,
             "agent_steps": 0,
             "agent_trace": [],
-            "agent_verification": {"status": "skipped", "checks": {}},
+            "agent_verification": verification,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -628,6 +677,7 @@ class QAEngine:
                 "research_hits": research_hit_rows,
                 "evidence_cards": evidence_card_rows,
                 "evidence": evidence,
+                "research_outputs": research_outputs,
                 "subgraph": subgraph,
                 "diagnostics": diagnostics,
                 "errors": errors,

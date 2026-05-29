@@ -40,9 +40,43 @@ export interface QAResult {
   rag_hits: Record<string, unknown>[];
   evidence_cards: Record<string, unknown>[];
   evidence: Record<string, unknown>[];
+  research_outputs?: ResearchOutputs;
   subgraph: GraphEdge[];
   diagnostics: Record<string, unknown>;
   errors: string[];
+}
+
+export interface ResearchOutputs {
+  report?: {
+    title: string;
+    markdown: string;
+    sections: { title: string; content: string }[];
+  };
+  company_compare_table?: {
+    columns: string[];
+    rows: Record<string, string>[];
+  };
+  risk_checklist?: Record<string, string>[];
+  evidence_gaps?: Record<string, string>[];
+  meta?: Record<string, unknown>;
+}
+
+export interface ClaimReviewRequest {
+  claim_text?: string;
+  claim_type?: string;
+  topic?: string;
+  companies?: string[] | string;
+  evidence_span?: string;
+  exposure_level?: string;
+  confidence?: string;
+  as_of_date?: string;
+  review_status?: string;
+  reviewer_note?: string;
+}
+
+export interface ClaimReviewResponse {
+  claim: Record<string, unknown>;
+  review: Record<string, unknown>;
 }
 
 export interface GraphEdge {
@@ -62,6 +96,7 @@ export interface ApiStatus {
   neo4j_enabled: boolean;
   rag_enabled: boolean;
   research_enabled: boolean;
+  embedding_enabled: boolean;
   llm_enabled: boolean;
   csv_graph_enabled: boolean;
   graph_data_dir: string;
@@ -69,6 +104,7 @@ export interface ApiStatus {
     graph: string;
     rag: string;
     research: string;
+    embedding: string;
     llm: string;
   };
   stats: GraphStats;
@@ -88,6 +124,14 @@ export interface GraphStats {
   relations: number;
   entity_counts: Record<string, number>;
   relation_counts: Record<string, number>;
+  research?: {
+    claims?: number;
+    dossiers?: number;
+    reviewed_claims?: number;
+    rejected_claims?: number;
+    direct_exposure_companies?: number;
+    claim_type_counts?: Record<string, number>;
+  };
 }
 
 export interface GraphSummary extends GraphStats {

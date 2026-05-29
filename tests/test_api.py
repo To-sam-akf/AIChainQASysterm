@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from src.api import app, get_conversation_store, get_knowledge_graph, get_qa_engine
 from src.conversation_store import ConversationStore
 from src.frontend_data import LocalKnowledgeGraph
+from src.research_claims import CLAIM_REVIEWS_FILE, ResearchMemory
 
 
 class FakeEngine:
@@ -15,11 +16,13 @@ class FakeEngine:
             graph_backend="csv",
             neo4j_enabled=False,
             rag_enabled=False,
+            embedding_enabled=False,
             llm_enabled=False,
             csv_graph_enabled=True,
             graph_data_dir="",
             graph_error="",
             rag_error="",
+            embedding_error="",
             llm_error="",
         )
         self.enable_agent = True
@@ -165,9 +168,52 @@ def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
 
         assert status_response.status_code == 200
         assert status_response.json()["stats"]["companies"] == 1
+        assert status_response.json()["embedding_enabled"] is False
+        assert status_response.json()["errors"]["embedding"] == ""
         assert status_response.json()["settings"]["agent_enabled"] is True
         assert status_response.json()["settings"]["agent_max_steps"] == 4
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> None:
+    engine = FakeEngine()
+    engine.research_memory = ResearchMemory(
+        claims=[
+            {
+                "claim_id": "c1",
+                "claim_type": "company_exposure",
+                "topic": "液冷",
+                "claim_text": "英维克 对 液冷 的公司敞口为 direct。",
+                "companies": ["英维克"],
+                "evidence_span": "英维克提供液冷产品。",
+                "confidence": "0.80",
+                "exposure_level": "direct",
+                "review_status": "auto",
+            }
+        ],
+        dossiers=[],
+    )
+    artifact_dir = tmp_path / "research"
+    monkeypatch.setenv("RESEARCH_ARTIFACT_DIR", str(artifact_dir))
+    client = make_test_client(tmp_path / "store", engine)
+    try:
+        response = client.post(
+            "/api/research/claims/c1/review",
+            json={
+                "claim_text": "英维克 对 液冷 的公司敞口为 core：端到端液冷产品覆盖。",
+                "exposure_level": "core",
+                "review_status": "revised",
+                "reviewer_note": "人工确认其为核心液冷标的。",
+            },
+        )
+
+        assert response.status_code == 200
+        assert response.json()["claim"]["exposure_level"] == "core"
+        assert engine.research_memory.get_claim("c1")["review_status"] == "revised"
+        assert (artifact_dir / CLAIM_REVIEWS_FILE).exists()
+        assert "人工确认" in (artifact_dir / CLAIM_REVIEWS_FILE).read_text(encoding="utf-8")
     finally:
         app.dependency_overrides.clear()

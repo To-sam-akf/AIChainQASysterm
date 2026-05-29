@@ -38,6 +38,7 @@ DEFAULT_RESEARCH_DIR = ROOT_DIR / "data" / "curated"
 CLAIMS_FILE = "claims.csv"
 EVIDENCE_SPANS_FILE = "evidence_spans.csv"
 SEGMENT_DOSSIERS_FILE = "segment_dossiers.jsonl"
+CLAIM_REVIEWS_FILE = "claim_reviews.jsonl"
 
 CLAIM_CSV_FIELDS = [
     "claim_id",
@@ -60,7 +61,34 @@ CLAIM_CSV_FIELDS = [
     "confidence",
     "as_of_date",
     "exposure_level",
+    "review_status",
+    "reviewer_note",
+    "quality_flags",
+    "conflict_group_id",
 ]
+
+REVIEWABLE_CLAIM_FIELDS = {
+    "claim_text",
+    "claim_type",
+    "topic",
+    "companies",
+    "mechanism",
+    "direction",
+    "horizon",
+    "metric",
+    "value",
+    "unit",
+    "evidence_span",
+    "confidence",
+    "as_of_date",
+    "exposure_level",
+    "review_status",
+    "reviewer_note",
+    "quality_flags",
+    "conflict_group_id",
+}
+
+CLAIM_REVIEW_STATUSES = {"auto", "approved", "revised", "rejected", "needs_review"}
 
 EVIDENCE_SPAN_FIELDS = [
     "evidence_id",
@@ -268,6 +296,7 @@ class ResearchHit:
     title: str
     text: str
     topic: str
+    claim_id: str = ""
     source: str = ""
     page: str = ""
     section: str = ""
@@ -277,6 +306,9 @@ class ResearchHit:
     exposure_level: str = ""
     confidence: str = ""
     as_of_date: str = ""
+    evidence_span: str = ""
+    review_status: str = ""
+    reviewer_note: str = ""
     score: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
@@ -285,6 +317,7 @@ class ResearchHit:
             "title": self.title,
             "text": self.text,
             "topic": self.topic,
+            "claim_id": self.claim_id,
             "source": self.source,
             "page": self.page,
             "section": self.section,
@@ -294,6 +327,9 @@ class ResearchHit:
             "exposure_level": self.exposure_level,
             "confidence": self.confidence,
             "as_of_date": self.as_of_date,
+            "evidence_span": self.evidence_span,
+            "review_status": self.review_status,
+            "reviewer_note": self.reviewer_note,
             "score": self.score,
         }
 
@@ -430,6 +466,10 @@ def claim_from_relation_topic(row: dict[str, str], topic: str) -> dict[str, Any]
         "confidence": row.get("confidence", "0.70"),
         "as_of_date": infer_as_of_date(row),
         "exposure_level": exposure_level,
+        "review_status": row.get("review_status", "auto") or "auto",
+        "reviewer_note": "",
+        "quality_flags": "",
+        "conflict_group_id": "",
     }
 
 
@@ -682,6 +722,10 @@ def technical_claim_from_chunk(
         "confidence": "0.78" if chunk.get("source_tier") == "1" else "0.70",
         "as_of_date": infer_direct_as_of_date(chunk, evidence),
         "exposure_level": "mentioned" if companies else "",
+        "review_status": "auto",
+        "reviewer_note": "",
+        "quality_flags": "",
+        "conflict_group_id": "",
     }
 
 
@@ -895,6 +939,92 @@ def build_dossier_summary(
     return "；".join(parts)
 
 
+def load_claim_reviews(data_dir: Path = DEFAULT_RESEARCH_DIR) -> dict[str, dict[str, Any]]:
+    reviews_path = data_dir / CLAIM_REVIEWS_FILE
+    reviews: dict[str, dict[str, Any]] = {}
+    if not reviews_path.exists():
+        return reviews
+    with reviews_path.open(encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+            try:
+                review = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            claim_id = str(review.get("claim_id") or "").strip()
+            if claim_id:
+                reviews[claim_id] = normalize_claim_review(claim_id, review)
+    return reviews
+
+
+def write_claim_review(
+    data_dir: Path,
+    claim_id: str,
+    updates: dict[str, Any],
+    *,
+    reviewer: str = "frontend",
+) -> dict[str, Any]:
+    data_dir.mkdir(parents=True, exist_ok=True)
+    review = normalize_claim_review(claim_id, updates, reviewer=reviewer)
+    reviews_path = data_dir / CLAIM_REVIEWS_FILE
+    with reviews_path.open("a", encoding="utf-8") as file:
+        file.write(json.dumps(review, ensure_ascii=False, sort_keys=True) + "\n")
+    return review
+
+
+def normalize_claim_review(
+    claim_id: str,
+    updates: dict[str, Any],
+    *,
+    reviewer: str = "",
+) -> dict[str, Any]:
+    claim_id = str(claim_id or updates.get("claim_id") or "").strip()
+    if not claim_id:
+        raise ValueError("claim_id is required")
+    review: dict[str, Any] = {
+        "claim_id": claim_id,
+        "updated_at": str(updates.get("updated_at") or datetime.now(timezone.utc).isoformat()),
+        "reviewer": str(updates.get("reviewer") or reviewer or "frontend"),
+    }
+    for field in REVIEWABLE_CLAIM_FIELDS:
+        if field not in updates:
+            continue
+        value = updates.get(field)
+        if field == "companies":
+            value = parse_companies(value)
+        elif isinstance(value, list):
+            value = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            value = str(value or "").strip()
+        if field == "review_status" and value and value not in CLAIM_REVIEW_STATUSES:
+            value = "needs_review"
+        review[field] = value
+    if "review_status" not in review:
+        review["review_status"] = "revised"
+    return review
+
+
+def apply_claim_reviews(claims: list[dict[str, Any]], reviews: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+    if not reviews:
+        return claims
+    output: list[dict[str, Any]] = []
+    for claim in claims:
+        claim_id = str(claim.get("claim_id") or "")
+        review = reviews.get(claim_id)
+        if not review:
+            output.append(claim)
+            continue
+        updated = dict(claim)
+        for field in REVIEWABLE_CLAIM_FIELDS:
+            if field in review:
+                updated[field] = review[field]
+        updated["reviewed_at"] = review.get("updated_at", "")
+        updated["reviewer"] = review.get("reviewer", "")
+        output.append(updated)
+    return output
+
+
 class ResearchMemory:
     def __init__(self, claims: list[dict[str, Any]], dossiers: list[dict[str, Any]]) -> None:
         self.claims = [normalize_claim_row(row) for row in claims]
@@ -906,13 +1036,50 @@ class ResearchMemory:
         dossiers_path = data_dir / SEGMENT_DOSSIERS_FILE
         if not claims_path.exists() or not dossiers_path.exists():
             raise FileNotFoundError(f"Research artifacts not found in {data_dir}")
-        claims = read_csv(claims_path)
+        claims = apply_claim_reviews(read_csv(claims_path), load_claim_reviews(data_dir))
         dossiers: list[dict[str, Any]] = []
         with dossiers_path.open(encoding="utf-8") as file:
             for line in file:
                 if line.strip():
                     dossiers.append(json.loads(line))
         return cls(claims, dossiers)
+
+    def review_claim(self, claim_id: str, updates: dict[str, Any], *, reviewer: str = "frontend") -> dict[str, Any]:
+        review = normalize_claim_review(claim_id, updates, reviewer=reviewer)
+        for index, claim in enumerate(self.claims):
+            if str(claim.get("claim_id") or "") != review["claim_id"]:
+                continue
+            updated = apply_claim_reviews([claim], {review["claim_id"]: review})[0]
+            self.claims[index] = normalize_claim_row(updated)
+            return self.claims[index]
+        raise KeyError(f"Claim not found: {claim_id}")
+
+    def get_claim(self, claim_id: str) -> dict[str, Any]:
+        for claim in self.claims:
+            if str(claim.get("claim_id") or "") == str(claim_id or ""):
+                return claim
+        raise KeyError(f"Claim not found: {claim_id}")
+
+    def claim_stats(self) -> dict[str, Any]:
+        reviewed = sum(1 for claim in self.claims if str(claim.get("review_status", "")) in {"approved", "revised", "rejected", "needs_review"})
+        rejected = sum(1 for claim in self.claims if str(claim.get("review_status", "")) == "rejected")
+        direct_companies = {
+            company
+            for claim in self.claims
+            if claim.get("claim_type") == "company_exposure" and claim.get("exposure_level") in {"core", "direct"}
+            for company in parse_companies(claim.get("companies", []))
+        }
+        by_type: dict[str, int] = defaultdict(int)
+        for claim in self.claims:
+            by_type[str(claim.get("claim_type", "") or "unknown")] += 1
+        return {
+            "claims": len(self.claims),
+            "dossiers": len(self.dossiers),
+            "reviewed_claims": reviewed,
+            "rejected_claims": rejected,
+            "direct_exposure_companies": len(direct_companies),
+            "claim_type_counts": dict(by_type),
+        }
 
     def search(self, question: str, plan: Any, *, limit: int = 8) -> list[ResearchHit]:
         topics = query_topics(question, getattr(plan, "topics", []), getattr(plan, "expanded_topics", []))
@@ -955,6 +1122,8 @@ class ResearchMemory:
     def _search_claims(self, question: str, topics: list[str], plan: Any) -> list[ResearchHit]:
         hits = []
         for claim in self.claims:
+            if str(claim.get("review_status", "")) == "rejected":
+                continue
             topic = str(claim.get("topic", ""))
             if topics and topic not in topics and not text_matches_terms(topic, topics):
                 continue
@@ -968,6 +1137,7 @@ class ResearchMemory:
                     title=claim_title(claim),
                     text=str(claim.get("claim_text", "")),
                     topic=topic,
+                    claim_id=str(claim.get("claim_id", "")),
                     source=str(claim.get("source_title", "")),
                     page=str(claim.get("page", "")),
                     section=str(claim.get("section", "")),
@@ -977,6 +1147,9 @@ class ResearchMemory:
                     exposure_level=str(claim.get("exposure_level", "")),
                     confidence=str(claim.get("confidence", "")),
                     as_of_date=str(claim.get("as_of_date", "")),
+                    evidence_span=str(claim.get("evidence_span", "")),
+                    review_status=str(claim.get("review_status", "")),
+                    reviewer_note=str(claim.get("reviewer_note", "")),
                     score=round(score, 4),
                 )
             )

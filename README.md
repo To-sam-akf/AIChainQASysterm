@@ -26,12 +26,19 @@ V1.2 本轮稳定化新增：
 - 回答子图由图谱记录和已选证据卡共同生成；即使答案主要来自 Claim/Dossier，React 工作台的“子图”也能展示公司、主题、风险和指标关系。
 - 本地回归评测扩展到 15 个投研问题，并检查证据卡、引用编号和子图是否生成。
 
+第三阶段投研智能体新增：
+
+- 每次问答会同步生成 `research_outputs`，包括研究报告、公司对比表、风险清单和证据缺口清单。
+- React 证据抽屉新增“投研”页签，用结构化视图展示报告、对比表、风险与缺口，不再只依赖答案正文。
+- Claim 证据卡支持前端修正 Claim 文本、主题、类型、敞口分级、置信度、时点、原文证据和审校备注。
+- Claim 修正不会覆盖原始 `claims.csv`，而是追加写入 `data/curated/claim_reviews.jsonl` 覆盖层；后续检索会读取最新修正，`rejected` 状态的 Claim 会从检索结果中过滤。
+
 ### V1.2 仍未完善的地方
 
 - 原文级 Claim 抽取已经先覆盖 `industry_tech_*` 专业技术源，但年报、券商研报和普通行业白皮书仍主要依赖关系派生 Claim。后续需要把原文级抽取扩展到更多来源，并加入 LLM 审校和人工校验。
 - Segment dossier 是确定性聚合摘要，不是 LLM 多文档综合后的高质量社区报告；部分机理句仍会带有原始抽取噪声，需要进一步做 LLM 审校和人工校验。
 - 公司敞口分级已经可用，但仍是启发式规则。复杂场景下，例如“液冷兼容设计”“数据中心节能”“光模块上游材料”，还需要更细的敞口 taxonomy 和人工标注样本。
-- 当前检索仍以 BM25、规则打分和 CSV 图谱为主，尚未接入 dense embedding、cross-encoder reranker 或真正的 GraphRAG global/local/DRIFT search。
+- 当前已接入本地 JSONL embedding 语义召回，但 reranker 仍以规则打分为主；后续可继续加入 cross-encoder/LLM rerank 和真正的 GraphRAG global/local/DRIFT search。
 - 反证和冲突处理只是预留字段，尚未系统识别“券商乐观判断 vs 年报风险披露”“老报告 vs 新报告”“技术路线 A vs B”的矛盾。
 - 指标抽取还偏粗，不能稳定区分订单、合同负债、产能、毛利率、ASP、客户结构、资本开支、渗透率等投研指标。
 - 评测集仍偏 smoke test，能保证主流程不退化，但还不能衡量“是否产生超前 insight”。需要扩展高难投研问题和分维度评分。
@@ -221,6 +228,18 @@ python scripts/build_curated_graph.py
 python scripts/build_rag_index.py
 ```
 
+构建本地 embedding 语义索引：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/build_embedding_index.py
+```
+
+该索引会把 `data/rag/documents.jsonl`、`data/curated/claims.csv` 和
+`data/curated/segment_dossiers.jsonl` 统一编码到 `data/semantic_index/`。
+问答时只向量化用户问题，并用 cosine 相似度召回语义证据；如果未配置
+`EMBEDDING_MODEL` 或索引加载失败，系统会自动降级到现有 BM25/Claim/Graph 链路。
+可先运行 `python scripts/build_embedding_index.py --dry-run` 查看待索引数量。
+
 如果只想重建投研推理层，可以单独运行：
 
 ```bash
@@ -257,6 +276,13 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
 - `RAG_SEARCH_CACHE_SIZE`：本地 RAG 查询结果 LRU 缓存大小，默认 128。
+- `EMBEDDING_BASE_URL`：OpenAI-compatible embedding 服务地址；未配置时回退 `LLM_BASE_URL`。
+- `EMBEDDING_API_KEY`：embedding 服务 API key；未配置时回退 `LLM_API_KEY`。
+- `EMBEDDING_MODEL`：embedding 模型名；为空时关闭 embedding 语义召回。
+- `EMBEDDING_BATCH_SIZE`：离线构建索引时的批量大小，默认 32。
+- `EMBEDDING_DIMENSIONS`：可选输出向量维度；为空时使用模型/服务默认维度。Qwen3-Embedding-8B 可设为 `64`、`128`、`256`、`512`、`768`、`1024`、`2048` 或 `4096`。修改后需要重建 embedding 索引。
+- `EMBEDDING_INDEX_DIR`：本地语义索引目录，默认 `data/semantic_index`。
+- `SEMANTIC_TOP_K`：Agent 每轮语义召回数量，默认 8。
 - `RESEARCH_ARTIFACT_DIR`：投研 Claim/Dossier 目录，默认 `data/curated`。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。

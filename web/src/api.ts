@@ -1,5 +1,7 @@
 import type {
   ApiStatus,
+  ClaimReviewRequest,
+  ClaimReviewResponse,
   Conversation,
   ConversationSummary,
   GraphSubgraph,
@@ -183,4 +185,11 @@ export function getGraphSubgraph(params: {
   if (params.technology) query.set("technology", params.technology);
   if (params.relation_type) query.set("relation_type", params.relation_type);
   return request<GraphSubgraph>(`/api/graph/subgraph?${query.toString()}`);
+}
+
+export function reviewClaim(claimId: string, payload: ClaimReviewRequest): Promise<ClaimReviewResponse> {
+  return request<ClaimReviewResponse>(`/api/research/claims/${encodeURIComponent(claimId)}/review`, {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }

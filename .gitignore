@@ -38,7 +38,7 @@ data/rag/**/*.jsonl
 data/rag/**/*.json
 data/conversations/**/*.md
 data/conversations/**/*.json
-
+data/semantic_index/
 # Keep reproducible metadata under version control
 !data/metadata/
 !data/metadata/*.csv
@@ -53,3 +53,5 @@ data/conversations/**/*.json
 !data/curated/
 !data/curated/*.csv
 !data/curated/**/.gitkeep
+
+

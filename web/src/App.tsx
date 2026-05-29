@@ -3,6 +3,7 @@ import {
   Bot,
   Boxes,
   ChevronRight,
+  ClipboardList,
   Download,
   FileText,
   History,
@@ -13,14 +14,16 @@ import {
   Move,
   Pencil,
   Plus,
+  Save,
   Send,
   Sparkles,
+  Table2,
   Trash2,
   X,
   ZoomIn,
   ZoomOut
 } from "lucide-react";
-import { KeyboardEvent, PointerEvent, WheelEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { FormEvent, KeyboardEvent, PointerEvent, WheelEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   createConversation,
@@ -31,6 +34,7 @@ import {
   getGraphSummary,
   getStatus,
   listConversations,
+  reviewClaim,
   streamMessage,
   updateConversationTitle
 } from "./api";
@@ -41,11 +45,12 @@ import type {
   ConversationTurn,
   GraphEdge,
   GraphSubgraph,
-  GraphSummary
+  GraphSummary,
+  ClaimReviewRequest
 } from "./types";
 
 type View = "chat" | "overview" | "graph";
-type DetailTab = "evidence" | "cypher" | "diagnostics" | "graph";
+type DetailTab = "research" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
 const GRAPH_VIEWPORTS = {
@@ -102,6 +107,12 @@ function createPendingTurn(question: string, thinkingEnabled: boolean, reasoning
       rag_hits: [],
       evidence_cards: [],
       evidence: [],
+      research_outputs: {
+        report: { title: "", markdown: "", sections: [] },
+        company_compare_table: { columns: [], rows: [] },
+        risk_checklist: [],
+        evidence_gaps: []
+      },
       subgraph: [],
       diagnostics: { streaming: true },
       errors: []
@@ -113,6 +124,51 @@ function nextProgressItems(items: string[], message: string): string[] {
   const text = message.trim();
   if (!text || items[items.length - 1] === text) return items;
   return [...items, text].slice(-5);
+}
+
+function updateConversationClaimReview(
+  conversation: Conversation | null,
+  claimId: string,
+  claim: Record<string, unknown>
+): Conversation | null {
+  if (!conversation) return conversation;
+  return {
+    ...conversation,
+    turns: conversation.turns.map((turn) => updateTurnClaimReview(turn, claimId, claim) ?? turn)
+  };
+}
+
+function updateTurnClaimReview(
+  turn: ConversationTurn | null,
+  claimId: string,
+  claim: Record<string, unknown>
+): ConversationTurn | null {
+  if (!turn) return turn;
+  const updateRows = (rows: Record<string, unknown>[] = []) =>
+    rows.map((row) => {
+      if (String(row.claim_id ?? "") !== claimId) return row;
+      return {
+        ...row,
+        evidence: String(claim.claim_text ?? row.evidence ?? ""),
+        text: String(claim.claim_text ?? row.text ?? ""),
+        topic: String(claim.topic ?? row.topic ?? ""),
+        claim_type: String(claim.claim_type ?? row.claim_type ?? ""),
+        exposure_level: String(claim.exposure_level ?? row.exposure_level ?? ""),
+        confidence: String(claim.confidence ?? row.confidence ?? ""),
+        as_of_date: String(claim.as_of_date ?? row.as_of_date ?? ""),
+        evidence_span: String(claim.evidence_span ?? row.evidence_span ?? ""),
+        review_status: String(claim.review_status ?? row.review_status ?? ""),
+        reviewer_note: String(claim.reviewer_note ?? row.reviewer_note ?? "")
+      };
+    });
+  return {
+    ...turn,
+    result: {
+      ...turn.result,
+      evidence_cards: updateRows(turn.result.evidence_cards),
+      evidence: updateRows(turn.result.evidence)
+    }
+  };
 }
 
 function App() {
@@ -130,7 +186,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState("");
   const [selectedTurn, setSelectedTurn] = useState<ConversationTurn | null>(null);
-  const [detailTab, setDetailTab] = useState<DetailTab>("evidence");
+  const [detailTab, setDetailTab] = useState<DetailTab>("research");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [editingId, setEditingId] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
@@ -290,6 +346,17 @@ function App() {
     }
   }
 
+  async function handleClaimReview(claimId: string, payload: ClaimReviewRequest) {
+    try {
+      const response = await reviewClaim(claimId, payload);
+      setToast("Claim 修正已保存");
+      setSelectedTurn((turn) => updateTurnClaimReview(turn, claimId, response.claim));
+      setCurrent((conversation) => updateConversationClaimReview(conversation, claimId, response.claim));
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "保存 Claim 修正失败");
+    }
+  }
+
   const shellClassName = `app-shell ${sidebarOpen ? "sidebar-open" : ""}`;
 
   return (
@@ -346,7 +413,7 @@ function App() {
             onReasoningChange={setReasoningEffort}
             onOpenDetails={(turn) => {
               setSelectedTurn(turn);
-              setDetailTab("evidence");
+              setDetailTab("research");
             }}
             onExample={(example) => setInput(example)}
           />
@@ -360,6 +427,7 @@ function App() {
         tab={detailTab}
         onTab={setDetailTab}
         onClose={() => setSelectedTurn(null)}
+        onClaimReview={handleClaimReview}
       />
     </div>
   );
@@ -732,6 +800,7 @@ function DetailDrawer(props: {
   tab: DetailTab;
   onTab: (tab: DetailTab) => void;
   onClose: () => void;
+  onClaimReview: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
 }) {
   if (!props.turn || !props.open) return null;
   const result = props.turn.result;
@@ -753,6 +822,7 @@ function DetailDrawer(props: {
       )}
       <div className="drawer-tabs">
         {[
+          ["research", "投研"],
           ["evidence", "证据"],
           ["cypher", "查询"],
           ["diagnostics", "诊断"],
@@ -769,7 +839,10 @@ function DetailDrawer(props: {
         ))}
       </div>
       <div className="drawer-body">
-        {props.tab === "evidence" && <EvidenceCards rows={evidence} empty="当前没有证据卡片" />}
+        {props.tab === "research" && <ResearchOutputsView outputs={result.research_outputs} />}
+        {props.tab === "evidence" && (
+          <EvidenceCards rows={evidence} empty="当前没有证据卡片" onClaimReview={props.onClaimReview} />
+        )}
         {props.tab === "cypher" && (
           <div className="code-stack">
             <pre>{result.cypher || "无 Cypher 查询"}</pre>
@@ -836,24 +909,31 @@ function renderInlineMarkdown(text: string): ReactNode[] {
 
 function OverviewView(props: { status: ApiStatus | null }) {
   const stats = props.status?.stats;
+  const researchStats = stats?.research;
   return (
     <section className="page-panel">
       <div className="page-header">
         <span className="eyebrow">Knowledge Base</span>
         <h1>数据概览</h1>
-        <p>图谱、RAG 和 LLM 状态集中展示，便于演示前快速确认系统健康度。</p>
+        <p>图谱、RAG、Embedding 和 LLM 状态集中展示，便于演示前快速确认系统健康度。</p>
       </div>
       <div className="metric-grid">
         <MetricCard label="公司" value={stats?.companies ?? 0} />
         <MetricCard label="报告" value={stats?.reports ?? 0} />
         <MetricCard label="实体" value={stats?.entities ?? 0} />
         <MetricCard label="关系" value={stats?.relations ?? 0} />
+        <MetricCard label="Claim" value={researchStats?.claims ?? 0} />
+        <MetricCard label="Dossier" value={researchStats?.dossiers ?? 0} />
+        <MetricCard label="已审校 Claim" value={researchStats?.reviewed_claims ?? 0} />
+        <MetricCard label="直接敞口公司" value={researchStats?.direct_exposure_companies ?? 0} />
       </div>
       <div className="status-strip">
         <StatusPill label="图谱后端" value={props.status?.graph_backend?.toUpperCase() ?? "UNKNOWN"} />
         <StatusPill label="Neo4j" value={props.status?.neo4j_enabled ? "可用" : "降级/未启用"} />
         <StatusPill label="本地 RAG" value={props.status?.rag_enabled ? "就绪" : "未构建"} />
+        <StatusPill label="投研层" value={props.status?.research_enabled ? "就绪" : "未构建"} />
         <StatusPill label="LLM" value={props.status?.llm_enabled ? "就绪" : "未配置"} />
+        <StatusPill label="Embedding" value={props.status?.embedding_enabled ? "就绪" : "未启用"} />
       </div>
       <div className="chart-grid">
         <BarList title="实体分布" data={stats?.entity_counts ?? {}} />
@@ -1437,6 +1517,106 @@ function BarList(props: { title: string; data: Record<string, number> }) {
   );
 }
 
+function ResearchOutputsView(props: { outputs: ConversationTurn["result"]["research_outputs"] }) {
+  const outputs = props.outputs;
+  if (!outputs) return <div className="empty-table">当前回答没有生成投研产物</div>;
+  const report = outputs.report;
+  const table = outputs.company_compare_table;
+  const risks = outputs.risk_checklist ?? [];
+  const gaps = outputs.evidence_gaps ?? [];
+  return (
+    <div className="research-output">
+      <section className="research-section">
+        <div className="research-section-title">
+          <FileText size={16} />
+          <span>{report?.title || "投研简报"}</span>
+        </div>
+        <div className="research-report">
+          {report?.sections?.length ? (
+            report.sections.map((section) => (
+              <div className="research-report-section" key={section.title}>
+                <h4>{section.title}</h4>
+                <div>{renderAnswerMarkdown(section.content)}</div>
+              </div>
+            ))
+          ) : (
+            <div className="empty-table">当前证据不足以生成报告</div>
+          )}
+        </div>
+      </section>
+      <section className="research-section">
+        <div className="research-section-title">
+          <Table2 size={16} />
+          <span>公司对比表</span>
+        </div>
+        <ResearchTable rows={table?.rows ?? []} empty="当前证据不足以生成公司对比表" />
+      </section>
+      <section className="research-section">
+        <div className="research-section-title">
+          <ClipboardList size={16} />
+          <span>风险清单</span>
+        </div>
+        <ResearchList rows={risks} primaryKey="risk" secondaryKeys={["scope", "priority", "follow_up", "citation_id"]} empty="当前证据不足以生成风险清单" />
+      </section>
+      <section className="research-section">
+        <div className="research-section-title">
+          <FileText size={16} />
+          <span>证据缺口</span>
+        </div>
+        <ResearchList rows={gaps} primaryKey="gap" secondaryKeys={["priority", "suggested_source"]} empty="当前证据包未识别出关键缺口" />
+      </section>
+    </div>
+  );
+}
+
+function ResearchTable(props: { rows: Record<string, string>[]; empty: string }) {
+  if (!props.rows.length) return <div className="empty-table">{props.empty}</div>;
+  return (
+    <div className="research-table">
+      {props.rows.slice(0, 10).map((row) => (
+        <article className="research-row" key={row.company}>
+          <div>
+            <strong>{row.company || "公司"}</strong>
+            <span>{row.chain_segment || "未识别"} · {row.exposure_level || "未分级"}</span>
+          </div>
+          <p>{row.business_evidence || "当前证据不足"}</p>
+          <dl>
+            <dt>指标</dt>
+            <dd>{row.leading_indicators || "当前证据不足"}</dd>
+            <dt>风险</dt>
+            <dd>{row.risks || "当前证据不足"}</dd>
+            <dt>证据</dt>
+            <dd>{row.citations || "无"}</dd>
+          </dl>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ResearchList(props: {
+  rows: Record<string, string>[];
+  primaryKey: string;
+  secondaryKeys: string[];
+  empty: string;
+}) {
+  if (!props.rows.length) return <div className="empty-table">{props.empty}</div>;
+  return (
+    <div className="research-list">
+      {props.rows.slice(0, 12).map((row, index) => (
+        <article className="research-list-item" key={`${row[props.primaryKey]}-${index}`}>
+          <p>{row[props.primaryKey]}</p>
+          <div>
+            {props.secondaryKeys.map((key) => (
+              row[key] ? <span key={key}>{row[key]}</span> : null
+            ))}
+          </div>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 const EVIDENCE_KIND_LABELS: Record<string, string> = {
   dossier: "Dossier",
   claim: "Claim",
@@ -1462,7 +1642,122 @@ const EXPOSURE_LABELS: Record<string, string> = {
   mentioned: "仅提及"
 };
 
-function EvidenceCards(props: { rows: Record<string, unknown>[]; empty: string }) {
+const CLAIM_REVIEW_STATUSES = [
+  ["revised", "已修正"],
+  ["approved", "已确认"],
+  ["needs_review", "待复核"],
+  ["rejected", "噪声/弃用"]
+];
+
+function ClaimReviewPanel(props: {
+  row: Record<string, unknown>;
+  claimId: string;
+  onSubmit: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
+}) {
+  const [claimText, setClaimText] = useState(fieldText(props.row, "evidence"));
+  const [topic, setTopic] = useState(fieldText(props.row, "topic"));
+  const [claimType, setClaimType] = useState(fieldText(props.row, "claim_type"));
+  const [exposureLevel, setExposureLevel] = useState(fieldText(props.row, "exposure_level"));
+  const [evidenceSpan, setEvidenceSpan] = useState(fieldText(props.row, "evidence_span"));
+  const [confidence, setConfidence] = useState(fieldText(props.row, "confidence"));
+  const [asOfDate, setAsOfDate] = useState(fieldText(props.row, "as_of_date"));
+  const [reviewStatus, setReviewStatus] = useState(fieldText(props.row, "review_status") || "revised");
+  const [reviewerNote, setReviewerNote] = useState(fieldText(props.row, "reviewer_note"));
+  const [saving, setSaving] = useState(false);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await props.onSubmit(props.claimId, {
+        claim_text: claimText,
+        topic,
+        claim_type: claimType,
+        exposure_level: exposureLevel,
+        evidence_span: evidenceSpan,
+        confidence,
+        as_of_date: asOfDate,
+        review_status: reviewStatus,
+        reviewer_note: reviewerNote
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <details className="claim-review">
+      <summary>
+        <Pencil size={14} />
+        <span>修正 Claim</span>
+      </summary>
+      <form onSubmit={handleSubmit}>
+        <label>
+          Claim
+          <textarea value={claimText} rows={4} onChange={(event) => setClaimText(event.target.value)} />
+        </label>
+        <div className="review-grid">
+          <label>
+            主题
+            <input value={topic} onChange={(event) => setTopic(event.target.value)} />
+          </label>
+          <label>
+            类型
+            <select value={claimType} onChange={(event) => setClaimType(event.target.value)}>
+              <option value="">未分类</option>
+              {Object.entries(CLAIM_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            敞口
+            <select value={exposureLevel} onChange={(event) => setExposureLevel(event.target.value)}>
+              <option value="">未分级</option>
+              {Object.entries(EXPOSURE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            状态
+            <select value={reviewStatus} onChange={(event) => setReviewStatus(event.target.value)}>
+              {CLAIM_REVIEW_STATUSES.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            置信度
+            <input value={confidence} onChange={(event) => setConfidence(event.target.value)} />
+          </label>
+          <label>
+            时点
+            <input value={asOfDate} onChange={(event) => setAsOfDate(event.target.value)} />
+          </label>
+        </div>
+        <label>
+          原文证据
+          <textarea value={evidenceSpan} rows={3} onChange={(event) => setEvidenceSpan(event.target.value)} />
+        </label>
+        <label>
+          备注
+          <textarea value={reviewerNote} rows={2} onChange={(event) => setReviewerNote(event.target.value)} />
+        </label>
+        <button type="submit" disabled={saving}>
+          {saving ? <Loader2 size={15} className="spin" /> : <Save size={15} />}
+          <span>保存修正</span>
+        </button>
+      </form>
+    </details>
+  );
+}
+
+function EvidenceCards(props: {
+  rows: Record<string, unknown>[];
+  empty: string;
+  onClaimReview: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
+}) {
   if (!props.rows.length) return <div className="empty-table">{props.empty}</div>;
   const groups = props.rows.reduce<Record<string, Record<string, unknown>[]>>((acc, row) => {
     const kind = fieldText(row, "kind") || "other";
@@ -1480,7 +1775,11 @@ function EvidenceCards(props: { rows: Record<string, unknown>[]; empty: string }
             <b>{rows.length}</b>
           </div>
           {rows.map((row, index) => (
-            <EvidenceCardView row={row} key={`${fieldText(row, "citation_id") || label}-${index}`} />
+            <EvidenceCardView
+              row={row}
+              key={`${fieldText(row, "citation_id") || label}-${index}`}
+              onClaimReview={props.onClaimReview}
+            />
           ))}
         </section>
       ))}
@@ -1488,11 +1787,16 @@ function EvidenceCards(props: { rows: Record<string, unknown>[]; empty: string }
   );
 }
 
-function EvidenceCardView(props: { row: Record<string, unknown> }) {
+function EvidenceCardView(props: {
+  row: Record<string, unknown>;
+  onClaimReview: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
+}) {
   const row = props.row;
   const citationId = fieldText(row, "citation_id");
+  const claimId = fieldText(row, "claim_id");
   const title = fieldText(row, "title") || fieldText(row, "source") || "证据";
   const evidence = fieldText(row, "evidence");
+  const evidenceSpan = fieldText(row, "evidence_span");
   const source = fieldText(row, "source");
   const page = fieldText(row, "page");
   const section = fieldText(row, "section");
@@ -1500,6 +1804,10 @@ function EvidenceCardView(props: { row: Record<string, unknown> }) {
   const exposureLevel = fieldText(row, "exposure_level");
   const confidence = fieldText(row, "confidence");
   const score = fieldText(row, "score");
+  const semanticScore = fieldText(row, "semantic_score");
+  const semanticRefId = fieldText(row, "semantic_ref_id");
+  const reviewStatus = fieldText(row, "review_status");
+  const reviewerNote = fieldText(row, "reviewer_note");
   return (
     <article className="evidence-card">
       <div className="evidence-card-head">
@@ -1510,16 +1818,24 @@ function EvidenceCardView(props: { row: Record<string, unknown> }) {
         <div className="evidence-tags">
           {claimType && <span>{CLAIM_TYPE_LABELS[claimType] ?? claimType}</span>}
           {exposureLevel && <span>{EXPOSURE_LABELS[exposureLevel] ?? exposureLevel}</span>}
+          {reviewStatus && <span>{reviewStatus}</span>}
         </div>
       </div>
       <p>{evidence || "无证据文本"}</p>
+      {evidenceSpan && evidenceSpan !== evidence && <p className="evidence-span">原文：{evidenceSpan}</p>}
       <div className="evidence-meta">
         {source && <span>{source}</span>}
         {page && <span>p.{page}</span>}
         {section && <span>{section}</span>}
         {confidence && <span>置信度 {confidence}</span>}
+        {semanticScore && semanticScore !== "0" && <span>semantic {semanticScore}</span>}
+        {semanticRefId && <span>{semanticRefId}</span>}
         {score && <span>score {score}</span>}
       </div>
+      {reviewerNote && <div className="review-note">审校备注：{reviewerNote}</div>}
+      {fieldText(row, "kind") === "claim" && claimId && (
+        <ClaimReviewPanel row={row} claimId={claimId} onSubmit={props.onClaimReview} />
+      )}
     </article>
   );
 }
