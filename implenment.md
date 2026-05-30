@@ -1,635 +1,980 @@
-# AI 算力产业链智能问答系统整体流程框架
+# AIQASYS Agent 化实现文档
 
-本文档梳理当前项目的整体问答流程。系统不是让大模型直接回答产业链问题，而是先把年报、研报、白皮书、技术规范和论文构建成可检索的知识资产，再由问答引擎基于图谱、投研 Claim/Dossier 和 RAG 原文证据生成答案。
+## 1. 文档目标
 
-## 1. 总体架构
+本文档用于将当前 AI 算力产业链智能问答系统，从“证据增强问答/投研 GraphRAG 系统”包装并升级为一个真正的 Agent 项目。
+
+当前系统已经具备知识图谱、RAG、Claim/Dossier、证据卡片、连续追问、前端工作台和初步 Agent Runner。下一阶段的目标不是重写系统，而是在现有能力之上补齐动态任务规划、工具执行协议、任务状态管理、证据验证、冲突识别、任务评测和工程化交付能力。
+
+最终项目定位：
+
+> AIQASYS 是一个面向 AI 算力产业链的证据驱动投研 Agent，基于 Claim/Dossier、知识图谱、RAG 和可追踪工具调用，自动完成产业链问答、公司对比、风险审查和投研简报生成。
+
+## 2. 当前系统能力
+
+### 2.1 离线知识构建
+
+系统已经支持从年报、研报、行业白皮书、技术规范、benchmark、论文和模型技术报告中构建知识资产。
+
+当前链路包括：
+
+1. PDF 下载与清单管理。
+2. PDF 解析、文本清洗、chunk 切分。
+3. LLM 抽取实体、关系、指标、风险和技术机理。
+4. 构建 verified 图谱 CSV。
+5. 构建 curated 专业图谱、Claim、EvidenceSpan 和 Segment Dossier。
+6. 构建本地 BM25 RAG 索引。
+7. 可选构建 embedding 语义索引。
+8. 可选导入 Neo4j。
+
+当前主要产物：
+
+- `data/curated/entities.csv`：实体表。
+- `data/curated/relations.csv`：关系表。
+- `data/curated/claims.csv`：投研原子判断。
+- `data/curated/evidence_spans.csv`：可引用证据片段。
+- `data/curated/segment_dossiers.jsonl`：主题级产业链摘要。
+- `data/rag/documents.jsonl`：本地 RAG 文档块。
+- `data/semantic_index/`：可选 embedding 语义索引。
+
+当前数据规模约为：
+
+- 6881 个实体。
+- 10521 条关系。
+- 11591 条 Claim。
+- 11591 条证据片段。
+- 9 个主题 dossier。
+- 4858 个 RAG chunk。
+
+### 2.2 在线问答能力
+
+当前问答系统不是让大模型直接回答，而是先检索证据，再基于证据生成答案。
+
+已具备能力：
+
+- CSV/Neo4j 图谱检索。
+- 本地 BM25 RAG 检索。
+- Claim/Dossier 投研证据检索。
+- 可选 embedding 语义召回。
+- 问题规划和答案类型识别。
+- 连续追问改写。
+- 证据卡片构造。
+- citation id 引用编号，例如 `E1`、`E2`。
+- 回答子图生成。
+- 研究报告、公司对比表、风险清单、证据缺口清单生成。
+- 空证据问题降级回答。
+- 禁止生成买卖建议、目标价或收益预测。
+
+主要入口：
+
+- `src/qa_engine.py`：问答编排核心。
+- `src/professional_qa.py`：专业问答、证据卡片和答案格式。
+- `src/research_agent.py`：结构化投研输出生成。
+- `src/api.py`：FastAPI 后端接口。
+- `web/src/App.tsx`：React 工作台。
+
+### 2.3 前端工作台能力
+
+React 工作台已具备：
+
+- 智能问答。
+- 流式回答。
+- 对话历史保存、恢复、重命名、删除和导出。
+- 证据详情抽屉。
+- 投研产物页签。
+- Claim 修正面板。
+- 数据概览。
+- 产业链图谱视图。
+- Agent 任务页面。
+- Agent 任务导出 Markdown/JSON。
+
+### 2.4 当前 Agent 雏形
+
+当前系统已有初步 Agent 能力，但仍偏规则式工作流。
+
+已有模块：
+
+- `src/agent_runner.py`
+  - 实现固定四阶段流程：`plan -> retrieve -> supplement -> verify_answer`。
+  - 支持 agent trace、tool calls、timings、diagnostics。
+
+- `src/agent_tools.py`
+  - 封装问题改写、问题规划、图谱查询、RAG 检索、Claim 检索、语义检索、证据排序和答案验证。
+
+- `src/agents/models.py`
+  - 定义 `AgentToolSpec`、`AgentStep`、`AgentTask`、`AgentTaskSummary`。
+
+- `src/agents/store.py`
+  - 使用 JSONL 保存 Agent 任务快照。
+
+- `src/agents/tools.py`
+  - 定义 Tool Registry 元数据。
+
+- `src/agents/research_agent.py`
+  - 当前只支持 `research_brief` 任务。
+  - 本质是把研究目标改写成投研简报问题，再调用 QA 链路。
+
+当前状态判断：
+
+- 已经具备 Agent 项目的骨架。
+- 已经有可追踪工具调用和任务记录。
+- 但还不是完整动态 Agent。
+- 当前更准确的定位是“证据约束投研 QA + 第一阶段规则 Agent”。
+
+## 3. Agent 化目标
+
+### 3.1 产品目标
+
+将系统从“问答入口”升级为“任务入口”。
+
+用户不仅可以问：
 
 ```text
-数据源
-  ├─ 上市公司年报
-  ├─ AI 算力产业链研报
-  ├─ 行业白皮书/政策/标准
-  └─ 技术路线图、开放规范、benchmark、论文、模型技术报告
-        ↓
-PDF 下载与清单管理
-        ↓
-PDF 解析、文本清洗、chunk 切分
-        ↓
-LLM 抽取实体、关系、指标、风险和技术机理
-        ↓
-verified 图谱 CSV
-        ↓
-curated 专业图谱 + Claim + EvidenceSpan + Segment Dossier
-        ↓
-Neo4j/CSV 图谱检索 + 本地 BM25 RAG + 投研 Claim/Dossier 检索
-        ↓
-问题改写、问题规划、证据包构造、答案生成
-        ↓
-FastAPI/Streamlit/React 前端展示答案、证据和子图
+液冷产业链有哪些上市公司？
 ```
 
-核心原则：
-
-- LLM 参与知识抽取、问题理解和答案组织，但最终答案必须受知识库证据约束。
-- 所有关键判断都应能追溯到 Claim、Dossier、图谱关系或 RAG 原文片段。
-- 面向投研问题时，答案优先组织为“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”。
-- 对“哪些公司/谁受益”类问题，必须按 `core/direct/indirect/mentioned` 敞口分层，避免把直接受益公司和间接受益环节混为一谈。
-
-## 2. 离线知识构建流程
-
-### 2.1 数据准备
-
-入口脚本：`scripts/prepare_stage1_data.py`
-
-输入配置：
-
-- `data/metadata/companies_extended.csv`：核心上市公司、别名、产业链环节。
-- `data/metadata/research_keywords.csv`：研报检索关键词。
-- `data/metadata/industry_sources.csv`：行业白皮书、技术规范、benchmark、论文等资料源。
-
-输出产物：
-
-- `data/raw_pdfs/annual/`：年报 PDF。
-- `data/raw_pdfs/research/`：研报 PDF。
-- `data/raw_pdfs/industry/`：行业和技术资料 PDF。
-- `data/metadata/reports_manifest.csv`：报告清单、来源、状态、页数、SHA256、source_tier、source_type。
-
-典型命令：
-
-```bash
-python scripts/prepare_stage1_data.py --kind all --max-research 10
-```
-
-### 2.2 PDF 解析与 chunk 切分
-
-入口脚本：`scripts/parse_pdfs.py`
-
-处理步骤：
-
-1. 读取 `reports_manifest.csv` 中已下载或可用的 PDF。
-2. 使用 PDF 解析器逐页提取文本。
-3. 清洗页眉页脚、免责声明、空白文本等噪声。
-4. 按报告、页码、章节切分为适合 LLM 抽取和 RAG 检索的 chunk。
-
-输出产物：
-
-- `data/parsed_text/*.jsonl`：逐页解析文本。
-- `data/chunks/*.jsonl`：结构化文本块，保留 `report_id`、`kind`、`company`、`source_title`、`page`、`section` 等元数据。
-
-典型命令：
-
-```bash
-python scripts/parse_pdfs.py --manifest data/metadata/reports_manifest.csv
-```
-
-### 2.3 LLM 知识抽取
-
-入口脚本：`scripts/extract_knowledge.py`
-
-核心模块：`src/llm_extractor.py`
-
-抽取对象：
-
-- 实体：`Company`、`Technology`、`Product`、`IndustryChain`、`Metric`、`Risk`、`IndustryConcept`、`Policy`、`Standard`、`ValueChainSegment`、`Workload`、`Architecture`、`Bottleneck`、`LeadingIndicator` 等。
-- 关系：`USES_TECHNOLOGY`、`HAS_PRODUCT`、`BELONGS_TO_CHAIN`、`HAS_METRIC`、`DISCLOSES_RISK`、`UPSTREAM_OF`、`DOWNSTREAM_OF`、`ENABLES`、`CONSTRAINS`、`DEFINES`、`SUPPORTED_BY_POLICY`、`DRIVES`、`DEPENDS_ON`、`RELIEVES`、`HAS_EXPOSURE`、`HAS_INDICATOR`、`BENEFITS_FROM` 等。
-
-抽取约束：
-
-- 只抽取文本中明确出现的信息。
-- 每条关系必须带原文 `evidence`。
-- 年报优先抽公司业务、产品、技术、财务指标和风险。
-- 研报优先抽产业链映射、公司所处环节、竞争格局和技术路线。
-- 专业技术源默认不抽公司，除非原文明确出现核心 A 股上市公司；重点抽技术机理、瓶颈、指标和标准。
-
-输出产物：
-
-- `data/extracted/extractions.jsonl`：LLM 原始结构化抽取结果。
-- `data/extracted/extraction_errors.csv`：抽取错误记录。
-
-典型命令：
-
-```bash
-python scripts/extract_knowledge.py --kind research --contains 算力 --limit-chunks 20 --sleep 0.3
-python scripts/extract_knowledge.py --resume --sleep 0.3
-```
-
-### 2.4 verified 图谱构建
-
-入口脚本：`scripts/build_verified_graph.py`
-
-核心模块：`src/graph_builder.py`
-
-处理步骤：
-
-1. 读取 LLM 抽取 JSONL。
-2. 标准化实体名称和别名。
-3. 合并重复实体与关系。
-4. 自动补充报告来源关系。
-5. 生成可人工校验的实体表和关系表。
-
-输出产物：
-
-- `data/verified/entities.csv`
-- `data/verified/relations.csv`
-
-典型命令：
-
-```bash
-python scripts/build_verified_graph.py
-```
-
-### 2.5 curated 投研图谱与研究层构建
-
-入口脚本：`scripts/build_curated_graph.py`
-
-核心模块：
-
-- `src/curated_graph.py`
-- `src/research_claims.py`
-
-处理步骤：
-
-1. 从 verified 图谱中过滤非核心公司噪声、低价值关系和目录/免责声明噪声。
-2. 生成面向问答的 curated 图谱。
-3. 从 curated 关系派生投研 Claim。
-4. 从专业技术源 chunk 中直抽技术机理、瓶颈、指标、风险等原文级 Claim。
-5. 为 Claim 生成 EvidenceSpan。
-6. 按产业主题生成 Segment Dossier。
-
-输出产物：
-
-- `data/curated/entities.csv`
-- `data/curated/relations.csv`
-- `data/curated/claims.csv`
-- `data/curated/evidence_spans.csv`
-- `data/curated/segment_dossiers.jsonl`
-
-典型命令：
-
-```bash
-python scripts/build_curated_graph.py
-```
-
-### 2.6 RAG 索引构建
-
-入口脚本：`scripts/build_rag_index.py`
-
-核心模块：`src/rag_index.py`
-
-处理步骤：
-
-1. 读取 `data/chunks/*.jsonl`。
-2. 对中英文混合文本进行分词和领域词增强。
-3. 构建本地 BM25/倒排索引。
-4. 保留 chunk 的报告来源、页码、章节、公司和 source_type。
-
-输出产物：
-
-- `data/rag/documents.jsonl`
-- `data/rag/metadata.json`
-
-典型命令：
-
-```bash
-python scripts/build_rag_index.py
-```
-
-### 2.7 Neo4j 导入
-
-入口脚本：`scripts/load_neo4j.py`
-
-核心模块：`src/kg_loader.py`
-
-处理方式：
-
-- 默认优先导入 curated 图谱。
-- 如果 Neo4j 不可用，问答引擎会回退到本地 CSV 图谱检索。
-
-典型命令：
-
-```bash
-docker compose up -d neo4j
-python scripts/load_neo4j.py --clear
-```
-
-只校验 CSV：
-
-```bash
-python scripts/load_neo4j.py --dry-run
-```
-
-## 3. 在线问答运行流程
-
-在线问答主入口是 `src/qa_engine.py` 中的 `QAEngine.answer_question()` 和 `QAEngine.answer_question_stream()`。
-
-调用来源：
-
-- Streamlit 页面：`app.py`
-- FastAPI 后端：`src/api.py`
-- React 前端：`web/src/App.tsx`、`web/src/api.ts`
-
-### 3.1 用户问题进入系统
-
-用户通过前端输入问题，例如：
+还可以发起任务：
 
 ```text
-液冷产业链有哪些上市公司，各自处于什么环节？
-中际旭创和新易盛在光模块业务上的差异是什么？
-继续说它们的主要风险
-AI 算力产业链当前最大的瓶颈是什么？
+生成一份液冷产业链投研简报，覆盖技术机理、公司排序、领先指标、风险反证和证据缺口。
 ```
 
-FastAPI 路径：
+Agent 应该能够：
 
-- `POST /api/conversations/{conversation_id}/messages`
-- `POST /api/conversations/{conversation_id}/messages/stream`
+1. 理解用户目标。
+2. 自动拆解子任务。
+3. 根据子任务选择工具。
+4. 多轮检索和补证。
+5. 判断证据是否足够。
+6. 识别证据缺口和冲突。
+7. 生成结构化研究产物。
+8. 保存完整执行轨迹。
+9. 支持人工审校后继续执行。
 
-系统会先读取当前对话历史，用于处理追问和代词指代。
+### 3.2 技术目标
 
-### 3.2 历史对话压缩与追问改写
+升级后的 Agent 项目应具备：
 
-模块：`src/qa_engine.py`
+- 动态任务规划。
+- 标准工具协议。
+- 可恢复 Agent State。
+- 证据池和证据选择机制。
+- 自动补证循环。
+- 停止条件和预算控制。
+- 事实一致性验证。
+- 冲突证据识别。
+- 任务级评测。
+- 前端 Agent 工作台。
+- CLI 和 Docker 化交付。
 
-相关方法：
+## 4. 需要新增的 Agent 功能
 
-- `normalize_conversation_history()`
-- `_contextualize_question()`
-- `heuristic_contextual_question()`
+### 4.1 多任务类型
 
-作用：
+当前只支持 `research_brief`。后续建议扩展为：
 
-- 截取最近若干轮历史，避免上下文过长。
-- 判断问题是否需要结合历史，例如“继续说它们的风险”。
-- 使用启发式或 LLM 将追问改写成可独立检索的问题。
+| 任务类型 | 说明 | 输出 |
+| --- | --- | --- |
+| `qa` | 单轮或多轮证据问答 | 答案、证据卡、子图 |
+| `research_brief` | 主题投研简报 | 报告、公司表、风险、缺口 |
+| `company_profile` | 公司产业链画像 | 业务卡位、产品、指标、风险 |
+| `company_compare` | 多家公司对比 | 差异矩阵、共同驱动、风险差异 |
+| `risk_review` | 风险和反证审查 | 风险清单、反证、跟踪指标 |
+| `evidence_gap_audit` | 证据缺口检查 | 缺口列表、建议数据源 |
+| `monitor_topic` | 主题持续跟踪 | 指标体系、后续更新计划 |
+
+第一阶段优先实现：
+
+1. `company_compare`
+2. `company_profile`
+3. `risk_review`
+4. `evidence_gap_audit`
+
+### 4.2 动态任务规划器
+
+新增 `TaskPlanner`，将用户目标拆成标准子任务。
 
 示例：
 
 ```text
-原问题：继续说它们的主要风险
-历史主题：中际旭创和新易盛的光模块业务比较
-改写后：中际旭创和新易盛在光模块业务上的主要风险是什么？
+用户目标：生成液冷产业链投研简报
+
+子任务：
+1. 识别液冷技术定义和需求驱动。
+2. 检索液冷产业链环节。
+3. 检索核心/直接/间接敞口公司。
+4. 检索订单、收入、产能、客户导入等领先指标。
+5. 检索风险、反证和不确定性。
+6. 判断证据缺口。
+7. 生成报告。
+8. 验证报告中的引用、公司和指标是否有证据支持。
 ```
 
-### 3.3 问题规划
+规划器输出结构建议：
 
-模块：`src/question_planner.py`
-
-核心方法：
-
-- `heuristic_plan_question()`
-- `plan_question()`
-
-规划输出：`QuestionPlan`
-
-关键字段：
-
-- `answer_type`：答案类型。
-- `companies`：问题涉及的核心公司。
-- `topics`：主题，例如液冷、光模块、AI 服务器、国产算力。
-- `expanded_topics`：同义词和扩展词。
-- `relations`：需要检索的图谱关系。
-- `needs_comparison`、`needs_risk`、`needs_metrics`、`needs_chain`：问题意图标记。
-
-当前支持的答案类型：
-
-- `topic_to_company`：主题找公司/受益公司。
-- `company_compare`：公司对比。
-- `risk_analysis`：风险分析。
-- `industry_bottleneck`：产业瓶颈。
-- `company_profile`：公司画像。
-- `thematic_research`：主题研究。
-
-### 3.4 Cypher 生成与图谱检索
-
-模块：
-
-- `src/cypher_generator.py`
-- `src/professional_qa.py`
-- `src/neo4j_client.py`
-- `src/frontend_data.py`
-
-处理逻辑：
-
-1. 如果当前图谱后端是 CSV，生成展示用 pseudo Cypher。
-2. 如果启用 Neo4j 且允许 LLM Cypher，则由 LLM 生成只读 Cypher，并通过安全规则校验。
-3. 默认情况下使用模板 Cypher 或启发式 Cypher。
-4. 优先查询 Neo4j；如果 Neo4j 查询失败或无结果，则回退 CSV 图谱。
-5. CSV 路径使用 `search_csv_graph()`，根据 `QuestionPlan` 选择关系、公司、主题和风险记录。
-
-图谱检索返回的核心字段：
-
-- `company`
-- `relation`
-- `target`
-- `evidence`
-- `source`
-- `page`
-- `section`
-- `source_tier`
-- `chain_segment`
-
-### 3.5 本地 RAG 检索
-
-模块：`src/rag_index.py`
-
-触发方法：`QAEngine._search_rag()`
-
-处理逻辑：
-
-1. 使用问题文本和 `expanded_topics` 拼接检索 query。
-2. 对公司画像和风险问题添加公司过滤条件。
-3. 从本地 BM25/倒排索引召回研报、年报和技术资料原文 chunk。
-4. 返回带来源、页码和片段的 `RagHit`。
-
-RAG 主要用于补充原文证据，尤其是图谱关系不够细、需要页码和上下文时。
-
-### 3.6 投研 Claim/Dossier 检索
-
-模块：`src/research_claims.py`
-
-触发方法：`QAEngine._search_research()`
-
-检索对象：
-
-- `claims.csv`：原子投研判断。
-- `evidence_spans.csv`：Claim 对应原文证据。
-- `segment_dossiers.jsonl`：主题级产业链摘要。
-
-Claim/Dossier 优先服务于专业投研问题：
-
-- 技术为什么重要。
-- 需求如何传导到产业链。
-- 哪些公司是核心/直接/间接敞口。
-- 哪些指标可用于验证。
-- 有哪些风险和反证边界。
-
-### 3.7 证据卡构造与排序
-
-模块：`src/professional_qa.py`
-
-核心对象：`EvidenceCard`
-
-证据来源：
-
-- `cards_from_research_hits()`：Claim/Dossier 证据。
-- `cards_from_graph_records()`：图谱结构化关系证据。
-- `cards_from_rag_hits()`：本地 RAG 原文片段证据。
-
-排序与筛选：
-
-- `rank_evidence_cards()`
-- `select_cards_by_answer_type()`
-- `assign_citation_ids()`
-
-处理原则：
-
-- 去重相似证据。
-- 按答案类型分配证据预算，避免同类证据挤占全部上下文。
-- 对公司比较问题保证每家公司都有证据。
-- 对风险问题强制保留 `DISCLOSES_RISK` 或 risk Claim。
-- 对主题研究和产业瓶颈问题优先保留 Dossier、bottleneck、mechanism、indicator、risk。
-- 给最终证据卡分配 `E1/E2/...` 编号，答案引用必须对齐这些编号。
-
-### 3.8 答案生成
-
-模块：`src/qa_engine.py`、`src/professional_qa.py`
-
-核心方法：
-
-- `_generate_answer()`
-- `_generate_answer_stream()`
-- `build_professional_answer_prompt()`
-- `fallback_professional_answer()`
-
-生成策略：
-
-1. 如果没有任何证据，返回“当前知识库中未找到相关证据”。
-2. 如果 LLM 可用，构造 evidence pack，要求 LLM 只基于证据回答。
-3. 如果 LLM 不可用或调用失败，使用确定性 fallback 模板生成答案。
-4. 答案中的关键判断必须标注证据编号，例如 `[E1]`、`[E2]`。
-5. 对缺少证据的栏目明确写“当前证据不足”，不补写证据外信息。
-
-标准答案结构：
-
-```text
-核心判断
-技术机理
-产业传导
-公司排序
-领先指标
-反证/边界
-证据
+```json
+{
+  "task_type": "research_brief",
+  "goal": "液冷产业链投研简报",
+  "subtasks": [
+    {
+      "id": "s1",
+      "type": "topic_mechanism",
+      "query": "液冷 技术机理 需求驱动",
+      "required_tools": ["search_segment_dossiers", "search_research_claims", "search_rag"],
+      "success_criteria": ["has_mechanism_evidence"]
+    }
+  ],
+  "budgets": {
+    "max_steps": 8,
+    "max_llm_calls": 4,
+    "max_retrieval_rounds": 3
+  }
+}
 ```
 
-### 3.9 返回前端展示
+### 4.3 动态工具选择
 
-`QAEngine` 返回统一结果对象，主要字段包括：
+当前 AgentRunner 的工具调用顺序固定。后续需要支持按任务动态选择工具。
 
-- `question`：用户原问题。
-- `contextual_question`：结合历史改写后的检索问题。
-- `answer`：最终答案。
-- `reasoning_content`：模型思考内容，开启 thinking 时展示。
-- `answer_type`：问题类型。
-- `plan`：问题规划结果。
-- `cypher`、`cypher_params`、`cypher_source`：图谱查询信息。
-- `graph_records`：图谱检索结果。
-- `rag_hits`：RAG 命中片段。
-- `research_hits`：Claim/Dossier 命中结果。
-- `evidence_cards`：最终证据卡。
-- `subgraph`：答案相关子图。
-- `diagnostics`：耗时、命中数量、后端状态、错误信息等诊断数据。
+新增 `ToolExecutor`：
 
-前端展示内容：
+- 接收工具名和输入。
+- 执行真实工具。
+- 记录开始时间、结束时间、耗时、结果数量、错误。
+- 支持超时。
+- 支持缓存。
+- 支持失败降级。
 
-- 答案正文。
-- 问题规划。
-- Cypher 查询。
-- 证据卡和来源页码。
-- RAG 原文片段。
-- 相关图谱子图。
-- 模型 thinking 内容和流式进度。
+工具协议：
 
-## 4. 运行时组件关系
+```python
+class AgentTool:
+    name: str
+    description: str
+    input_schema: dict
+    output_schema: dict
+    timeout: float
+    cost_level: str
+    safety_level: str
+    requires_llm: bool
+    cacheable: bool
 
-```text
-用户/前端
-   ↓
-FastAPI: src/api.py
-   ↓
-ConversationStore: src/conversation_store.py
-   ↓
-QAEngine: src/qa_engine.py
-   ├─ 追问改写：history + contextualizer
-   ├─ 问题规划：src/question_planner.py
-   ├─ Cypher 生成：src/cypher_generator.py
-   ├─ 图谱检索：Neo4jReadClient 或 LocalKnowledgeGraph
-   ├─ RAG 检索：src/rag_index.py
-   ├─ Claim/Dossier 检索：src/research_claims.py
-   ├─ 证据排序：src/professional_qa.py
-   └─ 答案生成：LLM 或 fallback template
-   ↓
-统一结果对象
-   ↓
-React/Streamlit 展示答案、证据、子图和诊断信息
+    def run(self, payload: dict) -> dict:
+        ...
 ```
 
-## 5. 典型问题的路由方式
+首批可执行工具：
 
-### 5.1 “液冷产业链有哪些上市公司？”
+- `contextualize_question`
+- `plan_question`
+- `query_graph`
+- `search_rag`
+- `search_research_claims`
+- `search_segment_dossiers`
+- `search_semantic_index`
+- `rank_evidence`
+- `verify_answer_support`
+- `detect_evidence_gaps`
+- `build_research_outputs`
+- `export_report`
 
-规划结果：
+### 4.4 Agent State / Workspace
 
-- `answer_type = topic_to_company`
-- `topics = ["液冷"]`
-- `relations` 包含 `USES_TECHNOLOGY`、`HAS_PRODUCT`、`BELONGS_TO_CHAIN`、`HAS_EXPOSURE`
+新增完整 `AgentState`，用于支持长任务、恢复、审校和前端展示。
 
-检索重点：
+建议字段：
 
-- Claim/Dossier：液冷主题公司敞口。
-- 图谱：公司到液冷技术、产品、产业链环节的关系。
-- RAG：年报/研报中关于液冷业务、产品、客户、风险的原文片段。
-
-答案重点：
-
-- 按 core/direct/indirect/mentioned 分层。
-- 区分液冷主业公司、服务器/电源/IDC/PCB 等间接敞口公司。
-- 给出跟踪指标和风险边界。
-
-### 5.2 “中际旭创和新易盛在光模块业务上的差异是什么？”
-
-规划结果：
-
-- `answer_type = company_compare`
-- `companies = ["中际旭创", "新易盛"]`
-- `topics = ["光模块"]`
-
-检索重点：
-
-- 两家公司各自的产品、技术、指标、风险 Claim。
-- 图谱中两家公司相关的 `HAS_PRODUCT`、`USES_TECHNOLOGY`、`HAS_METRIC`、`DISCLOSES_RISK`。
-- RAG 中年报和研报原文片段。
-
-答案重点：
-
-- 做差异矩阵，而不是分别罗列。
-- 对比产品代际、客户/市场、技术路径、财务/指标证据和风险差异。
-
-### 5.3 “继续说它们的主要风险”
-
-规划结果：
-
-- 先结合历史改写为独立问题。
-- `answer_type = risk_analysis`
-- 保留上一轮公司和主题。
-
-检索重点：
-
-- 风险 Claim。
-- `DISCLOSES_RISK` 图谱关系。
-- 公司年报风险章节原文。
-
-答案重点：
-
-- 区分业务进展证据和风险证据。
-- 不根据常识外推未入库风险。
-
-### 5.4 “AI 算力产业链当前最大的瓶颈是什么？”
-
-规划结果：
-
-- `answer_type = industry_bottleneck`
-- `relations` 包含 `CONSTRAINS`、`DEPENDS_ON`、`HAS_INDICATOR`
-
-检索重点：
-
-- 技术源 Claim：GPU/AI 加速器、互联、显存/带宽、功耗、散热、数据中心交付等瓶颈。
-- Segment Dossier：主题级摘要。
-- 图谱中的瓶颈、供给约束和指标关系。
-
-答案重点：
-
-- 不只给单一瓶颈，而是解释瓶颈如何在芯片、互联、功耗、液冷、数据中心之间传导。
-- 给出可跟踪领先指标和证据边界。
-
-## 6. 关键文件索引
-
-离线构建：
-
-- `scripts/prepare_stage1_data.py`：下载和登记数据源。
-- `scripts/parse_pdfs.py`：PDF 解析和 chunk 切分。
-- `scripts/extract_knowledge.py`：LLM 抽取实体关系。
-- `scripts/build_verified_graph.py`：构建 verified 图谱。
-- `scripts/build_curated_graph.py`：构建 curated 图谱、Claim、EvidenceSpan、Dossier。
-- `scripts/build_rag_index.py`：构建本地 RAG 索引。
-- `scripts/load_neo4j.py`：导入 Neo4j。
-
-在线问答：
-
-- `src/api.py`：FastAPI 后端和对话接口。
-- `app.py`：Streamlit 问答与图谱展示。
-- `src/qa_engine.py`：问答主编排。
-- `src/question_planner.py`：问题规划。
-- `src/cypher_generator.py`：Cypher 生成和安全约束。
-- `src/professional_qa.py`：专业检索、证据卡、fallback 答案。
-- `src/rag_index.py`：本地 BM25 RAG。
-- `src/research_claims.py`：Claim/Dossier 研究层。
-- `src/frontend_data.py`：本地图谱读取、子图和前端数据。
-- `src/conversation_store.py`：对话存储。
-- `src/llm_client.py`：OpenAI 兼容 LLM 客户端。
-
-前端：
-
-- `web/src/App.tsx`：React 工作台。
-- `web/src/api.ts`：后端 API 调用。
-- `web/src/types.ts`：前端类型定义。
-- `web/src/styles.css`：页面样式。
-
-## 7. 一次完整问答的执行时序
-
-```text
-1. 用户在前端输入问题
-2. FastAPI 读取 conversation_id 对应历史消息
-3. QAEngine 规范化历史上下文
-4. 系统判断是否需要追问改写
-5. 生成 QuestionPlan：识别公司、主题、答案类型和关系类型
-6. 生成展示用或执行用 Cypher
-7. 查询 Neo4j；失败或不可用时回退 CSV 图谱
-8. 查询本地 RAG，召回原文 chunk
-9. 查询 ResearchMemory，召回 Claim 和 Dossier
-10. 将 graph_records、rag_hits、research_hits 合并为 EvidenceCard
-11. 按答案类型去重、排序、分配证据预算
-12. 为证据卡分配 E1/E2/... citation_id
-13. 构造 evidence pack，调用 LLM 生成专业答案
-14. LLM 失败时使用 fallback_professional_answer
-15. 生成 legacy evidence、evidence_cards、subgraph、diagnostics
-16. 返回前端展示答案、证据、Cypher、子图和诊断信息
+```python
+@dataclass
+class AgentState:
+    task_id: str
+    task_type: str
+    user_goal: str
+    status: str
+    plan: dict
+    current_step: int
+    subtasks: list[dict]
+    tool_calls: list[dict]
+    evidence_pool: list[dict]
+    selected_evidence: list[dict]
+    draft_findings: list[dict]
+    conflicts: list[dict]
+    evidence_gaps: list[dict]
+    verification: dict
+    final_outputs: dict
+    errors: list[str]
+    created_at: str
+    updated_at: str
 ```
 
-## 8. 答案可信度控制
+需要支持：
 
-当前系统通过以下机制降低幻觉风险：
+- 创建任务。
+- 保存任务快照。
+- 恢复任务。
+- 重跑失败步骤。
+- 人工修改 Claim 后继续执行。
+- 导出最终报告。
 
-- 抽取阶段要求每条关系必须包含原文证据。
-- 专业技术源默认不映射到公司，除非原文明确出现核心上市公司。
-- Cypher 生成限制为只读查询，并禁止写入、删除、CALL、APOC、GDS 等危险操作。
-- 问答阶段优先使用 Claim/Dossier，再用图谱关系和 RAG 原文片段补充。
-- 答案 prompt 要求“只能根据证据包回答”。
-- 关键判断必须标注 `E1/E2/...` 证据编号。
-- 没有证据时明确拒答或写“当前证据不足”。
-- 返回 `unsupported_terms`、`errors`、`diagnostics` 供前端和调试使用。
+### 4.5 自动补证循环
 
-## 9. 当前框架定位
+当前已有 supplement 阶段，但逻辑仍较固定。后续需要改为循环式补证。
 
-当前项目已经形成“专业投研 GraphRAG”雏形：
+循环步骤：
 
-- 图谱层负责结构化事实和关系。
-- Claim 层负责投研原子判断。
-- Dossier 层负责主题级产业链摘要。
-- RAG 层负责回到原文证据。
-- LLM 负责问题理解、证据组织和自然语言表达。
+1. 根据任务计划检索第一轮证据。
+2. 构建 evidence pool。
+3. 检查证据覆盖：
+   - 是否有技术机理。
+   - 是否有公司敞口。
+   - 是否有指标。
+   - 是否有风险。
+   - 是否有反证。
+   - 是否覆盖所有目标公司。
+4. 若缺证据，则生成补证 query。
+5. 再次调用工具。
+6. 达到证据充分、缺口不可弥补、最大步数或预算上限后停止。
 
-因此，系统的问答流程可以概括为：
+停止条件：
+
+- `evidence_sufficient`
+- `evidence_gap_unrecoverable`
+- `max_steps_reached`
+- `max_llm_calls_reached`
+- `timeout_reached`
+- `user_cancelled`
+
+### 4.6 证据验证升级
+
+当前已有 citation、公司覆盖和 unsupported terms 检查。后续需要增强为投研级验证。
+
+新增检查：
+
+- 引用有效性：答案中的 `[E1]` 必须存在。
+- 公司覆盖：公司对比问题中每家公司必须有证据。
+- 数值校验：年份、百分比、金额、数量必须能在证据中找到。
+- 指标校验：订单、收入、毛利率、产能、客户导入等指标必须有来源。
+- 敞口校验：`core/direct/indirect/mentioned` 必须有依据。
+- 风险校验：风险类问题必须至少包含风险或反证证据。
+- 时点校验：不同年份报告不能混用成当前事实。
+- 术语校验：关键技术术语不能脱离证据包生成。
+
+验证结果结构：
+
+```json
+{
+  "status": "pass|warn|fail",
+  "checks": {
+    "citation_validity": {},
+    "company_coverage": {},
+    "numeric_support": {},
+    "metric_support": {},
+    "risk_support": {},
+    "unsupported_terms": []
+  }
+}
+```
+
+### 4.7 冲突证据识别
+
+当前系统对冲突和反证只是预留字段，需要补齐。
+
+需要识别：
+
+- 券商乐观判断 vs 年报风险披露。
+- 旧报告 vs 新报告。
+- 技术路线 A vs 技术路线 B。
+- 公司宣传 vs 财务兑现不足。
+- 需求高增长叙事 vs 价格压力或客户集中风险。
+
+新增字段：
+
+- `conflict_group_id`
+- `conflict_type`
+- `claim_a`
+- `claim_b`
+- `resolution`
+- `confidence`
+
+前端展示：
+
+- 冲突证据列表。
+- 每组冲突的双方证据。
+- Agent 对冲突的保守解释。
+- 人工标记冲突是否成立。
+
+### 4.8 GraphRAG / DRIFT 检索升级
+
+当前已经有图谱、RAG、Claim/Dossier 和 embedding，但还不是真正的动态 GraphRAG。
+
+下一步实现：
+
+1. Query Router
+   - “哪些公司/谁受益”走公司敞口排序。
+   - “为什么/趋势/瓶颈”走 global dossier + claim。
+   - “公司对比”走公司 claim bundle + 指标/风险矩阵。
+   - “订单/业绩/指标”只走指标 Claim。
+   - “继续说/它们/上述”先做历史问题改写。
+
+2. Global Search
+   - 宽问题先召回主题 Dossier 和高层 Claim。
+
+3. Local Search
+   - 围绕公司、指标、风险、产业链环节做局部检索。
+
+4. DRIFT 流程
+   - 宽问题。
+   - 全局摘要。
+   - 自动拆子问题。
+   - 局部证据检索。
+   - 综合结论。
+
+5. 多跳路径
+   - 需求驱动 -> 技术瓶颈 -> 产业链环节 -> 公司敞口 -> 指标验证 -> 风险反证。
+
+6. 三阶段排序
+   - BM25 高召回。
+   - dense embedding 召回。
+   - cross-encoder 或 LLM rerank 精排。
+
+## 5. 模块改造设计
+
+### 5.1 目录结构建议
+
+建议逐步整理为：
 
 ```text
-问题理解 → 检索规划 → 图谱/Claim/RAG 多路召回 → 证据包排序 → 证据约束生成 → 前端可追溯展示
+src/
+  agents/
+    base.py
+    models.py
+    planner.py
+    executor.py
+    state.py
+    store.py
+    tools.py
+    qa_agent.py
+    research_agent.py
+    company_agent.py
+    risk_agent.py
+    verification.py
+    evaluation.py
+  qa_engine.py
+  professional_qa.py
+  research_agent.py
+  research_claims.py
+  rag_index.py
+  semantic_index.py
+  frontend_data.py
+  api.py
+```
+
+说明：
+
+- `src/agents/base.py`：Agent 基类。
+- `src/agents/planner.py`：动态任务规划。
+- `src/agents/executor.py`：工具执行器。
+- `src/agents/state.py`：任务状态。
+- `src/agents/verification.py`：事实一致性和证据验证。
+- `src/agents/evaluation.py`：任务级评测。
+- `src/agents/company_agent.py`：公司画像和公司对比任务。
+- `src/agents/risk_agent.py`：风险审查任务。
+
+### 5.2 BaseAgent
+
+```python
+class BaseAgent:
+    def run(self, goal: str, **kwargs) -> dict:
+        raise NotImplementedError
+
+    def plan(self, state: AgentState) -> AgentState:
+        raise NotImplementedError
+
+    def step(self, state: AgentState) -> AgentState:
+        raise NotImplementedError
+
+    def should_stop(self, state: AgentState) -> bool:
+        raise NotImplementedError
+
+    def finalize(self, state: AgentState) -> AgentState:
+        raise NotImplementedError
+```
+
+### 5.3 ResearchAgent
+
+目标：
+
+- 不再只是包装 QA。
+- 能围绕主题自动拆分研究任务。
+- 能多轮补证。
+- 能生成完整投研报告。
+
+输入：
+
+```json
+{
+  "task_type": "research_brief",
+  "goal": "液冷产业链投研简报",
+  "constraints": {
+    "core_companies_only": true,
+    "include_risks": true,
+    "include_evidence_gaps": true
+  }
+}
+```
+
+输出：
+
+```json
+{
+  "task_id": "...",
+  "status": "completed",
+  "report": {},
+  "company_table": {},
+  "risk_checklist": [],
+  "evidence_gaps": [],
+  "citations": [],
+  "agent_trace": []
+}
+```
+
+### 5.4 CompanyAgent
+
+支持：
+
+- `company_profile`
+- `company_compare`
+
+公司画像输出：
+
+- 业务卡位。
+- 产品和技术。
+- 产业链环节。
+- 客户/订单证据。
+- 财务或经营指标。
+- 风险。
+- 证据缺口。
+
+公司对比输出：
+
+- 差异矩阵。
+- 共同驱动。
+- 分歧点。
+- 指标验证。
+- 风险差异。
+- 证据边界。
+
+### 5.5 RiskAgent
+
+支持：
+
+- `risk_review`
+- `evidence_gap_audit`
+
+输出：
+
+- 风险清单。
+- 反证列表。
+- 冲突证据。
+- 风险优先级。
+- 跟踪指标。
+- 建议补充数据源。
+
+## 6. API 改造
+
+### 6.1 现有 API 保持兼容
+
+继续保留：
+
+- `POST /api/conversations/{conversation_id}/messages`
+- `POST /api/conversations/{conversation_id}/messages/stream`
+- `GET /api/status`
+- `GET /api/graph/summary`
+- `GET /api/graph/subgraph`
+- `POST /api/research/claims/{claim_id}/review`
+
+### 6.2 Agent API 扩展
+
+现有：
+
+- `GET /api/agent/tasks`
+- `POST /api/agent/tasks`
+- `GET /api/agent/tasks/{task_id}`
+- `GET /api/agent/tasks/{task_id}/export`
+
+建议新增：
+
+- `POST /api/agent/tasks/{task_id}/resume`
+- `POST /api/agent/tasks/{task_id}/cancel`
+- `POST /api/agent/tasks/{task_id}/rerun-step`
+- `GET /api/agent/tasks/{task_id}/state`
+- `GET /api/agent/tasks/{task_id}/trace`
+- `GET /api/agent/tasks/{task_id}/evidence`
+- `POST /api/agent/tasks/{task_id}/human-review`
+
+### 6.3 Agent 创建请求
+
+```json
+{
+  "task_type": "company_compare",
+  "goal": "对比中际旭创和新易盛在光模块业务上的差异、领先指标和风险",
+  "thinking_enabled": true,
+  "reasoning_effort": "medium",
+  "constraints": {
+    "core_companies_only": true,
+    "max_steps": 8
+  }
+}
+```
+
+## 7. 前端改造
+
+### 7.1 Agent 任务工作台
+
+当前已有 Agent 任务页面，后续升级为完整工作台。
+
+新增区域：
+
+- 任务计划。
+- 子任务列表。
+- 当前执行步骤。
+- 工具调用记录。
+- 证据池。
+- 已选证据。
+- 冲突证据。
+- 证据缺口。
+- 验证结果。
+- 报告草稿。
+- 人工审校面板。
+
+### 7.2 证据墙
+
+按来源展示：
+
+- Claim。
+- Dossier。
+- Graph。
+- RAG。
+- Semantic。
+
+每条证据展示：
+
+- citation id。
+- 来源。
+- 页码。
+- 主题。
+- 公司。
+- Claim 类型。
+- 敞口等级。
+- 置信度。
+- 审校状态。
+
+### 7.3 人工反馈闭环
+
+用户可以：
+
+- 修正 Claim。
+- 标记 Claim 为 rejected。
+- 调整敞口等级。
+- 标记证据噪声。
+- 标记冲突证据。
+- 要求 Agent 重新生成报告。
+
+## 8. 工程化包装
+
+### 8.1 项目元信息
+
+需要修改 `pyproject.toml`：
+
+- 当前 `description` 仍是占位文本。
+- 建议改为：
+
+```toml
+description = "Evidence-driven AI computing value-chain research agent with GraphRAG, Claim/Dossier memory, and traceable citations."
+```
+
+### 8.2 CLI
+
+新增命令：
+
+```bash
+aiqasys prepare-data
+aiqasys parse-pdfs
+aiqasys extract-knowledge
+aiqasys build-graph
+aiqasys build-rag
+aiqasys build-embedding
+aiqasys serve-api
+aiqasys run-agent
+aiqasys eval
+```
+
+### 8.3 Docker
+
+当前 `docker-compose.yml` 只有 Neo4j。后续补齐：
+
+- `api` 服务。
+- `web` 服务。
+- `neo4j` 服务。
+- 数据 volume。
+- 环境变量配置。
+
+### 8.4 CI
+
+建议增加 GitHub Actions：
+
+- Python 单元测试。
+- API smoke test。
+- 前端 TypeScript build。
+- RAG/Claim 构建 dry-run。
+- Agent eval smoke test。
+
+### 8.5 日志与观测
+
+新增：
+
+- `trace_id`
+- `task_id`
+- `tool_call_id`
+- `latency_ms`
+- `llm_call_count`
+- `token_usage`
+- `retrieval_hit_count`
+- `verification_status`
+- `error_type`
+
+## 9. 评测体系
+
+### 9.1 任务级评测集
+
+构建 30-50 个高难投研任务，覆盖：
+
+- 液冷产业链公司排序。
+- 光模块代际变化和公司差异。
+- 国产算力瓶颈。
+- 训练/推理需求分化。
+- AI 服务器产业链映射。
+- 公司对比。
+- 风险和反证判断。
+- 订单、业绩和领先指标缺口。
+
+### 9.2 评分维度
+
+每个任务按 0-2 或 0-5 分评分：
+
+- 任务完成度。
+- 事实正确性。
+- 证据支撑充分性。
+- 引用有效率。
+- 公司敞口排序准确性。
+- 技术因果链完整性。
+- 领先指标覆盖。
+- 风险/反证覆盖。
+- 幻觉率。
+- 缺口识别质量。
+
+### 9.3 检索指标
+
+新增：
+
+- `claim_recall@10`
+- `direct_exposure_precision@10`
+- `evidence_citation_validity`
+- `source_diversity`
+- `low_value_evidence_ratio`
+- `unsupported_term_count`
+
+## 10. 分阶段落地计划
+
+### Phase 1：Agent 项目骨架整理
+
+目标：
+
+把现有 Agent 雏形整理成清晰、可扩展的项目结构。
+
+任务：
+
+- 新增 `BaseAgent`。
+- 新增 `AgentState`。
+- 将当前 `AgentRunner` 包装为 `QAAgent`。
+- 让 `ToolRegistry` 从元数据升级为可执行工具注册表。
+- 保持现有问答 API 兼容。
+
+验收标准：
+
+- 原有问答测试通过。
+- diagnostics 中能看到标准化 agent trace。
+- `QAAgent` 能完整复用当前能力。
+- 前端 Agent 任务页仍可正常展示任务。
+
+### Phase 2：多任务 ResearchAgent
+
+目标：
+
+支持真实任务入口，而不只是问答包装。
+
+任务：
+
+- 扩展 `task_type`。
+- 实现 `company_compare`。
+- 实现 `company_profile`。
+- 实现 `risk_review`。
+- 实现 `evidence_gap_audit`。
+- 每类任务有独立输出 schema。
+
+验收标准：
+
+- 每个任务类型至少有 3 个测试样例。
+- 每个任务能保存完整 `AgentTask`。
+- 每个任务能导出 Markdown/JSON。
+
+### Phase 3：动态规划与补证循环
+
+目标：
+
+Agent 能根据证据覆盖情况决定下一步。
+
+任务：
+
+- 新增 `TaskPlanner`。
+- 新增 `ToolExecutor`。
+- 新增 evidence coverage checker。
+- 实现多轮补证。
+- 增加停止条件和预算控制。
+
+验收标准：
+
+- 公司对比缺某家公司证据时会自动补检。
+- 风险问题缺风险证据时会自动补检。
+- 指标问题缺指标证据时明确拒答或输出缺口。
+
+### Phase 4：证据验证和冲突识别
+
+目标：
+
+把答案从“有证据”升级为“关键判断逐条可验证”。
+
+任务：
+
+- 数值和年份校验。
+- 指标支持校验。
+- 敞口等级校验。
+- 风险支持校验。
+- 冲突 Claim 分组。
+- 前端展示冲突证据。
+
+验收标准：
+
+- 答案中不存在无来源的年份、数值和公司结论。
+- 冲突证据可以在任务详情中查看。
+- 缺证据时 Agent 明确输出证据缺口。
+
+### Phase 5：GraphRAG / DRIFT 升级
+
+目标：
+
+实现真正面向宽问题的图谱推理和多阶段检索。
+
+任务：
+
+- Query Router。
+- Global dossier search。
+- Local claim search。
+- 多跳路径检索。
+- LLM/cross-encoder rerank。
+- DRIFT 式宽问题拆解。
+
+验收标准：
+
+- 宽主题问题能自动拆成子问题。
+- 公司排序能同时结合主题、公司、指标和风险证据。
+- 多跳路径能解释“需求 -> 技术 -> 环节 -> 公司 -> 指标 -> 风险”。
+
+### Phase 6：工程化交付
+
+目标：
+
+把项目包装成可演示、可部署、可评测的正式 Agent 项目。
+
+任务：
+
+- 更新 README。
+- 更新 `pyproject.toml`。
+- 增加 CLI。
+- 增加 Dockerfile。
+- 补齐 docker compose。
+- 增加 CI。
+- 修复 `tests/test_api.py` 挂起问题。
+- 增加最小可运行 demo。
+
+验收标准：
+
+- 一条命令启动后端。
+- 一条命令启动前端。
+- 一条命令运行 Agent 任务。
+- 一条命令运行评测。
+- 新用户能按文档在本地跑通最小 demo。
+
+## 11. 优先级建议
+
+短期优先级：
+
+1. 修改项目元信息和 README 定位。
+2. 整理 Agent 模块结构。
+3. 扩展 `task_type`。
+4. 实现 `company_compare` 和 `risk_review`。
+5. 增强 `AgentTask` 状态。
+6. 前端展示任务计划、工具调用和证据池。
+
+中期优先级：
+
+1. 动态任务规划器。
+2. 可执行 Tool Registry。
+3. 多轮补证循环。
+4. 数值/指标/年份校验。
+5. 冲突证据识别。
+6. Agent eval。
+
+长期优先级：
+
+1. DRIFT GraphRAG。
+2. 多跳路径推理。
+3. LLM rerank。
+4. 财务表格和公告数据结构化。
+5. 主题持续监控。
+6. 完整 Docker/CI/CLI 交付。
+
+## 12. 最小可交付版本
+
+如果希望尽快把项目包装成“真正 Agent 项目”，建议最小版本定义如下：
+
+必须包含：
+
+- `QAAgent`
+- `ResearchAgent`
+- `CompanyCompareAgent`
+- `RiskReviewAgent`
+- `AgentState`
+- `ToolExecutor`
+- `AgentTaskStore`
+- Agent trace
+- evidence pool
+- evidence gaps
+- Markdown/JSON export
+- 前端 Agent 任务工作台
+- 10 个 Agent 任务评测样例
+
+最小验收任务：
+
+1. 生成液冷产业链投研简报。
+2. 对比中际旭创和新易盛的光模块业务。
+3. 分析英维克液冷业务风险。
+4. 审查 AI 服务器产业链中的直接受益公司。
+5. 检查国产算力瓶颈问题的证据缺口。
+
+达到以上标准后，项目就可以从“AI 算力产业链智能问答系统”升级命名为：
+
+```text
+AIQASYS: Evidence-driven AI Computing Value-chain Research Agent
 ```

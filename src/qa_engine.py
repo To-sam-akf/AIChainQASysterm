@@ -301,9 +301,9 @@ class QAEngine:
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
         if self.enable_agent:
-            from src.agent_runner import AgentRunner
+            from src.agents.qa_agent import QAAgent
 
-            return AgentRunner(self, max_steps=self.agent_max_steps).run(
+            return QAAgent(self, max_steps=self.agent_max_steps).run(
                 question,
                 conversation_history=conversation_history,
                 thinking_enabled=thinking_enabled,
@@ -479,9 +479,9 @@ class QAEngine:
         reasoning_effort: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if self.enable_agent:
-            from src.agent_runner import AgentRunner
+            from src.agents.qa_agent import QAAgent
 
-            yield from AgentRunner(self, max_steps=self.agent_max_steps).run_stream(
+            yield from QAAgent(self, max_steps=self.agent_max_steps).run_stream(
                 question,
                 conversation_history=conversation_history,
                 thinking_enabled=thinking_enabled,

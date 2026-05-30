@@ -7,6 +7,13 @@ from dataclasses import dataclass, field
 from typing import Any, Iterator
 
 from src.agent_tools import AgentToolCall, AgentTools
+from src.agents.coverage import (
+    CoverageReport,
+    EvidenceCoverageChecker,
+    metric_gap_answer,
+    next_supplement_gap,
+)
+from src.agents.planner import AgentTaskPlan, TaskPlanner
 from src.professional_qa import EvidenceCard, assign_citation_ids, legacy_evidence_rows
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
@@ -44,6 +51,7 @@ class AgentRetrievalState:
     research_hits: list[ResearchHit] = field(default_factory=list)
     semantic_hits: list[SemanticHit] = field(default_factory=list)
     generated: Any | None = None
+    coverage_report: CoverageReport | None = None
 
 
 class AgentRunner:
@@ -69,21 +77,23 @@ class AgentRunner:
         llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
         tools = AgentTools(self.engine, errors=errors, llm_options=llm_options, llm_client=llm_client)
 
-        history, contextual_question, plan, planner_source, generated, trace = self._plan(
+        history, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
             question,
             conversation_history,
             tools,
             timings_ms,
         )
         retrieval_state = self._retrieve(generated, contextual_question, plan, tools, trace, timings_ms)
-        self._supplement(contextual_question, plan, tools, retrieval_state, trace, timings_ms)
+        coverage_report = self._supplement(contextual_question, plan, task_plan, tools, retrieval_state, trace, timings_ms)
         result = self._verify_and_answer(
             question,
             contextual_question,
             history,
             plan,
+            task_plan,
             planner_source,
             retrieval_state,
+            coverage_report,
             tools,
             trace,
             timings_ms,
@@ -115,7 +125,7 @@ class AgentRunner:
 
         if thinking_enabled:
             yield stream_progress("agent_plan", "Agent 正在规划问题、上下文和检索路径")
-        history, contextual_question, plan, planner_source, generated, trace = self._plan(
+        history, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
             question,
             conversation_history,
             tools,
@@ -132,7 +142,15 @@ class AgentRunner:
 
         if thinking_enabled:
             yield stream_progress("agent_supplement", "Agent 正在检查是否需要补充检索")
-        self._supplement(contextual_question, plan, tools, retrieval_state, trace, timings_ms)
+        coverage_report = self._supplement(
+            contextual_question,
+            plan,
+            task_plan,
+            tools,
+            retrieval_state,
+            trace,
+            timings_ms,
+        )
         if thinking_enabled:
             yield stream_progress("agent_supplement", trace[-1].observation)
 
@@ -150,24 +168,31 @@ class AgentRunner:
         answer = ""
         reasoning_content = ""
         stage_start = time.perf_counter()
-        for event in self.engine._generate_answer_stream(
-            question,
-            contextual_question,
-            history,
-            plan,
-            retrieval_state.graph_records,
-            evidence_cards,
-            errors,
-            llm_options,
-            llm_client,
-            thinking_enabled=bool(thinking_enabled),
-        ):
-            if event.get("type") in {"answer_delta", "progress"}:
-                yield event
-                continue
-            if event.get("type") == "answer_complete":
-                answer = str(event.get("answer") or "")
-                reasoning_content = str(event.get("reasoning_content") or "")
+        if should_refuse_metric_answer(coverage_report):
+            from src.qa_engine import chunk_text
+
+            answer = metric_gap_answer(coverage_report)
+            for chunk in chunk_text(answer):
+                yield {"type": "answer_delta", "content": chunk}
+        else:
+            for event in self.engine._generate_answer_stream(
+                question,
+                contextual_question,
+                history,
+                plan,
+                retrieval_state.graph_records,
+                evidence_cards,
+                errors,
+                llm_options,
+                llm_client,
+                thinking_enabled=bool(thinking_enabled),
+            ):
+                if event.get("type") in {"answer_delta", "progress"}:
+                    yield event
+                    continue
+                if event.get("type") == "answer_complete":
+                    answer = str(event.get("answer") or "")
+                    reasoning_content = str(event.get("reasoning_content") or "")
         self._record_timing(timings_ms, "answer", stage_start)
         verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards)
         trace.append(
@@ -196,6 +221,7 @@ class AgentRunner:
             answer,
             reasoning_content,
             plan,
+            task_plan,
             planner_source,
             generated,
             retrieval_state,
@@ -218,7 +244,7 @@ class AgentRunner:
         conversation_history: list[dict[str, str]] | None,
         tools: AgentTools,
         timings_ms: dict[str, float],
-    ) -> tuple[list[dict[str, str]], str, QuestionPlan, str, Any, list[AgentTraceStep]]:
+    ) -> tuple[list[dict[str, str]], str, QuestionPlan, AgentTaskPlan, str, Any, list[AgentTraceStep]]:
         from src.qa_engine import describe_plan_progress, normalize_conversation_history
 
         trace: list[AgentTraceStep] = []
@@ -241,6 +267,7 @@ class AgentRunner:
         stage_start = time.perf_counter()
         generated, cypher_call = tools.prepare_cypher(contextual_question, plan)
         self._record_timing(timings_ms, "cypher", stage_start)
+        task_plan = TaskPlanner(max_steps=self.max_steps).plan(contextual_question, plan)
 
         trace.append(
             AgentTraceStep(
@@ -252,7 +279,7 @@ class AgentRunner:
                 observation=describe_plan_progress(plan),
             )
         )
-        return history, contextual_question, plan, planner_source, generated, trace
+        return history, contextual_question, plan, task_plan, planner_source, generated, trace
 
     def _retrieve(
         self,
@@ -304,66 +331,91 @@ class AgentRunner:
         self,
         contextual_question: str,
         plan: QuestionPlan,
+        task_plan: AgentTaskPlan,
         tools: AgentTools,
         state: AgentRetrievalState,
         trace: list[AgentTraceStep],
         timings_ms: dict[str, float],
-    ) -> None:
-        decision = supplement_decision(plan, state)
-        tool_calls: list[AgentToolCall] = []
-        if not decision["needed"]:
+    ) -> CoverageReport:
+        checker = EvidenceCoverageChecker()
+        coverage = checker.check(plan, task_plan, state, retrieval_round=0)
+        tool_calls: list[AgentToolCall] = [coverage_tool_call(coverage)]
+        rounds = 0
+        observations: list[str] = []
+        if coverage.sufficient:
+            state.coverage_report = coverage
             trace.append(
                 AgentTraceStep(
                     step=len(trace) + 1,
                     phase="supplement",
                     thought="检查证据结构后，当前证据已经覆盖主要问题要素。",
                     action="skip_supplement",
-                    tool_calls=[],
-                    observation=str(decision["reason"]),
+                    tool_calls=tool_calls,
+                    observation=str(coverage.stop_reason),
                 )
             )
-            return
+            return coverage
 
-        supplemental_question = f"{contextual_question} {decision['query_suffix']}".strip()
-        supplement_plan = tools.supplemental_plan(plan, supplemental_question, decision.get("companies"))
-        stage_start = time.perf_counter()
-        generated, cypher_call = tools.prepare_cypher(supplemental_question, supplement_plan)
-        graph_records, graph_call = tools.query_graph(generated, supplement_plan)
-        self._record_timing(timings_ms, "supplement_graph", stage_start)
-        tool_calls.extend([cypher_call, graph_call])
+        while coverage.should_continue:
+            gap = next_supplement_gap(coverage)
+            if gap is None:
+                break
+            rounds += 1
+            supplemental_question = build_supplemental_question(contextual_question, gap.to_dict())
+            supplement_plan = tools.supplemental_plan(plan, supplemental_question, gap.companies or None)
+            round_calls: list[AgentToolCall] = []
 
-        stage_start = time.perf_counter()
-        rag_hits, rag_call = tools.search_rag(supplemental_question, supplement_plan)
-        self._record_timing(timings_ms, "supplement_rag", stage_start)
-        tool_calls.append(rag_call)
+            stage_start = time.perf_counter()
+            generated, cypher_call = tools.prepare_cypher(supplemental_question, supplement_plan)
+            graph_records, graph_call = tools.query_graph(generated, supplement_plan)
+            self._record_timing(timings_ms, f"supplement_{rounds}_graph", stage_start)
+            round_calls.extend([cypher_call, graph_call])
 
-        stage_start = time.perf_counter()
-        research_hits, research_call = tools.search_research(supplemental_question, supplement_plan)
-        self._record_timing(timings_ms, "supplement_research", stage_start)
-        tool_calls.append(research_call)
+            stage_start = time.perf_counter()
+            rag_hits, rag_call = tools.search_rag(supplemental_question, supplement_plan)
+            self._record_timing(timings_ms, f"supplement_{rounds}_rag", stage_start)
+            round_calls.append(rag_call)
 
-        stage_start = time.perf_counter()
-        semantic_hits, semantic_call = tools.search_semantic(supplemental_question, supplement_plan)
-        self._record_timing(timings_ms, "supplement_semantic", stage_start)
-        tool_calls.append(semantic_call)
+            stage_start = time.perf_counter()
+            research_hits, research_call = tools.search_research(supplemental_question, supplement_plan)
+            self._record_timing(timings_ms, f"supplement_{rounds}_research", stage_start)
+            round_calls.append(research_call)
 
-        state.graph_records = merge_graph_records(state.graph_records, graph_records)
-        state.rag_hits = merge_rag_hits(state.rag_hits, rag_hits)
-        state.research_hits = merge_research_hits(state.research_hits, research_hits)
-        state.semantic_hits = merge_semantic_hits(state.semantic_hits, semantic_hits)
+            stage_start = time.perf_counter()
+            semantic_hits, semantic_call = tools.search_semantic(supplemental_question, supplement_plan)
+            self._record_timing(timings_ms, f"supplement_{rounds}_semantic", stage_start)
+            round_calls.append(semantic_call)
+
+            state.graph_records = merge_graph_records(state.graph_records, graph_records or [])
+            state.rag_hits = merge_rag_hits(state.rag_hits, rag_hits or [])
+            state.research_hits = merge_research_hits(state.research_hits, research_hits or [])
+            state.semantic_hits = merge_semantic_hits(state.semantic_hits, semantic_hits or [])
+            tool_calls.extend(round_calls)
+
+            coverage = checker.check(plan, task_plan, state, retrieval_round=rounds)
+            tool_calls.append(coverage_tool_call(coverage))
+            observations.append(
+                f"第 {rounds} 轮补检 {gap.coverage}：累计图谱 {len(state.graph_records)} 条、"
+                f"RAG {len(state.rag_hits)} 条、投研证据 {len(state.research_hits)} 条、"
+                f"语义证据 {len(state.semantic_hits)} 条；coverage={coverage.status}。"
+            )
+
+        state.coverage_report = coverage
+        missing_text = "、".join(coverage.missing) if coverage.missing else "无"
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
                 phase="supplement",
-                thought=str(decision["reason"]),
-                action="supplemental_retrieve",
+                thought="根据证据覆盖检查结果，多轮补检缺失的公司、风险、指标、敞口或机理证据。",
+                action="supplemental_retrieve" if rounds else "skip_supplement",
                 tool_calls=tool_calls,
                 observation=(
-                    f"补检后累计图谱 {len(state.graph_records)} 条、RAG {len(state.rag_hits)} 条、"
-                    f"投研证据 {len(state.research_hits)} 条、语义证据 {len(state.semantic_hits)} 条。"
+                    ("；".join(observations) + "；" if observations else "")
+                    + f"stop_reason={coverage.stop_reason}，missing={missing_text}。"
                 ),
             )
         )
+        return coverage
 
     def _verify_and_answer(
         self,
@@ -371,8 +423,10 @@ class AgentRunner:
         contextual_question: str,
         history: list[dict[str, str]],
         plan: QuestionPlan,
+        task_plan: AgentTaskPlan,
         planner_source: str,
         state: AgentRetrievalState,
+        coverage_report: CoverageReport,
         tools: AgentTools,
         trace: list[AgentTraceStep],
         timings_ms: dict[str, float],
@@ -395,14 +449,25 @@ class AgentRunner:
         self._record_timing(timings_ms, "evidence", stage_start)
 
         stage_start = time.perf_counter()
-        (answer, reasoning_content), answer_call = tools.generate_answer(
-            question,
-            contextual_question,
-            history,
-            plan,
-            state.graph_records,
-            evidence_cards,
-        )
+        if should_refuse_metric_answer(coverage_report):
+            answer = metric_gap_answer(coverage_report)
+            reasoning_content = ""
+            answer_call = AgentToolCall(
+                tool="generate_answer",
+                args={"answer_type": plan.answer_type, "evidence_cards": len(evidence_cards), "refused": True},
+                result_count=1,
+                elapsed_ms=0.0,
+                error="",
+            )
+        else:
+            (answer, reasoning_content), answer_call = tools.generate_answer(
+                question,
+                contextual_question,
+                history,
+                plan,
+                state.graph_records,
+                evidence_cards,
+            )
         self._record_timing(timings_ms, "answer", stage_start)
 
         verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards)
@@ -422,6 +487,7 @@ class AgentRunner:
             answer,
             reasoning_content,
             plan,
+            task_plan,
             planner_source,
             state.generated,
             state,
@@ -444,6 +510,7 @@ class AgentRunner:
         answer: str,
         reasoning_content: str,
         plan: QuestionPlan,
+        task_plan: AgentTaskPlan,
         planner_source: str,
         generated: Any,
         state: AgentRetrievalState,
@@ -506,6 +573,10 @@ class AgentRunner:
             "agent_steps": min(len(trace), self.max_steps),
             "agent_trace": [step.to_dict() for step in trace[: self.max_steps]],
             "agent_verification": verification,
+            "agent_plan": task_plan.to_dict(),
+            "agent_coverage": state.coverage_report.to_dict() if state.coverage_report else {},
+            "agent_stop_reason": state.coverage_report.stop_reason if state.coverage_report else "",
+            "agent_budget": task_plan.budgets.to_dict(),
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -537,85 +608,30 @@ class AgentRunner:
         timings_ms[name] = round((time.perf_counter() - started_at) * 1000, 2)
 
 
-def supplement_decision(plan: QuestionPlan, state: AgentRetrievalState) -> dict[str, Any]:
-    if plan.answer_type == "risk_analysis" and not has_risk_evidence(state):
-        return {
-            "needed": True,
-            "reason": "风险分析问题缺少明确风险证据，需要补检风险、反证和不确定性。",
-            "query_suffix": "风险 反证 不确定性",
-        }
-    if plan.answer_type == "company_compare":
-        missing = missing_companies(plan, state)
-        if missing:
-            return {
-                "needed": True,
-                "reason": f"公司对比证据未覆盖：{'、'.join(missing)}，需要按缺失公司补检。",
-                "query_suffix": "业务 差异 指标 风险",
-                "companies": missing,
-            }
-    if plan.answer_type == "topic_to_company" and not has_company_exposure(state):
-        return {
-            "needed": True,
-            "reason": "主题到公司问题缺少公司敞口证据，需要补检公司敞口和受益公司。",
-            "query_suffix": "公司敞口 受益 上市公司",
-        }
-    if plan.answer_type in {"industry_bottleneck", "thematic_research"} and not has_mechanism_evidence(state):
-        return {
-            "needed": True,
-            "reason": "主题研究缺少技术机理或瓶颈证据，需要补检技术机理、产业传导和指标。",
-            "query_suffix": "技术机理 瓶颈 传导 指标",
-        }
-    return {"needed": False, "reason": "证据结构已满足当前答案类型的最低要求。", "query_suffix": ""}
-
-
-def has_risk_evidence(state: AgentRetrievalState) -> bool:
-    if any(record.get("relation") == "DISCLOSES_RISK" for record in state.graph_records):
-        return True
-    if any(hit.claim_type == "risk" for hit in state.research_hits):
-        return True
-    if any(hit.claim_type == "risk" for hit in state.semantic_hits):
-        return True
-    risk_terms = ("风险", "不确定", "波动", "不及预期")
-    return any(any(term in hit.snippet for term in risk_terms) for hit in state.rag_hits) or any(
-        any(term in hit.text for term in risk_terms) for hit in state.semantic_hits
+def coverage_tool_call(report: CoverageReport) -> AgentToolCall:
+    return AgentToolCall(
+        tool="detect_evidence_gaps",
+        args={
+            "required": report.required,
+            "retrieval_round": report.retrieval_round,
+            "max_retrieval_rounds": report.max_retrieval_rounds,
+        },
+        result_count=len(report.gaps),
+        elapsed_ms=0.0,
+        error="",
     )
 
 
-def has_company_exposure(state: AgentRetrievalState) -> bool:
-    if any(record.get("company") for record in state.graph_records):
-        return True
-    return any(hit.claim_type == "company_exposure" and hit.company for hit in state.research_hits) or any(
-        hit.claim_type == "company_exposure" and hit.company for hit in state.semantic_hits
-    )
+def build_supplemental_question(contextual_question: str, gap: dict[str, Any]) -> str:
+    companies = " ".join(str(company) for company in gap.get("companies") or [])
+    query_suffix = str(gap.get("query_suffix") or "")
+    return " ".join(part for part in (contextual_question, companies, query_suffix) if part).strip()
 
 
-def has_mechanism_evidence(state: AgentRetrievalState) -> bool:
-    mechanism_types = {"mechanism", "bottleneck", "supply_chain", "trend", "indicator"}
-    if any(hit.claim_type in mechanism_types for hit in state.research_hits):
-        return True
-    if any(hit.claim_type in mechanism_types for hit in state.semantic_hits):
-        return True
-    mechanism_relations = {"CONSTRAINS", "ENABLES", "DRIVES", "DEPENDS_ON", "HAS_INDICATOR"}
-    if any(record.get("relation") in mechanism_relations for record in state.graph_records):
-        return True
-    mechanism_terms = ("机理", "瓶颈", "传导", "指标", "带宽", "功耗", "散热")
-    return any(any(term in hit.snippet for term in mechanism_terms) for hit in state.rag_hits) or any(
-        any(term in hit.text for term in mechanism_terms) for hit in state.semantic_hits
-    )
-
-
-def missing_companies(plan: QuestionPlan, state: AgentRetrievalState) -> list[str]:
-    if not plan.companies:
-        return []
-    covered = {
-        str(record.get("company") or "")
-        for record in state.graph_records
-        if record.get("company")
-    }
-    covered.update(hit.company for hit in state.research_hits if hit.company)
-    covered.update(hit.company for hit in state.rag_hits if hit.company)
-    covered.update(hit.company for hit in state.semantic_hits if hit.company)
-    return [company for company in plan.companies if company not in covered]
+def should_refuse_metric_answer(report: CoverageReport | None) -> bool:
+    if report is None:
+        return False
+    return "metric_evidence" in report.missing and report.stop_reason == "max_retrieval_rounds_reached"
 
 
 def merge_graph_records(existing: list[dict[str, Any]], additions: list[dict[str, Any]]) -> list[dict[str, Any]]:

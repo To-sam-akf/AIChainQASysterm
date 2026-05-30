@@ -3,7 +3,8 @@ from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from src.api import app, get_conversation_store, get_knowledge_graph, get_qa_engine
+from src.api import app, get_agent_task_store, get_conversation_store, get_knowledge_graph, get_qa_engine
+from src.agents.store import AgentTaskStore
 from src.conversation_store import ConversationStore
 from src.frontend_data import LocalKnowledgeGraph
 from src.research_claims import CLAIM_REVIEWS_FILE, ResearchMemory
@@ -58,8 +59,16 @@ class FakeEngine:
             "rag_hits": [],
             "evidence_cards": [],
             "evidence": [],
+            "research_outputs": {
+                "report": {
+                    "title": "测试投研简报",
+                    "markdown": "## 核心判断\n测试回答。",
+                    "sections": [{"title": "核心判断", "content": "测试回答。"}],
+                },
+                "evidence_gaps": [{"gap": "缺少真实证据", "priority": "中"}],
+            },
             "subgraph": [],
-            "diagnostics": {},
+            "diagnostics": {"agent_trace": []},
             "errors": [],
         }
 
@@ -84,6 +93,9 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
     async def override_store() -> ConversationStore:
         return ConversationStore(tmp_path)
 
+    async def override_agent_store() -> AgentTaskStore:
+        return AgentTaskStore(tmp_path / "agent_tasks")
+
     async def override_engine() -> FakeEngine:
         return engine
 
@@ -91,6 +103,7 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
         return graph
 
     app.dependency_overrides[get_conversation_store] = override_store
+    app.dependency_overrides[get_agent_task_store] = override_agent_store
     app.dependency_overrides[get_qa_engine] = override_engine
     app.dependency_overrides[get_knowledge_graph] = override_graph
     return TestClient(app)
@@ -174,6 +187,47 @@ def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
         assert status_response.json()["settings"]["agent_max_steps"] == 4
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
+    engine = FakeEngine()
+    client = make_test_client(tmp_path, engine)
+    try:
+        task_types = ["research_brief", "company_compare", "company_profile", "risk_review", "evidence_gap_audit"]
+        tasks = []
+        for task_type in task_types:
+            created = client.post(
+                "/api/agent/tasks",
+                json={"task_type": task_type, "goal": f"{task_type} 液冷产业链", "thinking_enabled": False},
+            )
+            assert created.status_code == 201
+            task = created.json()["task"]
+            tasks.append(task)
+            assert task["status"] == "completed"
+            assert task["task_type"] == task_type
+            assert task["final_outputs"]["task_type"] == task_type
+            assert task["research_outputs"]["task_outputs"]["schema_type"] == task_type
+            assert task["final_outputs"]["report_title"] == "测试投研简报"
+            assert task["final_outputs"]["evidence_gap_count"] == 1
+        task = tasks[0]
+        assert "投研简报" in engine.calls[0]["question"]
+
+        listed = client.get("/api/agent/tasks")
+        assert listed.status_code == 200
+        assert listed.json()["tasks"][0]["task_id"] in {item["task_id"] for item in tasks}
+
+        fetched = client.get(f"/api/agent/tasks/{task['task_id']}")
+        assert fetched.status_code == 200
+        assert fetched.json()["task_id"] == task["task_id"]
+
+        exported_md = client.get(f"/api/agent/tasks/{task['task_id']}/export?format=md")
+        exported_json = client.get(f"/api/agent/tasks/{task['task_id']}/export?format=json")
+        assert exported_md.status_code == 200
+        assert "测试投研简报" in exported_md.text
+        assert exported_json.status_code == 200
+        assert exported_json.json()["task_id"] == task["task_id"]
     finally:
         app.dependency_overrides.clear()
 

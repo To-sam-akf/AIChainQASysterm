@@ -1,4 +1,4 @@
-"""Data access and local QA helpers for the Streamlit frontend."""
+"""Data access and graph helpers shared by the API and React frontend."""
 
 from __future__ import annotations
 

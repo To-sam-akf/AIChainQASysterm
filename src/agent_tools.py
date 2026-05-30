@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import time
 import re
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable
 
+from src.agents.executor import ToolExecutor
 from src.cypher_generator import GeneratedCypher
 from src.professional_qa import (
     EvidenceCard,
@@ -28,6 +28,7 @@ class AgentToolCall:
     result_count: int = 0
     elapsed_ms: float = 0.0
     error: str = ""
+    budget_exhausted: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -48,6 +49,7 @@ class AgentTools:
         self.errors = errors
         self.llm_options = llm_options
         self.llm_client = llm_client
+        self.executor = ToolExecutor(errors=errors)
 
     def contextualize_question(self, question: str, history: list[dict[str, str]]) -> tuple[str, AgentToolCall]:
         return self._call(
@@ -233,31 +235,16 @@ class AgentTools:
         func: Callable[[], Any],
         count_result: Callable[[Any], int],
     ) -> tuple[Any, AgentToolCall]:
-        started_at = time.perf_counter()
-        error = ""
-        before_error_count = len(self.errors)
-        try:
-            result = func()
-        except Exception as exc:  # pragma: no cover - defensive shell around tools.
-            result = None
-            error = str(exc)
-            self.errors.append(f"{tool} failed: {exc}")
-        if not error and len(self.errors) > before_error_count:
-            error = "; ".join(self.errors[before_error_count:])
-        result_count = 0
-        if result is not None:
-            try:
-                result_count = int(count_result(result))
-            except Exception:
-                result_count = 0
+        execution = self.executor.execute(tool, args, func, count_result)
         call = AgentToolCall(
             tool=tool,
             args=args,
-            result_count=result_count,
-            elapsed_ms=round((time.perf_counter() - started_at) * 1000, 2),
-            error=error,
+            result_count=execution.result_count,
+            elapsed_ms=execution.elapsed_ms,
+            error=execution.error,
+            budget_exhausted=execution.budget_exhausted,
         )
-        return result, call
+        return execution.result, call
 
 
 def semantic_query_text(question: str, plan: QuestionPlan) -> str:

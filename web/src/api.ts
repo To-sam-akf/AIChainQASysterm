@@ -1,4 +1,7 @@
 import type {
+  AgentTask,
+  AgentTaskCreateRequest,
+  AgentTaskSummary,
   ApiStatus,
   ClaimReviewRequest,
   ClaimReviewResponse,
@@ -192,4 +195,25 @@ export function reviewClaim(claimId: string, payload: ClaimReviewRequest): Promi
     method: "POST",
     body: JSON.stringify(payload)
   });
+}
+
+export async function listAgentTasks(): Promise<AgentTaskSummary[]> {
+  const payload = await request<{ tasks: AgentTaskSummary[] }>("/api/agent/tasks");
+  return payload.tasks;
+}
+
+export async function createAgentTask(payload: AgentTaskCreateRequest): Promise<AgentTask> {
+  const response = await request<{ task: AgentTask }>("/api/agent/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  return response.task;
+}
+
+export function getAgentTask(id: string): Promise<AgentTask> {
+  return request<AgentTask>(`/api/agent/tasks/${encodeURIComponent(id)}`);
+}
+
+export function exportAgentTaskUrl(id: string, format: "md" | "json"): string {
+  return `/api/agent/tasks/${encodeURIComponent(id)}/export?format=${format}`;
 }

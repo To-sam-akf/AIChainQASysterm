@@ -58,6 +58,7 @@ export interface ResearchOutputs {
   };
   risk_checklist?: Record<string, string>[];
   evidence_gaps?: Record<string, string>[];
+  task_outputs?: Record<string, unknown>;
   meta?: Record<string, unknown>;
 }
 
@@ -77,6 +78,62 @@ export interface ClaimReviewRequest {
 export interface ClaimReviewResponse {
   claim: Record<string, unknown>;
   review: Record<string, unknown>;
+}
+
+export interface AgentTaskSummary {
+  task_id: string;
+  task_type: string;
+  title: string;
+  goal: string;
+  status: "pending" | "running" | "completed" | "failed";
+  created_at: string;
+  updated_at: string;
+  evidence_card_count: number;
+  evidence_gap_count: number;
+  preview: string;
+}
+
+export interface AgentTask {
+  task_id: string;
+  task_type: string;
+  goal: string;
+  title: string;
+  status: "pending" | "running" | "completed" | "failed";
+  created_at: string;
+  updated_at: string;
+  plan: Record<string, unknown>;
+  steps: Record<string, unknown>[];
+  tool_calls: Record<string, unknown>[];
+  evidence_cards: Record<string, unknown>[];
+  research_outputs?: ResearchOutputs;
+  diagnostics: Record<string, unknown>;
+  errors: string[];
+  final_outputs: {
+    report_markdown?: string;
+    report_title?: string;
+    task_type?: AgentTaskType;
+    task_label?: string;
+    task_schema_type?: string;
+    evidence_gap_count?: number;
+    evidence_card_count?: number;
+    qa_answer?: string;
+    contextual_question?: string;
+    answer_type?: string;
+  };
+}
+
+export type AgentTaskType =
+  | "research_brief"
+  | "company_compare"
+  | "company_profile"
+  | "risk_review"
+  | "evidence_gap_audit";
+
+export interface AgentTaskCreateRequest {
+  task_type: AgentTaskType;
+  goal: string;
+  thinking_enabled?: boolean;
+  reasoning_effort?: string;
 }
 
 export interface GraphEdge {

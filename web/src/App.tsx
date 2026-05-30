@@ -26,19 +26,26 @@ import {
 import { FormEvent, KeyboardEvent, PointerEvent, WheelEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
+  createAgentTask,
   createConversation,
   deleteConversation,
+  exportAgentTaskUrl,
+  getAgentTask,
   getConversation,
   getExamples,
   getGraphSubgraph,
   getGraphSummary,
   getStatus,
+  listAgentTasks,
   listConversations,
   reviewClaim,
   streamMessage,
   updateConversationTitle
 } from "./api";
 import type {
+  AgentTask,
+  AgentTaskSummary,
+  AgentTaskType,
   ApiStatus,
   Conversation,
   ConversationSummary,
@@ -46,13 +53,21 @@ import type {
   GraphEdge,
   GraphSubgraph,
   GraphSummary,
-  ClaimReviewRequest
+  ClaimReviewRequest,
+  ResearchOutputs
 } from "./types";
 
-type View = "chat" | "overview" | "graph";
+type View = "chat" | "overview" | "graph" | "agents";
 type DetailTab = "research" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
+const AGENT_TASK_TYPES: Array<{ value: AgentTaskType; label: string; description: string }> = [
+  { value: "research_brief", label: "投研简报", description: "主题研究、公司排序、指标、风险与缺口" },
+  { value: "company_compare", label: "公司对比", description: "业务卡位、差异点、指标和风险差异" },
+  { value: "company_profile", label: "公司画像", description: "公司业务、产品技术、产业链位置和风险" },
+  { value: "risk_review", label: "风险审查", description: "主要风险、反证、不确定性和跟踪指标" },
+  { value: "evidence_gap_audit", label: "证据缺口", description: "缺失公司、指标、风险和建议数据源" }
+];
 const GRAPH_VIEWPORTS = {
   large: { width: 1040, height: 560 },
   compact: { width: 640, height: 360 }
@@ -176,6 +191,11 @@ function App() {
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [examples, setExamples] = useState<string[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>(EMPTY_ARRAY);
+  const [agentTasks, setAgentTasks] = useState<AgentTaskSummary[]>([]);
+  const [selectedAgentTask, setSelectedAgentTask] = useState<AgentTask | null>(null);
+  const [agentGoal, setAgentGoal] = useState("");
+  const [agentTaskType, setAgentTaskType] = useState<AgentTaskType>("research_brief");
+  const [agentRunning, setAgentRunning] = useState(false);
   const [current, setCurrent] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
@@ -196,22 +216,33 @@ function App() {
     setConversations(items);
   }
 
+  async function refreshAgentTasks() {
+    const items = await listAgentTasks();
+    setAgentTasks(items);
+  }
+
   async function loadInitial() {
     setLoading(true);
     try {
-      const [statusPayload, examplePayload, conversationPayload] = await Promise.all([
+      const [statusPayload, examplePayload, conversationPayload, agentTaskPayload] = await Promise.all([
         getStatus(),
         getExamples(),
-        listConversations()
+        listConversations(),
+        listAgentTasks()
       ]);
       setStatus(statusPayload);
       setExamples(examplePayload);
       setConversations(conversationPayload);
+      setAgentTasks(agentTaskPayload);
       setThinkingEnabled(statusPayload.settings.thinking_enabled);
       setReasoningEffort(statusPayload.settings.reasoning_effort);
       if (conversationPayload.length > 0) {
         const latest = await getConversation(conversationPayload[0].id);
         setCurrent(latest);
+      }
+      if (agentTaskPayload.length > 0) {
+        const latestTask = await getAgentTask(agentTaskPayload[0].task_id);
+        setSelectedAgentTask(latestTask);
       }
     } catch (error) {
       setToast(error instanceof Error ? error.message : "加载系统状态失败");
@@ -251,6 +282,40 @@ function App() {
       setSidebarOpen(false);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "读取对话失败");
+    }
+  }
+
+  async function handleLoadAgentTask(id: string) {
+    try {
+      const task = await getAgentTask(id);
+      setSelectedAgentTask(task);
+      setView("agents");
+      setSidebarOpen(false);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "读取 Agent 任务失败");
+    }
+  }
+
+  async function handleCreateAgentTask(goal = agentGoal) {
+    const trimmed = goal.trim();
+    if (!trimmed || agentRunning) return;
+    setAgentRunning(true);
+    setToast("");
+    try {
+      const task = await createAgentTask({
+        task_type: agentTaskType,
+        goal: trimmed,
+        thinking_enabled: thinkingEnabled,
+        reasoning_effort: thinkingEnabled ? reasoningEffort : ""
+      });
+      setSelectedAgentTask(task);
+      setAgentGoal("");
+      setView("agents");
+      await refreshAgentTasks();
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "创建 Agent 任务失败");
+    } finally {
+      setAgentRunning(false);
     }
   }
 
@@ -418,6 +483,24 @@ function App() {
             onExample={(example) => setInput(example)}
           />
         )}
+        {view === "agents" && (
+          <AgentTasksView
+            tasks={agentTasks}
+            selectedTask={selectedAgentTask}
+            goal={agentGoal}
+            taskType={agentTaskType}
+            running={agentRunning}
+            thinkingEnabled={thinkingEnabled}
+            reasoningEffort={reasoningEffort}
+            reasoningEfforts={status?.settings.reasoning_efforts ?? ["low", "medium", "high"]}
+            onGoal={setAgentGoal}
+            onTaskType={setAgentTaskType}
+            onCreate={handleCreateAgentTask}
+            onSelectTask={handleLoadAgentTask}
+            onThinkingChange={setThinkingEnabled}
+            onReasoningChange={setReasoningEffort}
+          />
+        )}
         {view === "overview" && <OverviewView status={status} />}
         {view === "graph" && <GraphView />}
       </main>
@@ -470,6 +553,14 @@ function Sidebar(props: {
         <button className={props.view === "chat" ? "active" : ""} type="button" onClick={() => props.onViewChange("chat")}>
           <MessageSquareText size={20} />
           <span>智能问答</span>
+        </button>
+        <button
+          className={props.view === "agents" ? "active" : ""}
+          type="button"
+          onClick={() => props.onViewChange("agents")}
+        >
+          <Bot size={20} />
+          <span>Agent 任务</span>
         </button>
         <button
           className={props.view === "overview" ? "active" : ""}
@@ -632,6 +723,220 @@ function ChatView(props: {
         </div>
       )}
     </section>
+  );
+}
+
+function AgentTasksView(props: {
+  tasks: AgentTaskSummary[];
+  selectedTask: AgentTask | null;
+  goal: string;
+  taskType: AgentTaskType;
+  running: boolean;
+  thinkingEnabled: boolean;
+  reasoningEffort: string;
+  reasoningEfforts: string[];
+  onGoal: (value: string) => void;
+  onTaskType: (value: AgentTaskType) => void;
+  onCreate: (goal?: string) => void;
+  onSelectTask: (id: string) => void;
+  onThinkingChange: (value: boolean) => void;
+  onReasoningChange: (value: string) => void;
+}) {
+  const reasoningEfforts = props.reasoningEfforts.length ? props.reasoningEfforts : ["low", "medium", "high"];
+  const activeReasoningEffort = reasoningEfforts.includes(props.reasoningEffort)
+    ? props.reasoningEffort
+    : reasoningEfforts[0];
+  const task = props.selectedTask;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    props.onCreate();
+  }
+
+  function toggleThinking() {
+    props.onThinkingChange(!props.thinkingEnabled);
+  }
+
+  function cycleReasoningEffort() {
+    if (!props.thinkingEnabled) {
+      props.onReasoningChange(activeReasoningEffort);
+      props.onThinkingChange(true);
+      return;
+    }
+    const currentIndex = reasoningEfforts.indexOf(activeReasoningEffort);
+    props.onReasoningChange(reasoningEfforts[(currentIndex + 1) % reasoningEfforts.length]);
+  }
+
+  return (
+    <section className="page-panel agent-page">
+      <div className="page-heading">
+        <span className="eyebrow">Agent Workspace</span>
+        <h2>投研任务工作台</h2>
+      </div>
+      <div className="agent-layout">
+        <aside className="agent-list-panel">
+          <form className="agent-create" onSubmit={submit}>
+            <label htmlFor="agent-task-type">任务类型</label>
+            <select
+              id="agent-task-type"
+              value={props.taskType}
+              disabled={props.running}
+              onChange={(event) => props.onTaskType(event.target.value as AgentTaskType)}
+            >
+              {AGENT_TASK_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+            <p className="agent-task-type-hint">
+              {AGENT_TASK_TYPES.find((item) => item.value === props.taskType)?.description}
+            </p>
+            <label htmlFor="agent-goal">研究目标</label>
+            <textarea
+              id="agent-goal"
+              value={props.goal}
+              rows={5}
+              placeholder="例如：液冷产业链投研简报"
+              onChange={(event) => props.onGoal(event.target.value)}
+            />
+            <div className="agent-controls">
+              <button
+                className={props.thinkingEnabled ? "pill active" : "pill"}
+                type="button"
+                disabled={props.running}
+                onClick={toggleThinking}
+              >
+                思考模式：{props.thinkingEnabled ? "开" : "关"}
+              </button>
+              <button
+                className={props.thinkingEnabled ? "pill active" : "pill"}
+                type="button"
+                disabled={props.running}
+                onClick={cycleReasoningEffort}
+              >
+                强度：{props.thinkingEnabled ? activeReasoningEffort : "关闭"}
+              </button>
+            </div>
+            <button className="agent-run-button" type="submit" disabled={!props.goal.trim() || props.running}>
+              {props.running ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />}
+              <span>创建{agentTaskTypeLabel(props.taskType)}任务</span>
+            </button>
+          </form>
+
+          <div className="agent-task-list">
+            <div className="section-title">
+              <ClipboardList size={16} />
+              <span>任务历史</span>
+            </div>
+            {props.tasks.length === 0 && <div className="empty-table">暂无 Agent 任务</div>}
+            {props.tasks.map((item) => (
+              <button
+                className={`agent-task-item ${task?.task_id === item.task_id ? "selected" : ""}`}
+                key={item.task_id}
+                type="button"
+                onClick={() => props.onSelectTask(item.task_id)}
+              >
+                <strong>{item.title}</strong>
+                <span>{item.preview || item.goal}</span>
+                <em>{agentStatusLabel(item.status)} · {item.evidence_card_count} 证据 · {item.evidence_gap_count} 缺口</em>
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        <div className="agent-detail-panel">
+          {!task ? (
+            <div className="agent-empty">
+              <Bot size={34} />
+              <span>选择一个历史任务，或创建新的投研简报任务</span>
+            </div>
+          ) : (
+            <>
+              <div className="agent-detail-header">
+                <div>
+                  <span className={`task-status ${task.status}`}>{agentStatusLabel(task.status)}</span>
+                  <span className="task-type-label">{task.final_outputs.task_label || agentTaskTypeLabel(task.task_type as AgentTaskType)}</span>
+                  <h3>{task.final_outputs.report_title || task.title}</h3>
+                  <p>{task.goal}</p>
+                </div>
+                <div className="export-group">
+                  <a className="export-link" href={exportAgentTaskUrl(task.task_id, "md")}>
+                    <Download size={16} />
+                    <span>MD</span>
+                  </a>
+                  <a className="export-link" href={exportAgentTaskUrl(task.task_id, "json")}>
+                    <Download size={16} />
+                    <span>JSON</span>
+                  </a>
+                </div>
+              </div>
+
+              <div className="agent-stat-grid">
+                <StatCard label="证据卡" value={String(task.final_outputs.evidence_card_count ?? task.evidence_cards.length)} />
+                <StatCard label="证据缺口" value={String(task.final_outputs.evidence_gap_count ?? 0)} />
+                <StatCard label="执行步骤" value={String(task.steps.length)} />
+                <StatCard label="工具调用" value={String(task.tool_calls.length)} />
+              </div>
+
+              <ResearchOutputsView outputs={task.research_outputs} />
+
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <ClipboardList size={16} />
+                  <span>执行轨迹</span>
+                </div>
+                <div className="agent-step-list">
+                  {task.steps.map((step, index) => (
+                    <article className="agent-step" key={`${step.phase ?? "step"}-${index}`}>
+                      <span>{String(step.step ?? index + 1)}</span>
+                      <div>
+                        <strong>{String(step.phase ?? "step")}</strong>
+                        <p>{String(step.observation ?? step.thought ?? "")}</p>
+                      </div>
+                      <ChevronRight size={16} />
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <FileText size={16} />
+                  <span>QA 答案摘要</span>
+                </div>
+                <div className="answer-text">
+                  {renderAnswerMarkdown(task.final_outputs.qa_answer || "当前任务没有生成问答摘要")}
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function agentStatusLabel(status: AgentTask["status"]) {
+  const labels = {
+    pending: "等待中",
+    running: "执行中",
+    completed: "已完成",
+    failed: "失败"
+  };
+  return labels[status] ?? status;
+}
+
+function agentTaskTypeLabel(taskType: AgentTaskType | string) {
+  return AGENT_TASK_TYPES.find((item) => item.value === taskType)?.label ?? String(taskType || "Agent");
+}
+
+function StatCard(props: { label: string; value: string }) {
+  return (
+    <article className="stat-card">
+      <span>{props.label}</span>
+      <strong>{props.value}</strong>
+    </article>
   );
 }
 
@@ -1517,7 +1822,7 @@ function BarList(props: { title: string; data: Record<string, number> }) {
   );
 }
 
-function ResearchOutputsView(props: { outputs: ConversationTurn["result"]["research_outputs"] }) {
+function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
   const outputs = props.outputs;
   if (!outputs) return <div className="empty-table">当前回答没有生成投研产物</div>;
   const report = outputs.report;
@@ -1526,6 +1831,7 @@ function ResearchOutputsView(props: { outputs: ConversationTurn["result"]["resea
   const gaps = outputs.evidence_gaps ?? [];
   return (
     <div className="research-output">
+      <TaskOutputsView outputs={outputs.task_outputs} />
       <section className="research-section">
         <div className="research-section-title">
           <FileText size={16} />
@@ -1567,6 +1873,66 @@ function ResearchOutputsView(props: { outputs: ConversationTurn["result"]["resea
       </section>
     </div>
   );
+}
+
+function TaskOutputsView(props: { outputs?: Record<string, unknown> }) {
+  const outputs = props.outputs;
+  if (!outputs) return null;
+  const schemaType = String(outputs.schema_type ?? "");
+  const taskLabel = String(outputs.task_label ?? schemaType);
+  const cards = taskOutputCards(outputs);
+  if (!cards.length) return null;
+  return (
+    <section className="research-section task-output-section">
+      <div className="research-section-title">
+        <Boxes size={16} />
+        <span>{taskLabel || "任务结构化输出"}</span>
+      </div>
+      <div className="task-output-grid">
+        {cards.map((card) => (
+          <article className="task-output-card" key={card.title}>
+            <strong>{card.title}</strong>
+            <ResearchList rows={card.rows} primaryKey={card.primaryKey} secondaryKeys={card.secondaryKeys} empty="当前证据不足" />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function taskOutputCards(outputs: Record<string, unknown>) {
+  const specs = [
+    { key: "common_drivers", title: "共同驱动", primaryKey: "evidence", secondaryKeys: ["scope", "citation_id"] },
+    { key: "differences", title: "差异点", primaryKey: "business_position", secondaryKeys: ["company", "leading_indicators", "citations"] },
+    { key: "risk_differences", title: "风险差异", primaryKey: "risks", secondaryKeys: ["company", "citations"] },
+    { key: "technology_products", title: "产品/技术", primaryKey: "evidence", secondaryKeys: ["scope", "citation_id"] },
+    { key: "indicators", title: "指标证据", primaryKey: "evidence", secondaryKeys: ["scope", "citation_id"] },
+    { key: "counter_evidence", title: "反证/边界", primaryKey: "evidence", secondaryKeys: ["scope", "citation_id"] },
+    { key: "follow_up_indicators", title: "跟踪指标", primaryKey: "indicator", secondaryKeys: ["scope", "citation_id"] },
+    { key: "missing_companies", title: "缺失公司证据", primaryKey: "gap", secondaryKeys: ["priority", "suggested_source"] },
+    { key: "missing_metrics", title: "缺失指标证据", primaryKey: "gap", secondaryKeys: ["priority", "suggested_source"] },
+    { key: "missing_risks", title: "缺失风险证据", primaryKey: "gap", secondaryKeys: ["priority", "suggested_source"] },
+    { key: "evidence_index", title: "证据索引", primaryKey: "title", secondaryKeys: ["citation_id", "source", "page"] }
+  ];
+  return specs
+    .map((spec) => ({
+      ...spec,
+      rows: arrayRecords(outputs[spec.key])
+    }))
+    .filter((item) => item.rows.length > 0)
+    .slice(0, 4);
+}
+
+function arrayRecords(value: unknown): Record<string, string>[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (item && typeof item === "object" && !Array.isArray(item)) {
+        return Object.fromEntries(Object.entries(item as Record<string, unknown>).map(([key, val]) => [key, String(val ?? "")]));
+      }
+      return { value: String(item ?? "") };
+    })
+    .filter((row) => Object.values(row).some(Boolean));
 }
 
 function ResearchTable(props: { rows: Record<string, string>[]; empty: string }) {
