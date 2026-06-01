@@ -66,6 +66,18 @@ class FakeEngine:
                     "sections": [{"title": "核心判断", "content": "测试回答。"}],
                 },
                 "evidence_gaps": [{"gap": "缺少真实证据", "priority": "中"}],
+                "verification": {
+                    "status": "warn",
+                    "checks": {},
+                    "evidence_gaps": [{"gap": "缺少真实证据", "priority": "中"}],
+                    "conflict_groups": [{"conflict_group_id": "conflict_1"}],
+                },
+            },
+            "verification": {
+                "status": "warn",
+                "checks": {},
+                "evidence_gaps": [{"gap": "缺少真实证据", "priority": "中"}],
+                "conflict_groups": [{"conflict_group_id": "conflict_1"}],
             },
             "subgraph": [],
             "diagnostics": {"agent_trace": []},
@@ -123,6 +135,7 @@ def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> Non
         )
         assert first.status_code == 200
         assert first.json()["conversation"]["turns"][0]["answer"].startswith("回答：")
+        assert first.json()["turn"]["result"]["verification"]["status"] == "warn"
 
         second = client.post(
             f"/api/conversations/{conversation_id}/messages",
@@ -211,6 +224,8 @@ def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
             assert task["research_outputs"]["task_outputs"]["schema_type"] == task_type
             assert task["final_outputs"]["report_title"] == "测试投研简报"
             assert task["final_outputs"]["evidence_gap_count"] == 1
+            assert task["final_outputs"]["verification_status"] == "warn"
+            assert task["final_outputs"]["conflict_group_count"] == 1
         task = tasks[0]
         assert "投研简报" in engine.calls[0]["question"]
 

@@ -14,6 +14,7 @@ from src.agents.coverage import (
     next_supplement_gap,
 )
 from src.agents.planner import AgentTaskPlan, TaskPlanner
+from src.graphrag import GraphRagResult
 from src.professional_qa import EvidenceCard, assign_citation_ids, legacy_evidence_rows
 from src.question_planner import QuestionPlan
 from src.rag_index import RagHit
@@ -50,6 +51,8 @@ class AgentRetrievalState:
     rag_hits: list[RagHit] = field(default_factory=list)
     research_hits: list[ResearchHit] = field(default_factory=list)
     semantic_hits: list[SemanticHit] = field(default_factory=list)
+    graphrag: GraphRagResult | None = None
+    reranker: dict[str, Any] = field(default_factory=dict)
     generated: Any | None = None
     coverage_report: CoverageReport | None = None
 
@@ -161,14 +164,17 @@ class AgentRunner:
             retrieval_state.rag_hits,
             retrieval_state.semantic_hits,
             plan,
+            retrieval_state.graphrag,
         )
         evidence_cards = assign_citation_ids(evidence_cards)
+        retrieval_state.reranker = dict(getattr(tools, "last_reranker_metadata", {}) or {})
         self._record_timing(timings_ms, "evidence", stage_start)
 
         answer = ""
         reasoning_content = ""
         stage_start = time.perf_counter()
-        if should_refuse_metric_answer(coverage_report):
+        refused_metric = should_refuse_metric_answer(coverage_report)
+        if refused_metric:
             from src.qa_engine import chunk_text
 
             answer = metric_gap_answer(coverage_report)
@@ -194,24 +200,49 @@ class AgentRunner:
                     answer = str(event.get("answer") or "")
                     reasoning_content = str(event.get("reasoning_content") or "")
         self._record_timing(timings_ms, "answer", stage_start)
-        verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards)
+        verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards, contextual_question)
+        tool_calls = [
+            rank_call,
+            AgentToolCall(
+                tool="generate_answer_stream",
+                args={"answer_type": plan.answer_type, "evidence_cards": len(evidence_cards)},
+                result_count=1 if answer else 0,
+                elapsed_ms=timings_ms.get("answer", 0),
+                error="",
+            ),
+            verify_call,
+        ]
+        if verification.get("status") == "fail" and not refused_metric:
+            from src.agents.verification import build_evidence_limited_answer
+
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report)
+            reasoning_content = ""
+            verification, second_verify_call = tools.verify_answer_support(
+                answer,
+                plan,
+                evidence_cards,
+                raw_cards,
+                contextual_question,
+            )
+            tool_calls.extend(
+                [
+                    AgentToolCall(
+                        tool="build_evidence_limited_answer",
+                        args={"reason": "verification_failed", "evidence_cards": len(evidence_cards)},
+                        result_count=1 if answer else 0,
+                        elapsed_ms=0.0,
+                        error="",
+                    ),
+                    second_verify_call,
+                ]
+            )
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
                 phase="verify_answer",
-                thought="用筛选后的证据生成答案，并检查引用、公司覆盖和无支撑表述。",
+                thought="用筛选后的证据生成答案，并检查引用、数值、指标、敞口、风险、公司覆盖和冲突证据。",
                 action="rank_evidence -> generate_answer_stream -> verify_answer_support",
-                tool_calls=[
-                    rank_call,
-                    AgentToolCall(
-                        tool="generate_answer_stream",
-                        args={"answer_type": plan.answer_type, "evidence_cards": len(evidence_cards)},
-                        result_count=1 if answer else 0,
-                        elapsed_ms=timings_ms.get("answer", 0),
-                        error="",
-                    ),
-                    verify_call,
-                ],
+                tool_calls=tool_calls,
                 observation=f"生成答案，verification={verification.get('status')}，证据卡 {len(evidence_cards)} 条。",
             )
         )
@@ -306,16 +337,23 @@ class AgentRunner:
         semantic_hits, semantic_call = tools.search_semantic(contextual_question, plan)
         self._record_timing(timings_ms, "semantic", stage_start)
 
+        stage_start = time.perf_counter()
+        graphrag, graphrag_call = tools.run_graphrag(contextual_question, plan, graph_records)
+        research_hits = merge_research_hits(research_hits, [*graphrag.global_hits, *graphrag.local_hits])
+        self._record_timing(timings_ms, "graphrag", stage_start)
+
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
                 phase="retrieve",
-                thought="同时利用结构化图谱、原文 RAG、投研 Claim/Dossier 和 embedding 语义索引做第一轮召回。",
-                action="query_graph -> search_rag -> search_research -> search_semantic",
-                tool_calls=[graph_call, rag_call, research_call, semantic_call],
+                thought="同时利用结构化图谱、原文 RAG、投研 Claim/Dossier、embedding 语义索引和 GraphRAG/DRIFT 做第一轮召回。",
+                action="query_graph -> search_rag -> search_research -> search_semantic -> graphrag_retrieve",
+                tool_calls=[graph_call, rag_call, research_call, semantic_call, graphrag_call],
                 observation=(
                     f"召回图谱 {len(graph_records)} 条、RAG {len(rag_hits)} 条、"
-                    f"投研证据 {len(research_hits)} 条、语义证据 {len(semantic_hits)} 条。"
+                    f"投研证据 {len(research_hits)} 条、语义证据 {len(semantic_hits)} 条；"
+                    f"GraphRAG route={graphrag.route.kind}，子问题 {len(graphrag.subquestions)} 个，"
+                    f"路径 {len(graphrag.paths)} 条。"
                 ),
             )
         )
@@ -324,6 +362,7 @@ class AgentRunner:
             rag_hits=rag_hits,
             research_hits=research_hits,
             semantic_hits=semantic_hits,
+            graphrag=graphrag,
             generated=generated,
         )
 
@@ -444,12 +483,15 @@ class AgentRunner:
             state.rag_hits,
             state.semantic_hits,
             plan,
+            state.graphrag,
         )
         evidence_cards = assign_citation_ids(evidence_cards)
+        state.reranker = dict(getattr(tools, "last_reranker_metadata", {}) or {})
         self._record_timing(timings_ms, "evidence", stage_start)
 
         stage_start = time.perf_counter()
-        if should_refuse_metric_answer(coverage_report):
+        refused_metric = should_refuse_metric_answer(coverage_report)
+        if refused_metric:
             answer = metric_gap_answer(coverage_report)
             reasoning_content = ""
             answer_call = AgentToolCall(
@@ -470,14 +512,39 @@ class AgentRunner:
             )
         self._record_timing(timings_ms, "answer", stage_start)
 
-        verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards)
+        verification, verify_call = tools.verify_answer_support(answer, plan, evidence_cards, raw_cards, contextual_question)
+        tool_calls = [rank_call, answer_call, verify_call]
+        if verification.get("status") == "fail" and not refused_metric:
+            from src.agents.verification import build_evidence_limited_answer
+
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report)
+            reasoning_content = ""
+            verification, second_verify_call = tools.verify_answer_support(
+                answer,
+                plan,
+                evidence_cards,
+                raw_cards,
+                contextual_question,
+            )
+            tool_calls.extend(
+                [
+                    AgentToolCall(
+                        tool="build_evidence_limited_answer",
+                        args={"reason": "verification_failed", "evidence_cards": len(evidence_cards)},
+                        result_count=1 if answer else 0,
+                        elapsed_ms=0.0,
+                        error="",
+                    ),
+                    second_verify_call,
+                ]
+            )
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
                 phase="verify_answer",
-                thought="筛选最终证据，生成答案，并对引用、公司覆盖和无支撑表述做自检。",
+                thought="筛选最终证据，生成答案，并对引用、数值、指标、敞口、风险、公司覆盖和冲突证据做自检。",
                 action="rank_evidence -> generate_answer -> verify_answer_support",
-                tool_calls=[rank_call, answer_call, verify_call],
+                tool_calls=tool_calls,
                 observation=f"生成答案，verification={verification.get('status')}，证据卡 {len(evidence_cards)} 条。",
             )
         )
@@ -526,7 +593,7 @@ class AgentRunner:
         total_start: float,
         history_count: int,
     ) -> dict[str, Any]:
-        from src.qa_engine import answer_subgraph, detect_unsupported_terms
+        from src.qa_engine import answer_subgraph
         from src.research_agent import build_research_outputs
 
         stage_start = time.perf_counter()
@@ -535,7 +602,10 @@ class AgentRunner:
         research_hit_rows = [hit.to_dict() for hit in state.research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(state.graph_records, evidence_cards)
-        unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
+        if state.graphrag is not None:
+            subgraph = merge_subgraph_edges(subgraph, state.graphrag.edges)
+        checks = verification.get("checks", {}) if isinstance(verification, dict) else {}
+        unsupported_terms = list(checks.get("unsupported_terms") or [])
         research_outputs = build_research_outputs(
             question=contextual_question,
             plan=plan,
@@ -543,8 +613,16 @@ class AgentRunner:
             graph_records=state.graph_records,
             verification=verification,
         )
+        if state.graphrag is not None:
+            graphrag_payload = state.graphrag.to_dict()
+            graphrag_payload["reranker"] = dict(state.reranker)
+            research_outputs["graphrag"] = graphrag_payload
         self._record_timing(timings_ms, "render_payload", stage_start)
 
+        graphrag_diagnostics = state.graphrag.diagnostics() if state.graphrag is not None else {}
+        if graphrag_diagnostics:
+            graphrag_diagnostics["reranker_source"] = state.reranker.get("source", graphrag_diagnostics.get("reranker_source", ""))
+            graphrag_diagnostics["reranker_mode"] = state.reranker.get("mode", graphrag_diagnostics.get("reranker_mode", ""))
         diagnostics = {
             "graph_backend": self.engine.status.graph_backend,
             "graph_records": len(state.graph_records),
@@ -577,6 +655,7 @@ class AgentRunner:
             "agent_coverage": state.coverage_report.to_dict() if state.coverage_report else {},
             "agent_stop_reason": state.coverage_report.stop_reason if state.coverage_report else "",
             "agent_budget": task_plan.budgets.to_dict(),
+            "graphrag": graphrag_diagnostics,
         }
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
@@ -598,6 +677,7 @@ class AgentRunner:
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
             "research_outputs": research_outputs,
+            "verification": verification,
             "subgraph": subgraph,
             "diagnostics": diagnostics,
             "errors": errors,
@@ -688,3 +768,15 @@ def merge_semantic_hits(existing: list[SemanticHit], additions: list[SemanticHit
         seen.add(key)
         output.append(hit)
     return output
+
+
+def merge_subgraph_edges(existing: list[dict[str, str]], additions: list[dict[str, str]]) -> list[dict[str, str]]:
+    output = list(existing)
+    seen = {(edge.get("source", ""), edge.get("target", ""), edge.get("label", "")) for edge in output}
+    for edge in additions:
+        key = (edge.get("source", ""), edge.get("target", ""), edge.get("label", ""))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(edge)
+    return output[:120]

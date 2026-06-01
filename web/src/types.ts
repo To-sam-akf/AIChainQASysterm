@@ -41,6 +41,7 @@ export interface QAResult {
   evidence_cards: Record<string, unknown>[];
   evidence: Record<string, unknown>[];
   research_outputs?: ResearchOutputs;
+  verification?: VerificationResult;
   subgraph: GraphEdge[];
   diagnostics: Record<string, unknown>;
   errors: string[];
@@ -58,8 +59,39 @@ export interface ResearchOutputs {
   };
   risk_checklist?: Record<string, string>[];
   evidence_gaps?: Record<string, string>[];
+  verification?: VerificationResult;
   task_outputs?: Record<string, unknown>;
   meta?: Record<string, unknown>;
+}
+
+export interface ConflictClaim {
+  citation_id?: string;
+  claim_id?: string;
+  title?: string;
+  evidence?: string;
+  source?: string;
+  page?: string;
+  as_of_date?: string;
+  claim_type?: string;
+  exposure_level?: string;
+}
+
+export interface ConflictGroup {
+  conflict_group_id: string;
+  conflict_type: string;
+  topic?: string;
+  company?: string;
+  claim_a: ConflictClaim;
+  claim_b: ConflictClaim;
+  resolution: string;
+  confidence?: string;
+}
+
+export interface VerificationResult {
+  status: "pass" | "warn" | "fail" | string;
+  checks: Record<string, unknown>;
+  evidence_gaps?: Record<string, string>[];
+  conflict_groups?: ConflictGroup[];
 }
 
 export interface ClaimReviewRequest {
@@ -116,6 +148,8 @@ export interface AgentTask {
     task_schema_type?: string;
     evidence_gap_count?: number;
     evidence_card_count?: number;
+    verification_status?: string;
+    conflict_group_count?: number;
     qa_answer?: string;
     contextual_question?: string;
     answer_type?: string;

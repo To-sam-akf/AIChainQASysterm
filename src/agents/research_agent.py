@@ -316,6 +316,13 @@ def final_outputs_from_result(
     gaps = research_outputs.get("evidence_gaps") if isinstance(research_outputs, dict) else []
     if not isinstance(gaps, list):
         gaps = []
+    verification = result.get("verification") if isinstance(result.get("verification"), dict) else {}
+    if not verification and isinstance(research_outputs, dict):
+        candidate = research_outputs.get("verification")
+        verification = candidate if isinstance(candidate, dict) else {}
+    conflict_groups = verification.get("conflict_groups") if isinstance(verification, dict) else []
+    if not isinstance(conflict_groups, list):
+        conflict_groups = []
     return {
         "report_markdown": str(report.get("markdown") or ""),
         "report_title": str(report.get("title") or "投研简报"),
@@ -324,6 +331,8 @@ def final_outputs_from_result(
         "task_schema_type": task_schema_type,
         "evidence_gap_count": len(gaps),
         "evidence_card_count": len(evidence_cards),
+        "verification_status": str(verification.get("status") or ""),
+        "conflict_group_count": len(conflict_groups),
         "qa_answer": str(result.get("answer") or ""),
         "contextual_question": str(result.get("contextual_question") or result.get("question") or ""),
         "answer_type": str(result.get("answer_type") or ""),

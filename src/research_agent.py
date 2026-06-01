@@ -45,18 +45,24 @@ def build_research_outputs(
     """
     cards = list(evidence_cards or [])
     verification = verification or {}
-    gaps = evidence_gap_list(question, plan, cards, graph_records, verification)
+    gaps = merge_gap_rows(
+        evidence_gap_list(question, plan, cards, graph_records, verification),
+        list(verification.get("evidence_gaps") or []),
+    )
     return {
         "report": research_report(question, plan, cards, graph_records, gaps),
         "company_compare_table": company_compare_table(plan, cards, graph_records),
         "risk_checklist": risk_checklist(plan, cards, graph_records),
         "evidence_gaps": gaps,
+        "verification": verification,
         "meta": {
             "question": question,
             "answer_type": str(getattr(plan, "answer_type", "")),
             "companies": list(getattr(plan, "companies", []) or []),
             "topics": list(getattr(plan, "topics", []) or []),
             "evidence_cards": len(cards),
+            "verification_status": str(verification.get("status") or ""),
+            "conflict_group_count": len(verification.get("conflict_groups") or []),
         },
     }
 
@@ -432,6 +438,25 @@ def dedupe_gap_rows(rows: list[dict[str, str]]) -> list[dict[str, str]]:
         seen.add(key)
         output.append(row)
     return output
+
+
+def merge_gap_rows(*groups: list[Any]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for group in groups:
+        for item in group:
+            if not isinstance(item, dict):
+                continue
+            gap = str(item.get("gap") or item.get("reason") or "").strip()
+            if not gap:
+                continue
+            rows.append(
+                {
+                    "gap": gap,
+                    "priority": str(item.get("priority") or "中"),
+                    "suggested_source": str(item.get("suggested_source") or ""),
+                }
+            )
+    return dedupe_gap_rows(rows)[:12]
 
 
 def follow_up_for_risk(risk: str) -> str:

@@ -30,6 +30,12 @@ class FailingSemanticIndex:
         raise RuntimeError("embedding service unavailable")
 
 
+class UnsupportedNumberLLMClient:
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
+        del system_prompt, user_prompt, temperature, kwargs
+        return "结论：浪潮信息 2026 年 AI服务器收入达到 10亿元 [E1]。"
+
+
 def test_agent_runner_is_enabled_by_default_and_records_four_phase_trace() -> None:
     graph = LocalKnowledgeGraph(
         entities=[],
@@ -120,9 +126,38 @@ def test_agent_verification_fails_when_no_evidence_is_available() -> None:
 
     result = engine.answer_question("不存在的技术有哪些公司涉及？")
 
-    assert result["answer"] == NO_EVIDENCE_ANSWER
+    assert NO_EVIDENCE_ANSWER not in result["answer"]
+    assert "证据缺口" in result["answer"]
+    assert result["verification"]["status"] == "fail"
     assert result["diagnostics"]["agent_verification"]["status"] == "fail"
     assert result["diagnostics"]["agent_verification"]["checks"]["evidence_count"] == 0
+
+
+def test_agent_replaces_unsupported_numeric_answer_with_evidence_limited_answer() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {
+                "head_type": "Company",
+                "head_name": "浪潮信息",
+                "relation": "HAS_PRODUCT",
+                "tail_type": "Product",
+                "tail_name": "AI服务器",
+                "evidence": "浪潮信息布局AI服务器。",
+                "source_title": "报告",
+                "page": "1",
+                "source_tier": "1",
+                "section": "主营业务",
+            }
+        ],
+    )
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=UnsupportedNumberLLMClient())
+
+    result = engine.answer_question("哪些上市公司涉及AI服务器？")
+
+    assert "收入达到 10亿元" not in result["answer"]
+    assert "证据缺口" in result["answer"]
+    assert result["verification"]["checks"]["numeric_support"]["unsupported"] == []
 
 
 def test_agent_uses_semantic_hits_as_evidence_cards() -> None:

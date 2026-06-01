@@ -1090,6 +1090,48 @@ class ResearchMemory:
         hits.sort(key=lambda hit: (-hit.score, hit.kind, hit.topic, hit.company, hit.title))
         return diversify_research_hits(dedupe_research_hits(hits))[:limit]
 
+    def search_global_dossiers(
+        self,
+        question: str,
+        plan: Any,
+        *,
+        limit: int = 3,
+        topics: list[str] | None = None,
+    ) -> list[ResearchHit]:
+        """Search topic-level dossiers for broad GraphRAG/global context."""
+        selected_topics = topics or query_topics(question, getattr(plan, "topics", []), getattr(plan, "expanded_topics", []))
+        hits = self._search_dossiers(question, selected_topics, plan)
+        hits.sort(key=lambda hit: (-hit.score, hit.topic, hit.title))
+        return dedupe_research_hits(hits)[: max(0, limit)]
+
+    def search_local_claims(
+        self,
+        question: str,
+        plan: Any,
+        *,
+        limit: int = 12,
+        claim_types: list[str] | set[str] | tuple[str, ...] | None = None,
+        companies: list[str] | set[str] | tuple[str, ...] | None = None,
+        topics: list[str] | set[str] | tuple[str, ...] | None = None,
+    ) -> list[ResearchHit]:
+        """Search local claim bundles with optional company/type/topic filters."""
+        selected_topics = list(topics or []) or query_topics(
+            question,
+            getattr(plan, "topics", []),
+            getattr(plan, "expanded_topics", []),
+        )
+        claim_type_set = {str(item) for item in (claim_types or []) if str(item)}
+        company_set = {str(item) for item in (companies or getattr(plan, "companies", []) or []) if str(item)}
+        hits = []
+        for hit in self._search_claims(question, selected_topics, plan):
+            if claim_type_set and hit.claim_type not in claim_type_set:
+                continue
+            if company_set and hit.company and hit.company not in company_set:
+                continue
+            hits.append(hit)
+        hits.sort(key=lambda hit: (-hit.score, hit.claim_type, hit.topic, hit.company, hit.title))
+        return diversify_research_hits(dedupe_research_hits(hits))[: max(0, limit)]
+
     def _search_dossiers(self, question: str, topics: list[str], plan: Any) -> list[ResearchHit]:
         hits = []
         focus_terms = query_focus_terms(question)

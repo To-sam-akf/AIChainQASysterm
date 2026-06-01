@@ -905,7 +905,6 @@ Agent 能根据证据覆盖情况决定下一步。
 - 增加 Dockerfile。
 - 补齐 docker compose。
 - 增加 CI。
-- 修复 `tests/test_api.py` 挂起问题。
 - 增加最小可运行 demo。
 
 验收标准：

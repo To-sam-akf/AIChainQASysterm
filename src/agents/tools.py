@@ -121,6 +121,19 @@ def default_tool_registry() -> ToolRegistry:
                 requires_llm=True,
             ),
             AgentToolSpec(
+                name="graphrag_retrieve",
+                description="Run Query Router, global dossier search, local claim search, DRIFT subquestions, multi-hop paths, and company ranking.",
+                input_schema={"query": "string", "plan": "QuestionPlan", "graph_records": "object[]"},
+                output_schema={"graphrag": "GraphRagResult"},
+            ),
+            AgentToolSpec(
+                name="rerank_evidence",
+                description="Optionally rerank evidence with an LLM for broad GraphRAG questions and fall back to deterministic ranking.",
+                input_schema={"question": "string", "evidence_cards": "EvidenceCard[]"},
+                output_schema={"evidence_cards": "EvidenceCard[]", "metadata": "object"},
+                requires_llm=True,
+            ),
+            AgentToolSpec(
                 name="rank_evidence",
                 description="Merge, budget, and rank graph, RAG, claim, dossier, and semantic evidence cards.",
                 input_schema={"raw_cards": "EvidenceCard[]", "plan": "QuestionPlan"},
@@ -128,7 +141,7 @@ def default_tool_registry() -> ToolRegistry:
             ),
             AgentToolSpec(
                 name="verify_answer_support",
-                description="Check citation ids, company coverage, risk evidence, and unsupported answer terms.",
+                description="Check citations, numbers, metrics, exposure levels, risks, company coverage, and conflict evidence.",
                 input_schema={"answer": "string", "evidence_cards": "EvidenceCard[]"},
                 output_schema={"verification": "object"},
             ),

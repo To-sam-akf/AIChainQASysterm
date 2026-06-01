@@ -18,6 +18,7 @@ from src.extraction_schema import normalize_name
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, subgraph_edges
 from src.llm_client import OpenAICompatibleClient, load_dotenv
 from src.neo4j_client import Neo4jReadClient
+from src.agents.verification import build_evidence_limited_answer, verify_answer_support
 from src.professional_qa import (
     build_professional_answer_prompt,
     cards_from_graph_records,
@@ -32,6 +33,7 @@ from src.professional_qa import (
 )
 from src.question_planner import QuestionPlan, extract_companies, heuristic_plan_question, plan_question
 from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex, RagHit
+from src.reranker import normalize_rerank_mode
 from src.research_agent import build_research_outputs
 from src.research_claims import DEFAULT_RESEARCH_DIR, ResearchHit, ResearchMemory
 from src.semantic_index import DEFAULT_SEMANTIC_DIR, SemanticIndex
@@ -135,6 +137,11 @@ class QAEngine:
         history_max_chars: int = 4000,
         enable_agent: bool = True,
         agent_max_steps: int = 4,
+        rerank_mode: str = "auto",
+        drift_max_subquestions: int = 6,
+        global_dossier_top_k: int = 3,
+        local_claim_top_k: int = 12,
+        graph_path_top_k: int = 6,
         status: QAEngineStatus | None = None,
     ) -> None:
         self.llm_client = llm_client
@@ -156,6 +163,11 @@ class QAEngine:
         self.history_max_chars = history_max_chars
         self.enable_agent = enable_agent
         self.agent_max_steps = normalize_agent_max_steps(agent_max_steps)
+        self.rerank_mode = normalize_rerank_mode(rerank_mode)
+        self.drift_max_subquestions = max(1, int(drift_max_subquestions or 6))
+        self.global_dossier_top_k = max(0, int(global_dossier_top_k or 3))
+        self.local_claim_top_k = max(0, int(local_claim_top_k or 12))
+        self.graph_path_top_k = max(0, int(graph_path_top_k or 6))
         self.status = status or QAEngineStatus(
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
@@ -182,6 +194,11 @@ class QAEngine:
         history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "4000"))
         enable_agent = os.getenv("QA_ENABLE_AGENT", "true").casefold() != "false"
         agent_max_steps = normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
+        rerank_mode = normalize_rerank_mode(os.getenv("QA_RERANK_MODE", "auto"))
+        drift_max_subquestions = int(os.getenv("QA_DRIFT_MAX_SUBQUESTIONS", "6"))
+        global_dossier_top_k = int(os.getenv("QA_GLOBAL_DOSSIER_TOP_K", "3"))
+        local_claim_top_k = int(os.getenv("QA_LOCAL_CLAIM_TOP_K", "12"))
+        graph_path_top_k = int(os.getenv("QA_GRAPH_PATH_TOP_K", "6"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
 
         llm_client = None
@@ -285,6 +302,11 @@ class QAEngine:
             history_max_chars=history_max_chars,
             enable_agent=enable_agent,
             agent_max_steps=agent_max_steps,
+            rerank_mode=rerank_mode,
+            drift_max_subquestions=drift_max_subquestions,
+            global_dossier_top_k=global_dossier_top_k,
+            local_claim_top_k=local_claim_top_k,
+            graph_path_top_k=graph_path_top_k,
             status=status,
         )
 
@@ -399,14 +421,19 @@ class QAEngine:
         )
         record_timing(timings_ms, "answer", stage_start)
 
+        verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+        if verification.get("status") == "fail":
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification)
+            reasoning_content = ""
+            verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
         research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(graph_records, evidence_cards)
-        unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
-        verification = {"status": "skipped", "checks": {"unsupported_terms": unsupported_terms}}
+        unsupported_terms = list(verification.get("checks", {}).get("unsupported_terms") or [])
         research_outputs = build_research_outputs(
             question=contextual_question,
             plan=plan,
@@ -465,6 +492,7 @@ class QAEngine:
             "evidence_cards": evidence_card_rows,
             "evidence": evidence,
             "research_outputs": research_outputs,
+            "verification": verification,
             "subgraph": subgraph,
             "diagnostics": diagnostics,
             "errors": errors,
@@ -610,14 +638,19 @@ class QAEngine:
                 reasoning_content = str(event.get("reasoning_content") or "")
         record_timing(timings_ms, "answer", stage_start)
 
+        verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+        if verification.get("status") == "fail":
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification)
+            reasoning_content = ""
+            verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)
         rag_hit_rows = [hit.to_dict() for hit in rag_hits]
         research_hit_rows = [hit.to_dict() for hit in research_hits]
         evidence_card_rows = [card.to_dict() for card in evidence_cards]
         subgraph = answer_subgraph(graph_records, evidence_cards)
-        unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
-        verification = {"status": "skipped", "checks": {"unsupported_terms": unsupported_terms}}
+        unsupported_terms = list(verification.get("checks", {}).get("unsupported_terms") or [])
         research_outputs = build_research_outputs(
             question=contextual_question,
             plan=plan,
@@ -678,6 +711,7 @@ class QAEngine:
                 "evidence_cards": evidence_card_rows,
                 "evidence": evidence,
                 "research_outputs": research_outputs,
+                "verification": verification,
                 "subgraph": subgraph,
                 "diagnostics": diagnostics,
                 "errors": errors,

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable
 
 from src.agents.executor import ToolExecutor
 from src.cypher_generator import GeneratedCypher
+from src.graphrag import GraphRagResult, run_graphrag
 from src.professional_qa import (
     EvidenceCard,
     cards_from_graph_records,
@@ -17,6 +17,7 @@ from src.professional_qa import (
 )
 from src.question_planner import QuestionPlan, heuristic_plan_question, plan_question
 from src.rag_index import RagHit
+from src.reranker import EvidenceReranker
 from src.research_claims import ResearchHit
 from src.semantic_index import SemanticHit
 
@@ -50,6 +51,7 @@ class AgentTools:
         self.llm_options = llm_options
         self.llm_client = llm_client
         self.executor = ToolExecutor(errors=errors)
+        self.last_reranker_metadata: dict[str, Any] = {}
 
     def contextualize_question(self, question: str, history: list[dict[str, str]]) -> tuple[str, AgentToolCall]:
         return self._call(
@@ -150,6 +152,28 @@ class AgentTools:
         )
         return result or [], call
 
+    def run_graphrag(
+        self,
+        question: str,
+        plan: QuestionPlan,
+        graph_records: list[dict[str, Any]],
+    ) -> tuple[GraphRagResult, AgentToolCall]:
+        return self._call(
+            "graphrag_retrieve",
+            {"question": question[:160], "answer_type": plan.answer_type},
+            lambda: run_graphrag(
+                question=question,
+                plan=plan,
+                research_memory=getattr(self.engine, "research_memory", None),
+                graph_records=graph_records,
+                max_subquestions=int(getattr(self.engine, "drift_max_subquestions", 6)),
+                global_top_k=int(getattr(self.engine, "global_dossier_top_k", 3)),
+                local_top_k=int(getattr(self.engine, "local_claim_top_k", 12)),
+                path_top_k=int(getattr(self.engine, "graph_path_top_k", 6)),
+            ),
+            lambda result: len(result.global_hits) + len(result.local_hits) + len(result.paths) + len(result.company_rankings),
+        )
+
     def rank_evidence(
         self,
         research_hits: list[ResearchHit],
@@ -157,6 +181,7 @@ class AgentTools:
         rag_hits: list[RagHit],
         semantic_hits: list[SemanticHit],
         plan: QuestionPlan,
+        graphrag_result: GraphRagResult | None = None,
     ) -> tuple[list[EvidenceCard], list[EvidenceCard], AgentToolCall]:
         def run() -> tuple[list[EvidenceCard], list[EvidenceCard]]:
             from src.qa_engine import ensure_relation_cards
@@ -166,20 +191,45 @@ class AgentTools:
                 *cards_from_graph_records(graph_records, plan),
                 *cards_from_rag_hits(rag_hits, plan),
                 *cards_from_semantic_hits(semantic_hits, plan),
+                *cards_from_graphrag_result(graphrag_result, plan),
             ]
-            evidence_cards = rank_evidence_cards(raw_cards, limit=self.engine.evidence_top_n, plan=plan)
+            candidate_limit = max(int(getattr(self.engine, "evidence_top_n", 6)), int(getattr(self.engine, "rerank_top_n", 12)))
+            evidence_cards = rank_evidence_cards(raw_cards, limit=candidate_limit, plan=plan)
             if plan.answer_type == "risk_analysis":
                 evidence_cards = ensure_relation_cards(
                     evidence_cards,
                     raw_cards,
                     "DISCLOSES_RISK",
-                    limit=self.engine.evidence_top_n,
+                    limit=candidate_limit,
+                )
+            reranker = EvidenceReranker(mode=str(getattr(self.engine, "rerank_mode", "auto")))
+            use_llm_rerank = bool(graphrag_result and graphrag_result.route.use_drift)
+            reranked = reranker.rerank(
+                question=plan.question,
+                cards=evidence_cards,
+                limit=int(getattr(self.engine, "evidence_top_n", 6)),
+                llm_client=self.llm_client,
+                llm_options=self.llm_options,
+                use_llm=use_llm_rerank,
+            )
+            self.last_reranker_metadata = reranked.metadata
+            evidence_cards = reranked.cards
+            if plan.answer_type == "risk_analysis":
+                evidence_cards = ensure_relation_cards(
+                    evidence_cards,
+                    raw_cards,
+                    "DISCLOSES_RISK",
+                    limit=int(getattr(self.engine, "evidence_top_n", 6)),
                 )
             return raw_cards, evidence_cards
 
         result, call = self._call(
             "rank_evidence",
-            {"answer_type": plan.answer_type, "evidence_top_n": self.engine.evidence_top_n},
+            {
+                "answer_type": plan.answer_type,
+                "evidence_top_n": self.engine.evidence_top_n,
+                "graphrag": bool(graphrag_result),
+            },
             run,
             lambda result: len(result[1]),
         )
@@ -217,11 +267,12 @@ class AgentTools:
         plan: QuestionPlan,
         evidence_cards: list[EvidenceCard],
         raw_cards: list[EvidenceCard],
+        question: str = "",
     ) -> tuple[dict[str, Any], AgentToolCall]:
         return self._call(
             "verify_answer_support",
             {"answer_type": plan.answer_type, "evidence_cards": len(evidence_cards)},
-            lambda: verify_answer_support(answer, plan, evidence_cards, raw_cards),
+            lambda: verify_answer_support(answer, plan, evidence_cards, raw_cards, question=question),
             lambda result: len(result.get("checks", {})),
         )
 
@@ -288,50 +339,59 @@ def cards_from_semantic_hits(hits: list[SemanticHit], plan: QuestionPlan) -> lis
     return cards
 
 
+def cards_from_graphrag_result(result: GraphRagResult | None, plan: QuestionPlan) -> list[EvidenceCard]:
+    del plan
+    if result is None:
+        return []
+    cards: list[EvidenceCard] = []
+    for ranking in result.company_rankings:
+        evidence = (
+            f"{ranking.company} 综合排序：{ranking.reason}。"
+            f"指标证据：{ranking.indicator_evidence or '当前证据不足'}；"
+            f"风险证据：{ranking.risk_evidence or '当前证据不足'}。"
+        )
+        cards.append(
+            EvidenceCard(
+                citation_id="",
+                kind="company_ranking",
+                title=f"{ranking.company} GraphRAG 公司排序",
+                evidence=evidence,
+                company=ranking.company,
+                source="图谱推理公司排序",
+                score=round(70.0 + ranking.score, 4),
+                reason="GraphRAG 公司排序",
+                topic=ranking.topic,
+                claim_type="company_exposure",
+                exposure_level=ranking.exposure_level,
+            )
+        )
+    for path in result.paths:
+        cards.append(
+            EvidenceCard(
+                citation_id="",
+                kind="graphrag_path",
+                title=f"{path.company} 多跳路径",
+                evidence=path.explanation,
+                company=path.company,
+                source="图谱推理多跳路径",
+                score=round(64.0 + path.score, 4),
+                reason="GraphRAG 多跳路径",
+                topic=path.topic,
+                claim_type="supply_chain",
+                exposure_level="",
+            )
+        )
+    return cards
+
+
 def verify_answer_support(
     answer: str,
     plan: QuestionPlan,
     evidence_cards: list[EvidenceCard],
     raw_cards: list[EvidenceCard],
+    *,
+    question: str = "",
 ) -> dict[str, Any]:
-    from src.qa_engine import detect_unsupported_terms
+    from src.agents.verification import verify_answer_support as verify
 
-    unsupported_terms = detect_unsupported_terms(answer, evidence_cards)
-    citation_ids = {card.citation_id for card in evidence_cards if card.citation_id}
-    cited_ids = set(re.findall(r"\[(E\d+)\]", answer))
-    missing_citations = sorted(cited_ids - citation_ids)
-    company_coverage = company_coverage_checks(plan, evidence_cards, raw_cards)
-    risk_cards = [
-        card
-        for card in evidence_cards
-        if card.claim_type == "risk" or card.relation == "DISCLOSES_RISK"
-    ]
-    checks = {
-        "evidence_count": len(evidence_cards),
-        "raw_evidence_count": len(raw_cards),
-        "company_coverage": company_coverage,
-        "risk_evidence_count": len(risk_cards),
-        "citation_ids": sorted(citation_ids),
-        "missing_citations": missing_citations,
-        "unsupported_terms": unsupported_terms,
-    }
-    if not evidence_cards:
-        status = "fail"
-    elif unsupported_terms or missing_citations or company_coverage.get("missing"):
-        status = "warn"
-    else:
-        status = "pass"
-    return {"status": status, "checks": checks}
-
-
-def company_coverage_checks(
-    plan: QuestionPlan,
-    evidence_cards: list[EvidenceCard],
-    raw_cards: list[EvidenceCard],
-) -> dict[str, Any]:
-    if not plan.companies:
-        return {"required": [], "covered": [], "missing": []}
-    cards = evidence_cards or raw_cards
-    covered = sorted({card.company for card in cards if card.company in set(plan.companies)})
-    missing = [company for company in plan.companies if company not in covered]
-    return {"required": plan.companies, "covered": covered, "missing": missing}
+    return verify(answer, plan, evidence_cards, raw_cards, question=question)

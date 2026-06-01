@@ -273,6 +273,11 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_CORE_COMPANIES_ONLY`：公司列表类问题默认只返回核心 A 股上市公司。
 - `QA_RERANK_TOP_N`：证据重排候选数量。
 - `QA_EVIDENCE_TOP_N`：最终进入答案的证据卡片数量。
+- `QA_RERANK_MODE`：GraphRAG 证据精排模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`；宽问题且 LLM 可用时才会调用 LLM 精排。
+- `QA_DRIFT_MAX_SUBQUESTIONS`：DRIFT 宽问题最多拆解的子问题数，默认 6。
+- `QA_GLOBAL_DOSSIER_TOP_K`：GraphRAG global dossier 召回数量，默认 3。
+- `QA_LOCAL_CLAIM_TOP_K`：GraphRAG local claim 召回数量，默认 12。
+- `QA_GRAPH_PATH_TOP_K`：GraphRAG 多跳路径数量，默认 6。
 - `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
 - `RAG_TOP_K`：每次问答检索的本地文档块数量。
 - `RAG_SEARCH_CACHE_SIZE`：本地 RAG 查询结果 LRU 缓存大小，默认 128。

@@ -77,6 +77,18 @@ class FakeResearchEngine:
                     }
                 ],
                 "evidence_gaps": [{"gap": "缺少订单验证", "priority": "高"}],
+                "verification": {
+                    "status": "warn",
+                    "checks": {},
+                    "evidence_gaps": [{"gap": "缺少订单验证", "priority": "高"}],
+                    "conflict_groups": [{"conflict_group_id": "conflict_1"}],
+                },
+            },
+            "verification": {
+                "status": "warn",
+                "checks": {},
+                "evidence_gaps": [{"gap": "缺少订单验证", "priority": "高"}],
+                "conflict_groups": [{"conflict_group_id": "conflict_1"}],
             },
             "diagnostics": {
                 "agent_trace": [
@@ -194,6 +206,8 @@ def test_research_agent_generates_completed_task_with_outputs(tmp_path: Path) ->
     assert task["final_outputs"]["task_label"] == "投研简报"
     assert task["final_outputs"]["evidence_card_count"] == 2
     assert task["final_outputs"]["evidence_gap_count"] == 1
+    assert task["final_outputs"]["verification_status"] == "warn"
+    assert task["final_outputs"]["conflict_group_count"] == 1
     assert task["tool_calls"][0]["tool"] == "plan_question"
     assert store.get(task["task_id"])["status"] == "completed"
 

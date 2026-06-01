@@ -47,6 +47,7 @@ import type {
   AgentTaskSummary,
   AgentTaskType,
   ApiStatus,
+  ConflictGroup,
   Conversation,
   ConversationSummary,
   ConversationTurn,
@@ -54,11 +55,12 @@ import type {
   GraphSubgraph,
   GraphSummary,
   ClaimReviewRequest,
-  ResearchOutputs
+  ResearchOutputs,
+  VerificationResult
 } from "./types";
 
 type View = "chat" | "overview" | "graph" | "agents";
-type DetailTab = "research" | "evidence" | "cypher" | "diagnostics" | "graph";
+type DetailTab = "research" | "verification" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
 const AGENT_TASK_TYPES: Array<{ value: AgentTaskType; label: string; description: string }> = [
@@ -875,9 +877,13 @@ function AgentTasksView(props: {
               <div className="agent-stat-grid">
                 <StatCard label="证据卡" value={String(task.final_outputs.evidence_card_count ?? task.evidence_cards.length)} />
                 <StatCard label="证据缺口" value={String(task.final_outputs.evidence_gap_count ?? 0)} />
+                <StatCard label="验证状态" value={verificationStatusLabel(task.final_outputs.verification_status)} />
+                <StatCard label="冲突证据" value={String(task.final_outputs.conflict_group_count ?? 0)} />
                 <StatCard label="执行步骤" value={String(task.steps.length)} />
                 <StatCard label="工具调用" value={String(task.tool_calls.length)} />
               </div>
+
+              <VerificationPanel verification={verificationFromTask(task)} />
 
               <ResearchOutputsView outputs={task.research_outputs} />
 
@@ -929,6 +935,31 @@ function agentStatusLabel(status: AgentTask["status"]) {
 
 function agentTaskTypeLabel(taskType: AgentTaskType | string) {
   return AGENT_TASK_TYPES.find((item) => item.value === taskType)?.label ?? String(taskType || "Agent");
+}
+
+function verificationFromResult(result: ConversationTurn["result"]): VerificationResult | undefined {
+  return (
+    asVerification(result.verification) ??
+    asVerification(result.research_outputs?.verification) ??
+    asVerification(result.diagnostics?.agent_verification)
+  );
+}
+
+function verificationFromTask(task: AgentTask): VerificationResult | undefined {
+  return asVerification(task.research_outputs?.verification) ?? asVerification(task.diagnostics?.agent_verification);
+}
+
+function asVerification(value: unknown): VerificationResult | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const record = value as Record<string, unknown>;
+  return typeof record.status === "string" ? (record as unknown as VerificationResult) : undefined;
+}
+
+function verificationStatusLabel(status?: string) {
+  if (status === "pass") return "通过";
+  if (status === "warn") return "需关注";
+  if (status === "fail") return "未通过";
+  return "未校验";
 }
 
 function StatCard(props: { label: string; value: string }) {
@@ -1110,6 +1141,7 @@ function DetailDrawer(props: {
   if (!props.turn || !props.open) return null;
   const result = props.turn.result;
   const evidence = result.evidence_cards?.length ? result.evidence_cards : result.evidence;
+  const verification = verificationFromResult(result);
 
   return (
     <aside className="detail-drawer">
@@ -1128,6 +1160,7 @@ function DetailDrawer(props: {
       <div className="drawer-tabs">
         {[
           ["research", "投研"],
+          ["verification", "验证"],
           ["evidence", "证据"],
           ["cypher", "查询"],
           ["diagnostics", "诊断"],
@@ -1145,6 +1178,7 @@ function DetailDrawer(props: {
       </div>
       <div className="drawer-body">
         {props.tab === "research" && <ResearchOutputsView outputs={result.research_outputs} />}
+        {props.tab === "verification" && <VerificationPanel verification={verification} />}
         {props.tab === "evidence" && (
           <EvidenceCards rows={evidence} empty="当前没有证据卡片" onClaimReview={props.onClaimReview} />
         )}
@@ -1871,6 +1905,88 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
         </div>
         <ResearchList rows={gaps} primaryKey="gap" secondaryKeys={["priority", "suggested_source"]} empty="当前证据包未识别出关键缺口" />
       </section>
+    </div>
+  );
+}
+
+const CONFLICT_TYPE_LABELS: Record<string, string> = {
+  optimistic_vs_risk: "乐观判断 vs 风险披露",
+  old_vs_new: "新旧证据冲突",
+  exposure_level_conflict: "敞口等级冲突",
+  technical_route_conflict: "技术路线冲突"
+};
+
+function VerificationPanel(props: { verification?: VerificationResult }) {
+  const verification = props.verification;
+  if (!verification) return <div className="empty-table">当前回答没有生成验证结果</div>;
+  const gaps = arrayRecords(verification.evidence_gaps ?? []);
+  const conflicts = verification.conflict_groups ?? [];
+  return (
+    <div className="verification-panel">
+      <section className="research-section">
+        <div className="research-section-title">
+          <ClipboardList size={16} />
+          <span>验证状态</span>
+        </div>
+        <div className={`verification-summary ${verification.status || "unknown"}`}>
+          <strong>{verificationStatusLabel(verification.status)}</strong>
+          <span>{gaps.length} 个证据缺口</span>
+          <span>{conflicts.length} 组冲突证据</span>
+        </div>
+      </section>
+      <section className="research-section">
+        <div className="research-section-title">
+          <FileText size={16} />
+          <span>证据缺口</span>
+        </div>
+        <ResearchList rows={gaps} primaryKey="gap" secondaryKeys={["priority", "suggested_source"]} empty="验证未发现关键证据缺口" />
+      </section>
+      <section className="research-section">
+        <div className="research-section-title">
+          <ClipboardList size={16} />
+          <span>冲突证据</span>
+        </div>
+        <ConflictGroupsView groups={conflicts} />
+      </section>
+    </div>
+  );
+}
+
+function ConflictGroupsView(props: { groups: ConflictGroup[] }) {
+  if (!props.groups.length) return <div className="empty-table">当前未识别出冲突证据</div>;
+  return (
+    <div className="conflict-list">
+      {props.groups.slice(0, 8).map((group) => (
+        <article className="conflict-card" key={group.conflict_group_id}>
+          <div className="conflict-card-head">
+            <strong>{CONFLICT_TYPE_LABELS[group.conflict_type] ?? group.conflict_type}</strong>
+            <span>{[group.company, group.topic].filter(Boolean).join(" · ") || group.conflict_group_id}</span>
+          </div>
+          <div className="conflict-claims">
+            <ConflictClaimView label="证据 A" claim={group.claim_a} />
+            <ConflictClaimView label="证据 B" claim={group.claim_b} />
+          </div>
+          <p className="conflict-resolution">{group.resolution}</p>
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function ConflictClaimView(props: { label: string; claim: ConflictGroup["claim_a"] }) {
+  const claim = props.claim ?? {};
+  return (
+    <div className="conflict-claim">
+      <span>{props.label}</span>
+      <strong>{claim.citation_id || claim.claim_id || "未编号"}</strong>
+      <p>{claim.evidence || claim.title || "无证据文本"}</p>
+      <div>
+        {claim.source && <em>{claim.source}</em>}
+        {claim.page && <em>p.{claim.page}</em>}
+        {claim.as_of_date && <em>{claim.as_of_date}</em>}
+        {claim.claim_type && <em>{CLAIM_TYPE_LABELS[claim.claim_type] ?? claim.claim_type}</em>}
+        {claim.exposure_level && <em>{EXPOSURE_LABELS[claim.exposure_level] ?? claim.exposure_level}</em>}
+      </div>
     </div>
   );
 }
