@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Install Python dependencies
+        run: UV_CACHE_DIR=/tmp/uv-cache uv sync --frozen --all-extras --dev
+
+      - name: Python tests
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
+
+      - name: QA smoke evaluation
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 3 --json
+
+      - name: Agent smoke evaluation
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm --prefix web ci
+
+      - name: Build frontend
+        run: npm --prefix web run build
+
+      - name: Validate Docker Compose
+        run: docker compose config

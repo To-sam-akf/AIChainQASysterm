@@ -130,7 +130,7 @@ def test_qa_engine_combines_graph_and_rag_evidence(tmp_path: Path) -> None:
     assert result["subgraph"][0]["source"] == "浪潮信息"
 
 
-def test_qa_engine_returns_fixed_answer_without_evidence() -> None:
+def test_qa_engine_returns_evidence_gap_answer_without_evidence() -> None:
     engine = QAEngine(
         llm_client=FakeLLMClient(),
         graph_client=FakeGraphClient([]),
@@ -140,5 +140,8 @@ def test_qa_engine_returns_fixed_answer_without_evidence() -> None:
 
     result = engine.answer_question("不存在的技术有哪些公司涉及？")
 
-    assert result["answer"] == NO_EVIDENCE_ANSWER
+    assert NO_EVIDENCE_ANSWER not in result["answer"]
+    assert "证据缺口" in result["answer"]
     assert result["evidence"] == []
+    assert result["evidence_cards"] == []
+    assert result["verification"]["status"] == "fail"

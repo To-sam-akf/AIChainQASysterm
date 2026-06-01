@@ -1,6 +1,154 @@
-# AIChainQASysterm
+# AIKA
 
-AI 算力产业链知识图谱问答系统。
+AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agent 系统。系统以本地 CSV 知识图谱、Claim/Dossier、RAG 文档块和可选 Neo4j/LLM/embedding 为证据层，通过 FastAPI 提供后端接口，通过 React 工作台提供对话、证据、图谱和 Agent 任务视图。
+
+### 架构流程
+
+```text
+React 工作台
+  -> FastAPI /api
+  -> QAEngine / ResearchAgent
+  -> Question planner / GraphRAG / evidence ranker / verifier
+  -> data/curated CSV + claims + dossiers
+  -> 可选：Neo4j、RAG JSONL、embedding index、OpenAI-compatible LLM
+```
+
+核心目录：
+
+- `src/api.py`：FastAPI 后端与前端 API。
+- `src/qa_engine.py`：问答编排、GraphRAG、证据卡、答案生成和降级逻辑。
+- `src/agents/research_agent.py`：投研 Agent 任务入口。
+- `src/cli.py`：工程化 CLI，统一后端、前端、Agent、评测和 demo 命令。
+- `web/`：Vite + React 工作台。
+- `data/curated/`：已提交的最小可运行图谱、Claim、证据和主题 dossier。
+
+### 快速开始
+
+安装 Python 依赖：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv sync --dev
+```
+
+安装前端依赖：
+
+```bash
+npm --prefix web ci
+```
+
+离线最小 demo：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline
+```
+
+### 五个验收命令
+
+一条命令启动后端：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py api --host 0.0.0.0 --port 8000 --reload
+```
+
+一条命令启动前端：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
+```
+
+一条命令运行 Agent 任务：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py agent --type research_brief "液冷产业链" --offline
+```
+
+一条命令运行评测：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline
+```
+
+一条命令运行最小 demo：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline
+```
+
+### CLI
+
+```bash
+python main.py api --host 0.0.0.0 --port 8000 --reload
+python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
+python main.py agent --type research_brief "液冷产业链" --offline --json
+python main.py eval --suite qa --offline --json
+python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
+python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
+```
+
+默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
+
+### Docker / Compose
+
+构建并启动 API、前端和 Neo4j：
+
+```bash
+docker compose up --build
+```
+
+只启动后端和前端：
+
+```bash
+docker compose up --build api web
+```
+
+服务端口：
+
+- API: `http://127.0.0.1:8000`
+- Web: `http://127.0.0.1:5173`
+- Neo4j Browser: `http://127.0.0.1:7474`
+- Neo4j Bolt: `bolt://127.0.0.1:7687`
+
+Compose 中 Neo4j 默认账号密码为 `neo4j/password123`，与 `.env.example` 保持一致。离线 demo 不依赖 Neo4j；Neo4j 只作为增强图谱后端。
+
+### 环境变量
+
+离线 demo 不要求 `.env`。如果要启用真实 LLM 或 Neo4j，可复制模板：
+
+```bash
+cp .env.example .env
+```
+
+常用变量：
+
+- `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`：OpenAI-compatible LLM。
+- `QA_GRAPH_BACKEND`：`auto`、`csv`、`neo4j`，离线建议 `csv`。
+- `KG_DATA_DIR`：图谱 CSV 目录，默认 `data/curated`。
+- `RESEARCH_ARTIFACT_DIR`：Claim/Dossier 目录，默认 `data/curated`。
+- `EMBEDDING_MODEL`、`EMBEDDING_INDEX_DIR`：语义召回增强。
+- `AGENT_TASK_DIR`：Agent 任务 JSONL 快照目录。
+
+占位 API key（例如 `replace-me`）会被视为未配置，避免最小 demo 误连外部模型。
+
+### 评测与 CI
+
+本地完整回归：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --json
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
+npm --prefix web run build
+docker compose config
+```
+
+CI 位于 `.github/workflows/ci.yml`，默认执行 Python 测试、QA smoke eval、Agent smoke eval、前端构建和 Compose 配置校验。调用真实 LLM 的评测不作为默认 CI 阻塞项。
+
+### 常见问题
+
+- API 能启动但回答没有 LLM 润色：这是离线降级模式的预期行为；配置 `.env` 并使用 `--use-llm` 可启用模型。
+- 前端请求失败：确认后端在 `8000` 端口，或用 `python main.py web --api http://127.0.0.1:8001` 指向实际 API。
+- Neo4j 连接失败：离线模式会自动使用 CSV 图谱；只有显式使用 Neo4j 后端时才需要检查账号、密码和导入数据。
+- 新增 Agent 任务会写入 `data/agent_tasks/`，该目录的运行输出已被 `.gitignore` 忽略。
 
 ## 当前版本：V1.2 稳定版证据包增强的投研 GraphRAG
 

@@ -1,4 +1,45 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: aiqasys-api:local
+    container_name: aiqasys-api
+    command: ["uv", "run", "python", "main.py", "api", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      QA_GRAPH_BACKEND: csv
+      KG_DATA_DIR: data/curated
+      RAG_INDEX_DIR: data/rag
+      RESEARCH_ARTIFACT_DIR: data/curated
+      AGENT_TASK_DIR: data/agent_tasks
+      NEO4J_URI: bolt://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: password123
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+    ports:
+      - "8000:8000"
+    volumes:
+      - conversations:/app/data/conversations
+      - agent_tasks:/app/data/agent_tasks
+
+  web:
+    image: node:22-alpine
+    container_name: aiqasys-web
+    working_dir: /app/web
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0 --port 5173"
+    environment:
+      VITE_API_PROXY_TARGET: http://api:8000
+    ports:
+      - "5173:5173"
+    volumes:
+      - .:/app
+      - web_node_modules:/app/web/node_modules
+    depends_on:
+      - api
+
   neo4j:
     image: neo4j:5.26-community
     container_name: aiqasys-neo4j
@@ -6,12 +47,15 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/password
+      NEO4J_AUTH: neo4j/password123
       NEO4J_PLUGINS: '["apoc"]'
     volumes:
       - neo4j_data:/data
       - neo4j_logs:/logs
 
 volumes:
+  agent_tasks:
+  conversations:
   neo4j_data:
   neo4j_logs:
+  web_node_modules:

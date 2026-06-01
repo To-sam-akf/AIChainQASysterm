@@ -72,6 +72,8 @@ class OpenAICompatibleClient:
     ) -> None:
         load_dotenv()
         self.api_key = api_key or os.getenv("LLM_API_KEY", "")
+        if self.api_key.strip().casefold() in {"replace-me", "changeme", "your-api-key"}:
+            self.api_key = ""
         self.base_url = (base_url or os.getenv("LLM_BASE_URL", "")).rstrip("/")
         self.model = model or os.getenv("LLM_MODEL", "")
         self.timeout = timeout

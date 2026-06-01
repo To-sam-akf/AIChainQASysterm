@@ -1,13 +1,19 @@
 from pathlib import Path
 from types import SimpleNamespace
 
-from fastapi.testclient import TestClient
+import httpx
+import pytest
 
 from src.api import app, get_agent_task_store, get_conversation_store, get_knowledge_graph, get_qa_engine
 from src.agents.store import AgentTaskStore
 from src.conversation_store import ConversationStore
 from src.frontend_data import LocalKnowledgeGraph
 from src.research_claims import CLAIM_REVIEWS_FILE, ResearchMemory
+
+
+@pytest.fixture
+def anyio_backend() -> str:
+    return "asyncio"
 
 
 class FakeEngine:
@@ -85,7 +91,7 @@ class FakeEngine:
         }
 
 
-def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
+def make_test_client(tmp_path: Path, engine: FakeEngine) -> httpx.AsyncClient:
     graph = LocalKnowledgeGraph(
         entities=[
             {"type": "Company", "name": "浪潮信息", "normalized_name": "浪潮信息"},
@@ -118,18 +124,20 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> TestClient:
     app.dependency_overrides[get_agent_task_store] = override_agent_store
     app.dependency_overrides[get_qa_engine] = override_engine
     app.dependency_overrides[get_knowledge_graph] = override_graph
-    return TestClient(app)
+    transport = httpx.ASGITransport(app=app)
+    return httpx.AsyncClient(transport=transport, base_url="http://testserver")
 
 
-def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> None:
     engine = FakeEngine()
     client = make_test_client(tmp_path, engine)
     try:
-        created = client.post("/api/conversations", json={"title": ""})
+        created = await client.post("/api/conversations", json={"title": ""})
         assert created.status_code == 201
         conversation_id = created.json()["id"]
 
-        first = client.post(
+        first = await client.post(
             f"/api/conversations/{conversation_id}/messages",
             json={"question": "中际旭创和新易盛在光模块业务上的差异是什么？", "thinking_enabled": False},
         )
@@ -137,7 +145,7 @@ def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> Non
         assert first.json()["conversation"]["turns"][0]["answer"].startswith("回答：")
         assert first.json()["turn"]["result"]["verification"]["status"] == "warn"
 
-        second = client.post(
+        second = await client.post(
             f"/api/conversations/{conversation_id}/messages",
             json={"question": "继续说它们的主要风险", "thinking_enabled": True, "reasoning_effort": "medium"},
         )
@@ -149,48 +157,52 @@ def test_api_conversation_lifecycle_and_multiturn_history(tmp_path: Path) -> Non
         assert engine.calls[1]["thinking_enabled"] is True
         assert engine.calls[1]["reasoning_effort"] == "medium"
 
-        fetched = client.get(f"/api/conversations/{conversation_id}")
+        fetched = await client.get(f"/api/conversations/{conversation_id}")
         assert fetched.status_code == 200
         assert len(fetched.json()["turns"]) == 2
 
-        renamed = client.patch(f"/api/conversations/{conversation_id}", json={"title": "光模块比较"})
+        renamed = await client.patch(f"/api/conversations/{conversation_id}", json={"title": "光模块比较"})
         assert renamed.status_code == 200
         assert renamed.json()["title"] == "光模块比较"
 
-        listed = client.get("/api/conversations")
+        listed = await client.get("/api/conversations")
         assert listed.status_code == 200
         assert listed.json()["conversations"][0]["turn_count"] == 2
 
-        exported = client.get(f"/api/conversations/{conversation_id}/export?format=md")
+        exported = await client.get(f"/api/conversations/{conversation_id}/export?format=md")
         assert exported.status_code == 200
         assert "继续说它们的主要风险" in exported.text
 
-        deleted = client.delete(f"/api/conversations/{conversation_id}")
+        deleted = await client.delete(f"/api/conversations/{conversation_id}")
         assert deleted.status_code == 204
     finally:
+        await client.aclose()
         app.dependency_overrides.clear()
 
 
-def test_api_rejects_empty_question_and_missing_conversation(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_api_rejects_empty_question_and_missing_conversation(tmp_path: Path) -> None:
     engine = FakeEngine()
     client = make_test_client(tmp_path, engine)
     try:
-        empty = client.post("/api/conversations/missing/messages", json={"question": "   "})
-        missing = client.get("/api/conversations/missing")
+        empty = await client.post("/api/conversations/missing/messages", json={"question": "   "})
+        missing = await client.get("/api/conversations/missing")
 
         assert empty.status_code == 400
         assert missing.status_code == 404
     finally:
+        await client.aclose()
         app.dependency_overrides.clear()
 
 
-def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
     engine = FakeEngine()
     client = make_test_client(tmp_path, engine)
     try:
-        status_response = client.get("/api/status")
-        summary_response = client.get("/api/graph/summary")
-        subgraph_response = client.get("/api/graph/subgraph")
+        status_response = await client.get("/api/status")
+        summary_response = await client.get("/api/graph/summary")
+        subgraph_response = await client.get("/api/graph/subgraph")
 
         assert status_response.status_code == 200
         assert status_response.json()["stats"]["companies"] == 1
@@ -201,17 +213,19 @@ def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
     finally:
+        await client.aclose()
         app.dependency_overrides.clear()
 
 
-def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
+@pytest.mark.anyio
+async def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
     engine = FakeEngine()
     client = make_test_client(tmp_path, engine)
     try:
         task_types = ["research_brief", "company_compare", "company_profile", "risk_review", "evidence_gap_audit"]
         tasks = []
         for task_type in task_types:
-            created = client.post(
+            created = await client.post(
                 "/api/agent/tasks",
                 json={"task_type": task_type, "goal": f"{task_type} 液冷产业链", "thinking_enabled": False},
             )
@@ -229,25 +243,27 @@ def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
         task = tasks[0]
         assert "投研简报" in engine.calls[0]["question"]
 
-        listed = client.get("/api/agent/tasks")
+        listed = await client.get("/api/agent/tasks")
         assert listed.status_code == 200
         assert listed.json()["tasks"][0]["task_id"] in {item["task_id"] for item in tasks}
 
-        fetched = client.get(f"/api/agent/tasks/{task['task_id']}")
+        fetched = await client.get(f"/api/agent/tasks/{task['task_id']}")
         assert fetched.status_code == 200
         assert fetched.json()["task_id"] == task["task_id"]
 
-        exported_md = client.get(f"/api/agent/tasks/{task['task_id']}/export?format=md")
-        exported_json = client.get(f"/api/agent/tasks/{task['task_id']}/export?format=json")
+        exported_md = await client.get(f"/api/agent/tasks/{task['task_id']}/export?format=md")
+        exported_json = await client.get(f"/api/agent/tasks/{task['task_id']}/export?format=json")
         assert exported_md.status_code == 200
         assert "测试投研简报" in exported_md.text
         assert exported_json.status_code == 200
         assert exported_json.json()["task_id"] == task["task_id"]
     finally:
+        await client.aclose()
         app.dependency_overrides.clear()
 
 
-def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> None:
+@pytest.mark.anyio
+async def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> None:
     engine = FakeEngine()
     engine.research_memory = ResearchMemory(
         claims=[
@@ -269,7 +285,7 @@ def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> 
     monkeypatch.setenv("RESEARCH_ARTIFACT_DIR", str(artifact_dir))
     client = make_test_client(tmp_path / "store", engine)
     try:
-        response = client.post(
+        response = await client.post(
             "/api/research/claims/c1/review",
             json={
                 "claim_text": "英维克 对 液冷 的公司敞口为 core：端到端液冷产品覆盖。",
@@ -285,4 +301,5 @@ def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> 
         assert (artifact_dir / CLAIM_REVIEWS_FILE).exists()
         assert "人工确认" in (artifact_dir / CLAIM_REVIEWS_FILE).read_text(encoding="utf-8")
     finally:
+        await client.aclose()
         app.dependency_overrides.clear()

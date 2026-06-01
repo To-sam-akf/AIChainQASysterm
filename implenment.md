@@ -893,27 +893,29 @@ Agent 能根据证据覆盖情况决定下一步。
 
 ### Phase 6：工程化交付
 
+状态：已完成（2026-06-01）。
+
 目标：
 
 把项目包装成可演示、可部署、可评测的正式 Agent 项目。
 
 任务：
 
-- 更新 README。
-- 更新 `pyproject.toml`。
-- 增加 CLI。
-- 增加 Dockerfile。
-- 补齐 docker compose。
-- 增加 CI。
-- 增加最小可运行 demo。
+- [x] 更新 README。
+- [x] 更新 `pyproject.toml`。
+- [x] 增加 CLI。
+- [x] 增加 Dockerfile。
+- [x] 补齐 docker compose。
+- [x] 增加 CI。
+- [x] 增加最小可运行 demo。
 
 验收标准：
 
-- 一条命令启动后端。
-- 一条命令启动前端。
-- 一条命令运行 Agent 任务。
-- 一条命令运行评测。
-- 新用户能按文档在本地跑通最小 demo。
+- [x] 一条命令启动后端。
+- [x] 一条命令启动前端。
+- [x] 一条命令运行 Agent 任务。
+- [x] 一条命令运行评测。
+- [x] 新用户能按文档在本地跑通最小 demo。
 
 ## 11. 优先级建议
 
