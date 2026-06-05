@@ -3,7 +3,9 @@ import {
   Bot,
   Boxes,
   ChevronRight,
+  CheckCircle2,
   ClipboardList,
+  CircleSlash,
   Download,
   FileText,
   History,
@@ -18,6 +20,8 @@ import {
   Send,
   Sparkles,
   Table2,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   X,
   ZoomIn,
@@ -32,14 +36,17 @@ import {
   exportAgentTaskUrl,
   getAgentTask,
   getConversation,
+  getEvalRun,
   getExamples,
   getGraphSubgraph,
   getGraphSummary,
   getStatus,
   listAgentTasks,
   listConversations,
+  listEvalRuns,
   reviewClaim,
   streamMessage,
+  submitFeedback,
   updateConversationTitle
 } from "./api";
 import type {
@@ -51,6 +58,10 @@ import type {
   Conversation,
   ConversationSummary,
   ConversationTurn,
+  EvalCaseResult,
+  EvalRun,
+  EvalRunSummary,
+  FeedbackCreateRequest,
   GraphEdge,
   GraphSubgraph,
   GraphSummary,
@@ -59,7 +70,7 @@ import type {
   VerificationResult
 } from "./types";
 
-type View = "chat" | "overview" | "graph" | "agents";
+type View = "chat" | "overview" | "graph" | "agents" | "eval";
 type DetailTab = "research" | "verification" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
@@ -195,6 +206,8 @@ function App() {
   const [conversations, setConversations] = useState<ConversationSummary[]>(EMPTY_ARRAY);
   const [agentTasks, setAgentTasks] = useState<AgentTaskSummary[]>([]);
   const [selectedAgentTask, setSelectedAgentTask] = useState<AgentTask | null>(null);
+  const [evalRuns, setEvalRuns] = useState<EvalRunSummary[]>([]);
+  const [selectedEvalRun, setSelectedEvalRun] = useState<EvalRun | null>(null);
   const [agentGoal, setAgentGoal] = useState("");
   const [agentTaskType, setAgentTaskType] = useState<AgentTaskType>("research_brief");
   const [agentRunning, setAgentRunning] = useState(false);
@@ -223,19 +236,27 @@ function App() {
     setAgentTasks(items);
   }
 
+  async function refreshEvalRuns() {
+    const items = await listEvalRuns();
+    setEvalRuns(items);
+    return items;
+  }
+
   async function loadInitial() {
     setLoading(true);
     try {
-      const [statusPayload, examplePayload, conversationPayload, agentTaskPayload] = await Promise.all([
+      const [statusPayload, examplePayload, conversationPayload, agentTaskPayload, evalRunPayload] = await Promise.all([
         getStatus(),
         getExamples(),
         listConversations(),
-        listAgentTasks()
+        listAgentTasks(),
+        listEvalRuns()
       ]);
       setStatus(statusPayload);
       setExamples(examplePayload);
       setConversations(conversationPayload);
       setAgentTasks(agentTaskPayload);
+      setEvalRuns(evalRunPayload);
       setThinkingEnabled(statusPayload.settings.thinking_enabled);
       setReasoningEffort(statusPayload.settings.reasoning_effort);
       if (conversationPayload.length > 0) {
@@ -245,6 +266,10 @@ function App() {
       if (agentTaskPayload.length > 0) {
         const latestTask = await getAgentTask(agentTaskPayload[0].task_id);
         setSelectedAgentTask(latestTask);
+      }
+      if (evalRunPayload.length > 0) {
+        const latestRun = await getEvalRun(evalRunPayload[0].run_id);
+        setSelectedEvalRun(latestRun);
       }
     } catch (error) {
       setToast(error instanceof Error ? error.message : "加载系统状态失败");
@@ -295,6 +320,17 @@ function App() {
       setSidebarOpen(false);
     } catch (error) {
       setToast(error instanceof Error ? error.message : "读取 Agent 任务失败");
+    }
+  }
+
+  async function handleLoadEvalRun(id: string) {
+    try {
+      const run = await getEvalRun(id);
+      setSelectedEvalRun(run);
+      setView("eval");
+      setSidebarOpen(false);
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "读取评测报告失败");
     }
   }
 
@@ -424,6 +460,15 @@ function App() {
     }
   }
 
+  async function handleFeedback(payload: FeedbackCreateRequest) {
+    try {
+      await submitFeedback(payload);
+      setToast("反馈已保存");
+    } catch (error) {
+      setToast(error instanceof Error ? error.message : "保存反馈失败");
+    }
+  }
+
   const shellClassName = `app-shell ${sidebarOpen ? "sidebar-open" : ""}`;
 
   return (
@@ -482,6 +527,7 @@ function App() {
               setSelectedTurn(turn);
               setDetailTab("research");
             }}
+            onFeedback={handleFeedback}
             onExample={(example) => setInput(example)}
           />
         )}
@@ -501,6 +547,14 @@ function App() {
             onSelectTask={handleLoadAgentTask}
             onThinkingChange={setThinkingEnabled}
             onReasoningChange={setReasoningEffort}
+          />
+        )}
+        {view === "eval" && (
+          <EvalView
+            runs={evalRuns}
+            selectedRun={selectedEvalRun}
+            onSelectRun={handleLoadEvalRun}
+            onRefresh={refreshEvalRuns}
           />
         )}
         {view === "overview" && <OverviewView status={status} />}
@@ -563,6 +617,14 @@ function Sidebar(props: {
         >
           <Bot size={20} />
           <span>Agent 任务</span>
+        </button>
+        <button
+          className={props.view === "eval" ? "active" : ""}
+          type="button"
+          onClick={() => props.onViewChange("eval")}
+        >
+          <ClipboardList size={20} />
+          <span>评测报告</span>
         </button>
         <button
           className={props.view === "overview" ? "active" : ""}
@@ -639,6 +701,7 @@ function ChatView(props: {
   onThinkingChange: (value: boolean) => void;
   onReasoningChange: (value: string) => void;
   onOpenDetails: (turn: ConversationTurn) => void;
+  onFeedback: (payload: FeedbackCreateRequest) => Promise<void>;
   onExample: (value: string) => void;
 }) {
   const hasTurns = Boolean(props.conversation?.turns.length || props.streamingTurn);
@@ -691,7 +754,14 @@ function ChatView(props: {
           </div>
           <div className="message-list">
             {props.conversation?.turns.map((turn, index) => (
-              <MessagePair key={`${turn.created_at}-${index}`} index={index} turn={turn} onOpenDetails={props.onOpenDetails} />
+              <MessagePair
+                key={`${turn.created_at}-${index}`}
+                index={index}
+                turn={turn}
+                conversationId={props.conversation?.id ?? ""}
+                onOpenDetails={props.onOpenDetails}
+                onFeedback={props.onFeedback}
+              />
             ))}
             {props.streamingTurn && (
               <MessagePair
@@ -699,7 +769,9 @@ function ChatView(props: {
                 turn={props.streamingTurn}
                 isStreaming
                 progressItems={props.streamingProgress}
+                conversationId={props.conversation?.id ?? ""}
                 onOpenDetails={props.onOpenDetails}
+                onFeedback={props.onFeedback}
               />
             )}
             {props.sending && !props.streamingTurn && (
@@ -923,6 +995,198 @@ function AgentTasksView(props: {
   );
 }
 
+function EvalView(props: {
+  runs: EvalRunSummary[];
+  selectedRun: EvalRun | null;
+  onSelectRun: (id: string) => void;
+  onRefresh: () => Promise<EvalRunSummary[]>;
+}) {
+  const [refreshing, setRefreshing] = useState(false);
+  const run = props.selectedRun;
+
+  async function refresh() {
+    setRefreshing(true);
+    try {
+      await props.onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
+  return (
+    <section className="page-panel eval-page">
+      <div className="page-heading eval-heading">
+        <div>
+          <span className="eyebrow">Evaluation</span>
+          <h2>评测报告</h2>
+        </div>
+        <button className="eval-refresh" type="button" onClick={refresh} disabled={refreshing}>
+          {refreshing ? <Loader2 size={16} className="spin" /> : <BarChart3 size={16} />}
+          <span>刷新</span>
+        </button>
+      </div>
+      <div className="eval-layout">
+        <aside className="eval-run-list">
+          <div className="section-title">
+            <ClipboardList size={16} />
+            <span>历史 Run</span>
+          </div>
+          {props.runs.length === 0 && <div className="empty-table">暂无评测报告</div>}
+          {props.runs.map((item) => (
+            <button
+              className={`eval-run-item ${run?.run_id === item.run_id ? "selected" : ""}`}
+              type="button"
+              key={item.run_id}
+              onClick={() => props.onSelectRun(item.run_id)}
+            >
+              <strong>{item.run_id}</strong>
+              <span>{item.dataset_name || "qa_benchmark"} · {item.cases} cases</span>
+              <em>{formatPercent(item.overall_score)} · pass {formatPercent((item.passed || 0) / Math.max(item.cases || 1, 1))}</em>
+            </button>
+          ))}
+        </aside>
+        <div className="eval-report-panel">
+          {!run ? (
+            <div className="agent-empty">
+              <ClipboardList size={34} />
+              <span>暂无可展示的评测报告</span>
+            </div>
+          ) : (
+            <>
+              <div className="eval-report-header">
+                <div>
+                  <span className="task-status completed">{run.dataset.name}</span>
+                  <h3>{run.run_id}</h3>
+                  <p>{run.created_at} · dataset {run.dataset.hash} · git {String(run.environment.git_commit ?? "") || "unknown"}</p>
+                </div>
+              </div>
+              <div className="agent-stat-grid">
+                <StatCard label="总分" value={formatPercent(run.summary.overall_score)} />
+                <StatCard label="通过率" value={formatPercent(run.summary.pass_rate)} />
+                <StatCard label="用例" value={String(run.summary.cases)} />
+                <StatCard label="失败" value={String(run.summary.failed)} />
+                <StatCard label="警告" value={String(run.summary.warned)} />
+                <StatCard label="K" value={String(run.environment.k ?? 6)} />
+              </div>
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <BarChart3 size={16} />
+                  <span>分维指标</span>
+                </div>
+                <div className="eval-metric-grid">
+                  {Object.entries(run.summary.metrics).map(([key, value]) => (
+                    <StatCard key={key} label={metricLabel(key)} value={formatMetricValue(key, value)} />
+                  ))}
+                </div>
+              </section>
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <Table2 size={16} />
+                  <span>分类得分</span>
+                </div>
+                <div className="eval-category-list">
+                  {run.category_scores.map((row) => (
+                    <article className="eval-category-row" key={row.category}>
+                      <strong>{categoryLabel(row.category)}</strong>
+                      <span>{row.cases} cases</span>
+                      <b>{formatPercent(row.overall_score)}</b>
+                      <em>pass {formatPercent(row.pass_rate)}</em>
+                    </article>
+                  ))}
+                </div>
+              </section>
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <CircleSlash size={16} />
+                  <span>失败样例</span>
+                </div>
+                <FailedExamples rows={run.failed_examples} />
+              </section>
+              <section className="agent-section">
+                <div className="research-section-title">
+                  <FileText size={16} />
+                  <span>Case 明细</span>
+                </div>
+                <EvalCaseTable rows={run.results} />
+              </section>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FailedExamples(props: { rows: EvalRun["failed_examples"] }) {
+  if (!props.rows.length) return <div className="empty-table">当前 run 没有失败样例</div>;
+  return (
+    <div className="failed-example-list">
+      {props.rows.map((row) => (
+        <article className="failed-example" key={row.case_id}>
+          <div>
+            <strong>{row.case_id}</strong>
+            <span>{categoryLabel(row.category)} · {formatPercent(row.score)}</span>
+          </div>
+          <p>{row.question}</p>
+          <div className="failure-tags">
+            {row.failures.map((failure) => (
+              <span key={failure}>{failure}</span>
+            ))}
+          </div>
+          <ResearchList rows={arrayRecords(row.evidence_gaps)} primaryKey="gap" secondaryKeys={["priority", "suggested_source"]} empty="未记录证据缺口" />
+        </article>
+      ))}
+    </div>
+  );
+}
+
+function EvalCaseTable(props: { rows: EvalCaseResult[] }) {
+  if (!props.rows.length) return <div className="empty-table">当前 run 没有 case 明细</div>;
+  const rows = props.rows.slice(0, 50).map((row) => ({
+    case_id: row.case_id,
+    category: categoryLabel(row.category),
+    status: row.status,
+    score: formatPercent(row.score),
+    question: row.question,
+    answer_type: row.answer_type || "unknown",
+    failures: row.failures.join(", ") || "-"
+  }));
+  return <DataTable rows={rows} empty="当前 run 没有 case 明细" />;
+}
+
+function metricLabel(key: string) {
+  const labels: Record<string, string> = {
+    "claim_recall@k": "Claim Recall",
+    "evidence_precision@k": "Evidence Precision",
+    citation_validity: "Citation Validity",
+    answer_groundedness: "Groundedness",
+    unsupported_claim_rate: "Unsupported Rate",
+    human_score: "Human Score"
+  };
+  return labels[key] ?? key;
+}
+
+function categoryLabel(category: string) {
+  const labels: Record<string, string> = {
+    company_compare: "公司对比",
+    supply_chain: "产业传导",
+    risk: "风险/反证",
+    metric: "指标",
+    refusal: "拒答"
+  };
+  return labels[category] ?? category;
+}
+
+function formatMetricValue(key: string, value: number | null) {
+  if (value === null || value === undefined) return "未评分";
+  if (key === "human_score") return `${Number(value).toFixed(1)}/5`;
+  return formatPercent(Number(value));
+}
+
+function formatPercent(value: number) {
+  return `${Math.round(Number(value || 0) * 100)}%`;
+}
+
 function agentStatusLabel(status: AgentTask["status"]) {
   const labels = {
     pending: "等待中",
@@ -1066,9 +1330,11 @@ function ExampleRail(props: { examples: string[]; onPick: (value: string) => voi
 function MessagePair(props: {
   index: number;
   turn: ConversationTurn;
+  conversationId: string;
   isStreaming?: boolean;
   progressItems?: string[];
   onOpenDetails: (turn: ConversationTurn) => void;
+  onFeedback: (payload: FeedbackCreateRequest) => Promise<void>;
 }) {
   return (
     <article className="turn">
@@ -1105,16 +1371,130 @@ function MessagePair(props: {
             )}
           </div>
           {!props.isStreaming && (
-            <button className="details-button" type="button" onClick={() => props.onOpenDetails(props.turn)}>
-              <FileText size={15} />
-              <span>查看证据与诊断</span>
-              <ChevronRight size={15} />
-            </button>
+            <>
+              <div className="answer-action-row">
+                <button className="details-button" type="button" onClick={() => props.onOpenDetails(props.turn)}>
+                  <FileText size={15} />
+                  <span>查看证据与诊断</span>
+                  <ChevronRight size={15} />
+                </button>
+              </div>
+              <FeedbackControls
+                conversationId={props.conversationId}
+                turnIndex={props.index}
+                turn={props.turn}
+                onFeedback={props.onFeedback}
+              />
+            </>
           )}
         </div>
       </div>
     </article>
   );
+}
+
+function FeedbackControls(props: {
+  conversationId: string;
+  turnIndex: number;
+  turn: ConversationTurn;
+  onFeedback: (payload: FeedbackCreateRequest) => Promise<void>;
+}) {
+  const [helpful, setHelpful] = useState<boolean | null>(null);
+  const [evidenceSupported, setEvidenceSupported] = useState<boolean | null>(null);
+  const [missingAnswer, setMissingAnswer] = useState<boolean | null>(null);
+  const [humanScore, setHumanScore] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    try {
+      await props.onFeedback({
+        conversation_id: props.conversationId,
+        turn_index: props.turnIndex,
+        question: props.turn.question,
+        answer_hash: hashText(props.turn.answer),
+        helpful,
+        evidence_supported: evidenceSupported,
+        missing_answer: missingAnswer,
+        human_score: humanScore ? Number(humanScore) : null,
+        note,
+        citation_ids: citationIdsFromTurn(props.turn)
+      });
+      setSaved(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="feedback-panel" onSubmit={submit}>
+      <div className="feedback-toggles">
+        <button className={helpful === true ? "active" : ""} type="button" onClick={() => setHelpful(helpful === true ? null : true)}>
+          <ThumbsUp size={14} />
+          <span>有帮助</span>
+        </button>
+        <button className={helpful === false ? "active negative" : ""} type="button" onClick={() => setHelpful(helpful === false ? null : false)}>
+          <ThumbsDown size={14} />
+          <span>无帮助</span>
+        </button>
+        <button
+          className={evidenceSupported === true ? "active" : ""}
+          type="button"
+          onClick={() => setEvidenceSupported(evidenceSupported === true ? null : true)}
+        >
+          <CheckCircle2 size={14} />
+          <span>证据支持</span>
+        </button>
+        <button
+          className={evidenceSupported === false ? "active negative" : ""}
+          type="button"
+          onClick={() => setEvidenceSupported(evidenceSupported === false ? null : false)}
+        >
+          <CircleSlash size={14} />
+          <span>证据不足</span>
+        </button>
+        <button
+          className={missingAnswer === true ? "active negative" : ""}
+          type="button"
+          onClick={() => setMissingAnswer(missingAnswer === true ? null : true)}
+        >
+          <FileText size={14} />
+          <span>有遗漏</span>
+        </button>
+      </div>
+      <div className="feedback-note-row">
+        <select value={humanScore} onChange={(event) => setHumanScore(event.target.value)} aria-label="人工评分">
+          <option value="">人工评分</option>
+          {[5, 4, 3, 2, 1].map((score) => (
+            <option key={score} value={score}>
+              {score} 分
+            </option>
+          ))}
+        </select>
+        <input value={note} placeholder="补充反馈" onChange={(event) => setNote(event.target.value)} />
+        <button type="submit" disabled={saving || saved}>
+          {saving ? <Loader2 size={14} className="spin" /> : saved ? <CheckCircle2 size={14} /> : <Save size={14} />}
+          <span>{saved ? "已保存" : "保存反馈"}</span>
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function citationIdsFromTurn(turn: ConversationTurn) {
+  const rows = turn.result.evidence_cards?.length ? turn.result.evidence_cards : turn.result.evidence;
+  return rows.map((row) => String(row.citation_id ?? "")).filter(Boolean);
+}
+
+function hashText(text: string) {
+  let hash = 5381;
+  for (let index = 0; index < text.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
 }
 
 function ThoughtProgress(props: { items: string[] }) {

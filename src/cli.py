@@ -17,6 +17,8 @@ from src.qa_engine import QAEngine
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_AGENT_TASK_DIR = ROOT_DIR / "data" / "agent_tasks"
+DEFAULT_EVAL_RUN_DIR = ROOT_DIR / "data" / "eval_runs"
+DEFAULT_QA_BENCHMARK = ROOT_DIR / "data" / "eval" / "qa_benchmark_v1.jsonl"
 DEFAULT_DEMO_QUESTION = "液冷产业链有哪些上市公司，各自处于什么环节？"
 DEFAULT_DEMO_GOAL = "液冷产业链"
 
@@ -54,6 +56,10 @@ def build_parser() -> argparse.ArgumentParser:
     eval_parser.add_argument("--suite", choices=["qa", "agent"], default="qa")
     eval_parser.add_argument("--limit", type=int, default=0)
     eval_parser.add_argument("--task-dir", default=str(DEFAULT_AGENT_TASK_DIR))
+    eval_parser.add_argument("--benchmark", default=str(DEFAULT_QA_BENCHMARK), help="QA benchmark JSONL file.")
+    eval_parser.add_argument("--report-dir", default=str(DEFAULT_EVAL_RUN_DIR), help="Directory for eval run JSONL reports.")
+    eval_parser.add_argument("--k", type=int, default=6, help="Top-k evidence cards used by retrieval metrics.")
+    eval_parser.add_argument("--no-save", action="store_true", help="Do not append the eval report to the local report store.")
     eval_parser.add_argument("--offline", action="store_true", help="Force local CSV/RAG mode and disable LLM/embedding.")
     eval_parser.add_argument("--use-llm", action="store_true", help="Use the configured LLM client.")
     eval_parser.add_argument("--use-embedding", action="store_true", help="Use the configured embedding index.")
@@ -136,30 +142,22 @@ def run_eval(args: argparse.Namespace) -> int:
 
 
 def run_qa_eval(args: argparse.Namespace) -> int:
-    from scripts.evaluate_qa import EVAL_CASES, score_answer
+    from src.eval.runner import run_qa_benchmark
+    from src.eval.store import EvalRunStore
 
     engine = build_engine(args)
-    results: list[dict[str, Any]] = []
     try:
-        cases = EVAL_CASES[: args.limit] if args.limit and args.limit > 0 else EVAL_CASES
-        for case in cases:
-            result = engine.answer_question(case["question"])
-            score, failures = score_answer(result, case)
-            results.append(
-                {
-                    "question": case["question"],
-                    "score": score,
-                    "failures": failures,
-                    "answer_type": result.get("answer_type", ""),
-                    "graph_records": len(result.get("graph_records", [])),
-                    "rag_hits": len(result.get("rag_hits", [])),
-                    "evidence_cards": len(result.get("evidence_cards", [])),
-                    "subgraph": len(result.get("subgraph", [])),
-                }
-            )
+        report = run_qa_benchmark(
+            engine,
+            benchmark_path=Path(args.benchmark),
+            limit=args.limit,
+            k=args.k,
+            store=EvalRunStore(Path(args.report_dir)),
+            save=not args.no_save,
+        )
     finally:
         engine.close()
-    return print_eval_results("QA evaluation", results, args.json)
+    return print_qa_eval_report(report, args.json)
 
 
 def run_agent_eval(args: argparse.Namespace) -> int:
@@ -267,6 +265,35 @@ def print_eval_results(title: str, results: list[dict[str, Any]], as_json: bool)
             failures = ",".join(item.get("failures", [])) or "-"
             print(f"[{status}] {label} | failures={failures}")
     return 0 if total >= max_score * 0.6 else 1
+
+
+def print_qa_eval_report(report: dict[str, Any], as_json: bool) -> int:
+    summary = report.get("summary", {})
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+    else:
+        metrics = summary.get("metrics", {}) if isinstance(summary.get("metrics"), dict) else {}
+        print(
+            "QA benchmark evaluation: "
+            f"run_id={report.get('run_id', '')} "
+            f"cases={summary.get('cases', 0)} "
+            f"score={float(summary.get('overall_score') or 0.0):.1%} "
+            f"pass_rate={float(summary.get('pass_rate') or 0.0):.1%}"
+        )
+        print(
+            "Metrics: "
+            f"claim_recall@k={float(metrics.get('claim_recall@k') or 0.0):.1%}, "
+            f"evidence_precision@k={float(metrics.get('evidence_precision@k') or 0.0):.1%}, "
+            f"citation_validity={float(metrics.get('citation_validity') or 0.0):.1%}, "
+            f"groundedness={float(metrics.get('answer_groundedness') or 0.0):.1%}, "
+            f"unsupported_rate={float(metrics.get('unsupported_claim_rate') or 0.0):.1%}"
+        )
+        print(f"Dataset: {report.get('dataset', {}).get('name', '')} hash={report.get('dataset', {}).get('hash', '')}")
+        failures = report.get("failed_examples") if isinstance(report.get("failed_examples"), list) else []
+        for item in failures[:8]:
+            failure_text = ",".join(str(failure) for failure in item.get("failures", [])) or "-"
+            print(f"[{item.get('category', '')}] {item.get('case_id', '')} score={item.get('score', 0)} failures={failure_text}")
+    return 0 if float(summary.get("overall_score") or 0.0) >= 0.35 else 1
 
 
 def first_lines(text: str, *, limit: int) -> str:

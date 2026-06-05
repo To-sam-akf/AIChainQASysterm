@@ -22,9 +22,11 @@ from src.conversation_store import (
     now_iso,
 )
 from src.curated_graph import DEFAULT_CURATED_DIR
+from src.eval.feedback import FeedbackStore, InvalidFeedbackError
+from src.eval.store import EvalRunNotFoundError, EvalRunStore, InvalidEvalRunError
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, render_svg_graph, subgraph_edges
 from src.llm_client import load_dotenv
-from src.qa_engine import QAEngine, normalize_agent_max_steps
+from src.qa_engine import QAEngine, normalize_agent_max_steps, normalize_agent_runner
 from src.research_claims import DEFAULT_RESEARCH_DIR, write_claim_review
 
 
@@ -80,6 +82,19 @@ class ClaimReviewRequest(BaseModel):
     conflict_group_id: str | None = None
 
 
+class FeedbackCreateRequest(BaseModel):
+    conversation_id: str = ""
+    turn_index: int = 0
+    question: str
+    answer_hash: str = ""
+    helpful: bool | None = None
+    evidence_supported: bool | None = None
+    missing_answer: bool | None = None
+    human_score: int | None = None
+    note: str = ""
+    citation_ids: list[str] = []
+
+
 def env_bool(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -108,6 +123,10 @@ def default_agent_max_steps() -> int:
     return normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
 
 
+def default_agent_runner() -> str:
+    return normalize_agent_runner(os.getenv("QA_AGENT_RUNNER", "langgraph"))
+
+
 @lru_cache(maxsize=1)
 def _cached_conversation_store() -> ConversationStore:
     return ConversationStore()
@@ -116,6 +135,16 @@ def _cached_conversation_store() -> ConversationStore:
 @lru_cache(maxsize=1)
 def _cached_agent_task_store() -> AgentTaskStore:
     return AgentTaskStore(Path(os.getenv("AGENT_TASK_DIR", "data/agent_tasks")))
+
+
+@lru_cache(maxsize=1)
+def _cached_eval_run_store() -> EvalRunStore:
+    return EvalRunStore(Path(os.getenv("EVAL_RUN_DIR", "data/eval_runs")))
+
+
+@lru_cache(maxsize=1)
+def _cached_feedback_store() -> FeedbackStore:
+    return FeedbackStore(Path(os.getenv("FEEDBACK_DIR", "data/feedback")))
 
 
 @lru_cache(maxsize=1)
@@ -137,6 +166,14 @@ async def get_conversation_store() -> ConversationStore:
 
 async def get_agent_task_store() -> AgentTaskStore:
     return _cached_agent_task_store()
+
+
+async def get_eval_run_store() -> EvalRunStore:
+    return _cached_eval_run_store()
+
+
+async def get_feedback_store() -> FeedbackStore:
+    return _cached_feedback_store()
 
 
 async def get_qa_engine() -> QAEngine:
@@ -163,6 +200,20 @@ def http_error_from_agent_store(exc: Exception) -> HTTPException:
     if isinstance(exc, AgentTaskNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent task not found")
     if isinstance(exc, InvalidAgentTaskError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+def http_error_from_eval_store(exc: Exception) -> HTTPException:
+    if isinstance(exc, EvalRunNotFoundError):
+        return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Eval run not found")
+    if isinstance(exc, InvalidEvalRunError):
+        return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+    return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
+
+
+def http_error_from_feedback_store(exc: Exception) -> HTTPException:
+    if isinstance(exc, InvalidFeedbackError):
         return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
@@ -328,6 +379,7 @@ async def api_status(
             "reasoning_efforts": REASONING_EFFORTS,
             "agent_enabled": getattr(engine, "enable_agent", default_agent_enabled()),
             "agent_max_steps": getattr(engine, "agent_max_steps", default_agent_max_steps()),
+            "agent_runner": getattr(engine, "agent_runner", default_agent_runner()),
         },
     }
 
@@ -335,6 +387,45 @@ async def api_status(
 @router.get("/examples")
 async def api_examples() -> dict[str, list[str]]:
     return {"examples": EXAMPLE_QUESTIONS}
+
+
+@router.get("/eval/runs")
+async def list_eval_runs(
+    limit: int = Query(20, ge=1, le=200),
+    store: EvalRunStore = Depends(get_eval_run_store),
+) -> dict[str, Any]:
+    return {"runs": store.list(limit=limit)}
+
+
+@router.get("/eval/runs/{run_id}")
+async def get_eval_run(
+    run_id: str,
+    store: EvalRunStore = Depends(get_eval_run_store),
+) -> dict[str, Any]:
+    try:
+        return store.get(run_id)
+    except Exception as exc:
+        raise http_error_from_eval_store(exc) from exc
+
+
+@router.get("/feedback")
+async def list_feedback(
+    limit: int = Query(100, ge=1, le=500),
+    store: FeedbackStore = Depends(get_feedback_store),
+) -> dict[str, Any]:
+    return {"feedback": store.list(limit=limit)}
+
+
+@router.post("/feedback", status_code=status.HTTP_201_CREATED)
+async def create_feedback(
+    request: FeedbackCreateRequest,
+    store: FeedbackStore = Depends(get_feedback_store),
+) -> dict[str, Any]:
+    try:
+        feedback = store.save(request.model_dump())
+    except Exception as exc:
+        raise http_error_from_feedback_store(exc) from exc
+    return {"feedback": feedback}
 
 
 @router.get("/agent/tasks")

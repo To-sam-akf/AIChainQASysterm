@@ -4,9 +4,19 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from src.api import app, get_agent_task_store, get_conversation_store, get_knowledge_graph, get_qa_engine
+from src.api import (
+    app,
+    get_agent_task_store,
+    get_conversation_store,
+    get_eval_run_store,
+    get_feedback_store,
+    get_knowledge_graph,
+    get_qa_engine,
+)
 from src.agents.store import AgentTaskStore
 from src.conversation_store import ConversationStore
+from src.eval.feedback import FeedbackStore
+from src.eval.store import EvalRunStore
 from src.frontend_data import LocalKnowledgeGraph
 from src.research_claims import CLAIM_REVIEWS_FILE, ResearchMemory
 
@@ -114,6 +124,12 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> httpx.AsyncClient:
     async def override_agent_store() -> AgentTaskStore:
         return AgentTaskStore(tmp_path / "agent_tasks")
 
+    async def override_eval_run_store() -> EvalRunStore:
+        return EvalRunStore(tmp_path / "eval_runs")
+
+    async def override_feedback_store() -> FeedbackStore:
+        return FeedbackStore(tmp_path / "feedback")
+
     async def override_engine() -> FakeEngine:
         return engine
 
@@ -122,6 +138,8 @@ def make_test_client(tmp_path: Path, engine: FakeEngine) -> httpx.AsyncClient:
 
     app.dependency_overrides[get_conversation_store] = override_store
     app.dependency_overrides[get_agent_task_store] = override_agent_store
+    app.dependency_overrides[get_eval_run_store] = override_eval_run_store
+    app.dependency_overrides[get_feedback_store] = override_feedback_store
     app.dependency_overrides[get_qa_engine] = override_engine
     app.dependency_overrides[get_knowledge_graph] = override_graph
     transport = httpx.ASGITransport(app=app)
@@ -212,6 +230,64 @@ async def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
         assert status_response.json()["settings"]["agent_max_steps"] == 4
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
+    finally:
+        await client.aclose()
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_api_eval_runs_and_feedback_endpoints(tmp_path: Path) -> None:
+    engine = FakeEngine()
+    EvalRunStore(tmp_path / "eval_runs").save(
+        {
+            "run_id": "eval_api_test",
+            "created_at": "2026-01-01T00:00:00",
+            "dataset": {"name": "qa_benchmark_v1.jsonl", "hash": "abc123"},
+            "summary": {
+                "cases": 1,
+                "passed": 1,
+                "failed": 0,
+                "overall_score": 0.9,
+                "metrics": {"claim_recall@k": 1.0, "evidence_precision@k": 0.8},
+            },
+            "category_scores": [],
+            "failed_examples": [],
+            "results": [{"case_id": "case_1"}],
+        }
+    )
+    client = make_test_client(tmp_path, engine)
+    try:
+        listed_runs = await client.get("/api/eval/runs")
+        fetched_run = await client.get("/api/eval/runs/eval_api_test")
+        feedback = await client.post(
+            "/api/feedback",
+            json={
+                "conversation_id": "conv_1",
+                "turn_index": 0,
+                "question": "液冷有哪些证据？",
+                "answer_hash": "abcd",
+                "helpful": True,
+                "evidence_supported": True,
+                "missing_answer": False,
+                "human_score": 5,
+                "note": "证据清楚",
+                "citation_ids": ["E1"],
+            },
+        )
+        listed_feedback = await client.get("/api/feedback")
+        invalid_feedback = await client.post(
+            "/api/feedback",
+            json={"question": "液冷有哪些证据？", "citation_ids": []},
+        )
+
+        assert listed_runs.status_code == 200
+        assert listed_runs.json()["runs"][0]["run_id"] == "eval_api_test"
+        assert fetched_run.status_code == 200
+        assert fetched_run.json()["results"][0]["case_id"] == "case_1"
+        assert feedback.status_code == 201
+        assert feedback.json()["feedback"]["human_score"] == 5
+        assert listed_feedback.json()["feedback"][0]["citation_ids"] == ["E1"]
+        assert invalid_feedback.status_code == 400
     finally:
         await client.aclose()
         app.dependency_overrides.clear()

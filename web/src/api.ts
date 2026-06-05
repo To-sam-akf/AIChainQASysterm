@@ -7,6 +7,10 @@ import type {
   ClaimReviewResponse,
   Conversation,
   ConversationSummary,
+  EvalRun,
+  EvalRunSummary,
+  FeedbackCreateRequest,
+  FeedbackResponse,
   GraphSubgraph,
   GraphSummary,
   MessageStreamEvent
@@ -43,6 +47,22 @@ export function getStatus(): Promise<ApiStatus> {
 export async function getExamples(): Promise<string[]> {
   const payload = await request<{ examples: string[] }>("/api/examples");
   return payload.examples;
+}
+
+export async function listEvalRuns(): Promise<EvalRunSummary[]> {
+  const payload = await request<{ runs: EvalRunSummary[] }>("/api/eval/runs");
+  return payload.runs;
+}
+
+export function getEvalRun(id: string): Promise<EvalRun> {
+  return request<EvalRun>(`/api/eval/runs/${encodeURIComponent(id)}`);
+}
+
+export function submitFeedback(payload: FeedbackCreateRequest): Promise<FeedbackResponse> {
+  return request<FeedbackResponse>("/api/feedback", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
 }
 
 export async function listConversations(): Promise<ConversationSummary[]> {

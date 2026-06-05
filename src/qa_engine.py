@@ -137,6 +137,7 @@ class QAEngine:
         history_max_chars: int = 4000,
         enable_agent: bool = True,
         agent_max_steps: int = 4,
+        agent_runner: str = "langgraph",
         rerank_mode: str = "auto",
         drift_max_subquestions: int = 6,
         global_dossier_top_k: int = 3,
@@ -163,6 +164,7 @@ class QAEngine:
         self.history_max_chars = history_max_chars
         self.enable_agent = enable_agent
         self.agent_max_steps = normalize_agent_max_steps(agent_max_steps)
+        self.agent_runner = normalize_agent_runner(agent_runner)
         self.rerank_mode = normalize_rerank_mode(rerank_mode)
         self.drift_max_subquestions = max(1, int(drift_max_subquestions or 6))
         self.global_dossier_top_k = max(0, int(global_dossier_top_k or 3))
@@ -194,6 +196,7 @@ class QAEngine:
         history_max_chars = int(os.getenv("QA_HISTORY_MAX_CHARS", "4000"))
         enable_agent = os.getenv("QA_ENABLE_AGENT", "true").casefold() != "false"
         agent_max_steps = normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
+        agent_runner = normalize_agent_runner(os.getenv("QA_AGENT_RUNNER", "langgraph"))
         rerank_mode = normalize_rerank_mode(os.getenv("QA_RERANK_MODE", "auto"))
         drift_max_subquestions = int(os.getenv("QA_DRIFT_MAX_SUBQUESTIONS", "6"))
         global_dossier_top_k = int(os.getenv("QA_GLOBAL_DOSSIER_TOP_K", "3"))
@@ -302,6 +305,7 @@ class QAEngine:
             history_max_chars=history_max_chars,
             enable_agent=enable_agent,
             agent_max_steps=agent_max_steps,
+            agent_runner=agent_runner,
             rerank_mode=rerank_mode,
             drift_max_subquestions=drift_max_subquestions,
             global_dossier_top_k=global_dossier_top_k,
@@ -467,6 +471,8 @@ class QAEngine:
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
             "agent_enabled": False,
+            "agent_runner": "workflow",
+            "langgraph_enabled": False,
             "agent_max_steps": self.agent_max_steps,
             "agent_steps": 0,
             "agent_trace": [],
@@ -684,6 +690,8 @@ class QAEngine:
             "llm_error": self.status.llm_error,
             "unsupported_terms": unsupported_terms,
             "agent_enabled": False,
+            "agent_runner": "workflow",
+            "langgraph_enabled": False,
             "agent_max_steps": self.agent_max_steps,
             "agent_steps": 0,
             "agent_trace": [],
@@ -993,6 +1001,13 @@ def normalize_agent_max_steps(value: Any) -> int:
     except (TypeError, ValueError):
         steps = 4
     return max(1, min(steps, 4))
+
+
+def normalize_agent_runner(value: Any) -> str:
+    runner = str(value or "langgraph").strip().casefold()
+    if runner not in {"langgraph", "legacy"}:
+        return "langgraph"
+    return runner
 
 
 def record_timing(timings_ms: dict[str, float], name: str, started_at: float) -> None:

@@ -40,6 +40,10 @@ data/conversations/**/*.md
 data/conversations/**/*.json
 data/agent_tasks/**/*.jsonl
 data/agent_tasks/*.jsonl
+data/eval_runs/**/*.jsonl
+data/eval_runs/*.jsonl
+data/feedback/**/*.jsonl
+data/feedback/*.jsonl
 data/semantic_index/
 # Keep reproducible metadata under version control
 !data/metadata/
@@ -51,6 +55,12 @@ data/semantic_index/
 !data/rag/**/.gitkeep
 !data/agent_tasks/.gitkeep
 !data/agent_tasks/**/.gitkeep
+!data/eval/
+!data/eval/*.jsonl
+!data/eval_runs/.gitkeep
+!data/eval_runs/**/.gitkeep
+!data/feedback/.gitkeep
+!data/feedback/**/.gitkeep
 !data/verified/
 !data/verified/*.csv
 !data/verified/**/.gitkeep

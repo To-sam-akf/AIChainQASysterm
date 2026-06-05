@@ -112,6 +112,97 @@ export interface ClaimReviewResponse {
   review: Record<string, unknown>;
 }
 
+export interface EvalRunSummary {
+  run_id: string;
+  created_at: string;
+  dataset_name: string;
+  dataset_hash: string;
+  cases: number;
+  passed: number;
+  failed: number;
+  overall_score: number;
+  metrics: Record<string, number | null>;
+}
+
+export interface EvalRun {
+  run_id: string;
+  created_at: string;
+  dataset: {
+    name: string;
+    path: string;
+    hash: string;
+    version: string;
+    cases: number;
+  };
+  environment: Record<string, unknown>;
+  summary: {
+    cases: number;
+    passed: number;
+    warned: number;
+    failed: number;
+    pass_rate: number;
+    overall_score: number;
+    metrics: Record<string, number | null>;
+  };
+  category_scores: EvalCategoryScore[];
+  failed_examples: EvalFailedExample[];
+  results: EvalCaseResult[];
+}
+
+export interface EvalCategoryScore {
+  category: string;
+  cases: number;
+  overall_score: number;
+  pass_rate: number;
+  metrics: Record<string, number | null>;
+}
+
+export interface EvalFailedExample {
+  case_id: string;
+  category: string;
+  question: string;
+  score: number;
+  failures: string[];
+  evidence_gaps: Record<string, string>[];
+  answer_preview: string;
+}
+
+export interface EvalCaseResult {
+  case_id: string;
+  category: string;
+  question: string;
+  expected_answer_type: string;
+  answer_type: string;
+  refusal_expected: boolean;
+  metrics: Record<string, number | null>;
+  score: number;
+  status: "pass" | "warn" | "fail" | string;
+  failures: string[];
+  evidence_gaps: Record<string, string>[];
+  answer: string;
+  answer_preview: string;
+  evidence_cards: Record<string, unknown>[];
+  evidence_card_count: number;
+  expected: Record<string, unknown>;
+}
+
+export interface FeedbackCreateRequest {
+  conversation_id: string;
+  turn_index: number;
+  question: string;
+  answer_hash: string;
+  helpful?: boolean | null;
+  evidence_supported?: boolean | null;
+  missing_answer?: boolean | null;
+  human_score?: number | null;
+  note?: string;
+  citation_ids?: string[];
+}
+
+export interface FeedbackResponse {
+  feedback: Record<string, unknown>;
+}
+
 export interface AgentTaskSummary {
   task_id: string;
   task_type: string;

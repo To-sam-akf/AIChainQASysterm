@@ -401,4 +401,6 @@ def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None
     final = events[-1]
     assert final["type"] == "final"
     assert final["result"]["answer"] == "结论：浪潮信息涉及 AI 服务器。"
+    assert final["result"]["diagnostics"]["agent_runner"] == "legacy_stream"
+    assert final["result"]["diagnostics"]["langgraph_enabled"] is False
     assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1

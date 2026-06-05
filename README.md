@@ -8,7 +8,7 @@ AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agen
 React 工作台
   -> FastAPI /api
   -> QAEngine / ResearchAgent
-  -> Question planner / GraphRAG / evidence ranker / verifier
+  -> LangGraph Agent runner / Question planner / GraphRAG / evidence ranker / verifier
   -> data/curated CSV + claims + dossiers
   -> 可选：Neo4j、RAG JSONL、embedding index、OpenAI-compatible LLM
 ```
@@ -65,7 +65,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python main.py agent --type research_brief "�
 一条命令运行评测：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
 ```
 
 一条命令运行最小 demo：
@@ -80,12 +80,26 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline
 python main.py api --host 0.0.0.0 --port 8000 --reload
 python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
 python main.py agent --type research_brief "液冷产业链" --offline --json
-python main.py eval --suite qa --offline --json
+python main.py eval --suite qa --offline --benchmark data/eval/qa_benchmark_v1.jsonl --report-dir data/eval_runs --k 6 --json
 python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
 python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
 ```
 
 默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
+
+### 可解释评测平台
+
+QA 评测集位于 `data/eval/qa_benchmark_v1.jsonl`，首版包含 50 条投研问题，覆盖公司对比、产业链传导、风险/反证、指标和缺证据拒答。每条 case 标注公司、主题、Claim 类型、禁用词和人工分占位。
+
+运行完整离线评测并保存报告：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --benchmark data/eval/qa_benchmark_v1.jsonl --report-dir data/eval_runs --k 6 --json
+```
+
+报告会追加写入 `data/eval_runs/eval_runs.jsonl`，前端“评测报告”页会展示最新 run 的分维指标、分类得分、失败样例、证据缺口和版本信息。当前自动指标包括 `claim_recall@k`、`evidence_precision@k`、`citation_validity`、`answer_groundedness`、`unsupported_claim_rate`，`human_score` 来自人工标注或用户反馈。
+
+用户反馈通过前端回答下方控件提交，后端写入 `data/feedback/feedback.jsonl`，字段包括有帮助/无帮助、证据是否支持、回答是否遗漏、人工分和备注。
 
 ### Docker / Compose
 
@@ -135,13 +149,13 @@ cp .env.example .env
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --json
+UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
 UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
 npm --prefix web run build
 docker compose config
 ```
 
-CI 位于 `.github/workflows/ci.yml`，默认执行 Python 测试、QA smoke eval、Agent smoke eval、前端构建和 Compose 配置校验。调用真实 LLM 的评测不作为默认 CI 阻塞项。
+CI 位于 `.github/workflows/ci.yml`，默认执行 Python 测试、QA benchmark smoke eval（5 条）、Agent smoke eval、前端构建和 Compose 配置校验。调用真实 LLM 的评测不作为默认 CI 阻塞项。
 
 ### 常见问题
 
@@ -169,6 +183,7 @@ V1.2 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + �
 
 V1.2 本轮稳定化新增：
 
+- 非流式问答默认使用 LangGraph `StateGraph` 编排 Agent 链路，旧版自研 Runner 仍可通过 `QA_AGENT_RUNNER=legacy` 回退。
 - evidence pack 不再简单按分数截断，而是按问题类型分配 Claim/Dossier/Graph/RAG 证据预算，避免同类证据挤占全部上下文。
 - 每条证据卡片带 `citation_id`，答案和前端证据抽屉可用 `E1/E2/...` 对齐关键判断。
 - 回答子图由图谱记录和已选证据卡共同生成；即使答案主要来自 Claim/Dossier，React 工作台的“子图”也能展示公司、主题、风险和指标关系。
@@ -440,7 +455,8 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
 - `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
-- `QA_ENABLE_AGENT`：是否启用规则优先的最小智能体 Runner；默认开启，可设为 `false` 回退旧 workflow。
+- `QA_ENABLE_AGENT`：是否启用智能体 Runner；默认开启，可设为 `false` 回退旧 workflow。
+- `QA_AGENT_RUNNER`：非流式 Agent 编排器，支持 `langgraph`、`legacy`，默认 `langgraph`；流式问答当前仍使用 legacy streaming runner。
 - `QA_AGENT_MAX_STEPS`：Agent ReAct 循环最大步数，默认 4，实现上限 4。
 - `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
 - `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 3。

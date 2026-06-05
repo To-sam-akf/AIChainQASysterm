@@ -28,7 +28,7 @@ jobs:
         run: UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 
       - name: QA smoke evaluation
-        run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 3 --json
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
 
       - name: Agent smoke evaluation
         run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json

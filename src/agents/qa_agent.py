@@ -22,9 +22,20 @@ class QAAgent(BaseAgent):
         reasoning_effort: str | None = None,
     ) -> dict[str, Any]:
         if self._can_use_agent_runner():
-            from src.agent_runner import AgentRunner
+            if self._agent_runner_name() == "legacy":
+                from src.agent_runner import AgentRunner
 
-            return AgentRunner(self.engine, max_steps=self._agent_max_steps()).run(
+                result = AgentRunner(self.engine, max_steps=self._agent_max_steps()).run(
+                    question,
+                    conversation_history=conversation_history,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort,
+                )
+                self._mark_runner(result, runner="legacy", langgraph_enabled=False)
+                return result
+            from src.langgraph_runner import LangGraphAgentRunner
+
+            return LangGraphAgentRunner(self.engine, max_steps=self._agent_max_steps()).run(
                 question,
                 conversation_history=conversation_history,
                 thinking_enabled=thinking_enabled,
@@ -48,12 +59,15 @@ class QAAgent(BaseAgent):
         if self._can_use_agent_runner():
             from src.agent_runner import AgentRunner
 
-            yield from AgentRunner(self.engine, max_steps=self._agent_max_steps()).run_stream(
+            for event in AgentRunner(self.engine, max_steps=self._agent_max_steps()).run_stream(
                 question,
                 conversation_history=conversation_history,
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
-            )
+            ):
+                if event.get("type") == "final" and isinstance(event.get("result"), dict):
+                    self._mark_runner(event["result"], runner="legacy_stream", langgraph_enabled=False)
+                yield event
             return
         if hasattr(self.engine, "answer_question_stream"):
             yield from self.engine.answer_question_stream(
@@ -77,6 +91,19 @@ class QAAgent(BaseAgent):
         if self.max_steps is not None:
             return self.max_steps
         return int(getattr(self.engine, "agent_max_steps", 4) or 4)
+
+    def _agent_runner_name(self) -> str:
+        runner = str(getattr(self.engine, "agent_runner", "langgraph") or "langgraph").strip().casefold()
+        return runner if runner in {"langgraph", "legacy"} else "langgraph"
+
+    @staticmethod
+    def _mark_runner(result: dict[str, Any], *, runner: str, langgraph_enabled: bool) -> None:
+        diagnostics = result.get("diagnostics")
+        if not isinstance(diagnostics, dict):
+            diagnostics = {}
+            result["diagnostics"] = diagnostics
+        diagnostics["agent_runner"] = runner
+        diagnostics["langgraph_enabled"] = langgraph_enabled
 
     def _can_use_agent_runner(self) -> bool:
         required_attrs = (
