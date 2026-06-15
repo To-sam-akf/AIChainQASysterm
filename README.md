@@ -2,77 +2,6 @@
 
 AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agent 系统。系统以本地 CSV 知识图谱、Claim/Dossier、RAG 文档块和可选 Neo4j/LLM/embedding 为证据层，通过 FastAPI 提供后端接口，通过 React 工作台提供对话、证据、图谱和 Agent 任务视图。
 
-### 架构流程
-
-```text
-React 工作台
-  -> FastAPI /api
-  -> QAEngine / ResearchAgent
-  -> LangGraph Agent runner / Question planner / GraphRAG / evidence ranker / verifier
-  -> data/curated CSV + claims + dossiers
-  -> 可选：Neo4j、RAG JSONL、embedding index、OpenAI-compatible LLM
-```
-
-核心目录：
-
-- `src/api.py`：FastAPI 后端与前端 API。
-- `src/qa_engine.py`：问答编排、GraphRAG、证据卡、答案生成和降级逻辑。
-- `src/agents/research_agent.py`：投研 Agent 任务入口。
-- `src/cli.py`：工程化 CLI，统一后端、前端、Agent、评测和 demo 命令。
-- `web/`：Vite + React 工作台。
-- `data/curated/`：已提交的最小可运行图谱、Claim、证据和主题 dossier。
-
-### 快速开始
-
-安装 Python 依赖：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv sync --dev
-```
-
-安装前端依赖：
-
-```bash
-npm --prefix web ci
-```
-
-离线最小 demo：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline
-```
-
-### 五个验收命令
-
-一条命令启动后端：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py api --host 0.0.0.0 --port 8000 --reload
-```
-
-一条命令启动前端：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
-```
-
-一条命令运行 Agent 任务：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py agent --type research_brief "液冷产业链" --offline
-```
-
-一条命令运行评测：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
-```
-
-一条命令运行最小 demo：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline
-```
 
 ### CLI
 
@@ -81,204 +10,12 @@ python main.py api --host 0.0.0.0 --port 8000 --reload
 python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
 python main.py agent --type research_brief "液冷产业链" --offline --json
 python main.py eval --suite qa --offline --benchmark data/eval/qa_benchmark_v1.jsonl --report-dir data/eval_runs --k 6 --json
+python main.py eval --suite rag --retrievers bm25 --benchmark data/eval/rag_retrieval_v1.jsonl --report-dir data/eval_runs
 python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
 python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
 ```
 
 默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
-
-### 可解释评测平台
-
-QA 评测集位于 `data/eval/qa_benchmark_v1.jsonl`，首版包含 50 条投研问题，覆盖公司对比、产业链传导、风险/反证、指标和缺证据拒答。每条 case 标注公司、主题、Claim 类型、禁用词和人工分占位。
-
-运行完整离线评测并保存报告：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --benchmark data/eval/qa_benchmark_v1.jsonl --report-dir data/eval_runs --k 6 --json
-```
-
-报告会追加写入 `data/eval_runs/eval_runs.jsonl`，前端“评测报告”页会展示最新 run 的分维指标、分类得分、失败样例、证据缺口和版本信息。当前自动指标包括 `claim_recall@k`、`evidence_precision@k`、`citation_validity`、`answer_groundedness`、`unsupported_claim_rate`，`human_score` 来自人工标注或用户反馈。
-
-用户反馈通过前端回答下方控件提交，后端写入 `data/feedback/feedback.jsonl`，字段包括有帮助/无帮助、证据是否支持、回答是否遗漏、人工分和备注。
-
-### Docker / Compose
-
-构建并启动 API、前端和 Neo4j：
-
-```bash
-docker compose up --build
-```
-
-只启动后端和前端：
-
-```bash
-docker compose up --build api web
-```
-
-服务端口：
-
-- API: `http://127.0.0.1:8000`
-- Web: `http://127.0.0.1:5173`
-- Neo4j Browser: `http://127.0.0.1:7474`
-- Neo4j Bolt: `bolt://127.0.0.1:7687`
-
-Compose 中 Neo4j 默认账号密码为 `neo4j/password123`，与 `.env.example` 保持一致。离线 demo 不依赖 Neo4j；Neo4j 只作为增强图谱后端。
-
-### 环境变量
-
-离线 demo 不要求 `.env`。如果要启用真实 LLM 或 Neo4j，可复制模板：
-
-```bash
-cp .env.example .env
-```
-
-常用变量：
-
-- `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`：OpenAI-compatible LLM。
-- `QA_GRAPH_BACKEND`：`auto`、`csv`、`neo4j`，离线建议 `csv`。
-- `KG_DATA_DIR`：图谱 CSV 目录，默认 `data/curated`。
-- `RESEARCH_ARTIFACT_DIR`：Claim/Dossier 目录，默认 `data/curated`。
-- `EMBEDDING_MODEL`、`EMBEDDING_INDEX_DIR`：语义召回增强。
-- `AGENT_TASK_DIR`：Agent 任务 JSONL 快照目录。
-
-占位 API key（例如 `replace-me`）会被视为未配置，避免最小 demo 误连外部模型。
-
-### 评测与 CI
-
-本地完整回归：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
-UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite agent --offline --limit 1 --task-dir /tmp/aiqasys-agent-tasks --json
-npm --prefix web run build
-docker compose config
-```
-
-CI 位于 `.github/workflows/ci.yml`，默认执行 Python 测试、QA benchmark smoke eval（5 条）、Agent smoke eval、前端构建和 Compose 配置校验。调用真实 LLM 的评测不作为默认 CI 阻塞项。
-
-### 常见问题
-
-- API 能启动但回答没有 LLM 润色：这是离线降级模式的预期行为；配置 `.env` 并使用 `--use-llm` 可启用模型。
-- 前端请求失败：确认后端在 `8000` 端口，或用 `python main.py web --api http://127.0.0.1:8001` 指向实际 API。
-- Neo4j 连接失败：离线模式会自动使用 CSV 图谱；只有显式使用 Neo4j 后端时才需要检查账号、密码和导入数据。
-- 新增 Agent 任务会写入 `data/agent_tasks/`，该目录的运行输出已被 `.gitignore` 忽略。
-
-## 当前版本：V1.2 稳定版证据包增强的投研 GraphRAG
-
-V1.2 已经从“事实型 KG + BM25 RAG”升级为“投研 Claim/Dossier + 图谱 + RAG”的混合链路，并把新增的专业技术源纳入知识图谱构建。系统现在会同时使用两类 Claim 来源：
-
-- 从 `data/curated/relations.csv` 派生公司、主题、产业链和风险相关 Claim。
-- 从 `data/chunks/industry_tech_*.jsonl` 的高信号原文 chunk 直接抽取技术机理 Claim，覆盖 technical roadmap、open specification、manual open specification、benchmark methodology、technical paper、model technical report 等行业技术源。
-
-当前构建产物包括：
-
-- `data/curated/claims.csv`：投研原子判断，包含主题、公司、敞口强度、机理、指标、风险、证据、置信度和时点。
-- `data/curated/evidence_spans.csv`：可引用证据片段。
-- `data/curated/segment_dossiers.jsonl`：按 AI 服务器、AI 芯片、光模块、液冷、数据中心、电源、PCB 等主题生成的产业链摘要。
-
-本次构建后的 curated 层包含 6881 个实体、10521 条关系、11591 条 Claim、11591 条证据片段和 9 个主题 dossier；本地 RAG 索引包含 4858 个 chunk。
-
-问答链路会优先使用 Claim/Dossier 组织“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”，再用图谱关系和 RAG 原文片段补充事实来源。液冷这类主题已能区分核心敞口、直接敞口、间接敞口和仅提及公司，避免把服务器、电源、IDC、PCB 等间接受益环节与液冷主业公司混在同一层级。对于 `Ultra Ethernet`、`UALink`、`UCIe/Chiplet`、`DeepSeek-V3`、`FlashAttention`、`PagedAttention`、`MLPerf`、`CPO/LPO/硅光`、`冷板/CDU` 等技术问题，检索和答案组织会优先引用 roadmap、spec、paper 和 benchmark 报告中的原文级技术 Claim。
-
-V1.2 本轮稳定化新增：
-
-- 非流式问答默认使用 LangGraph `StateGraph` 编排 Agent 链路，旧版自研 Runner 仍可通过 `QA_AGENT_RUNNER=legacy` 回退。
-- evidence pack 不再简单按分数截断，而是按问题类型分配 Claim/Dossier/Graph/RAG 证据预算，避免同类证据挤占全部上下文。
-- 每条证据卡片带 `citation_id`，答案和前端证据抽屉可用 `E1/E2/...` 对齐关键判断。
-- 回答子图由图谱记录和已选证据卡共同生成；即使答案主要来自 Claim/Dossier，React 工作台的“子图”也能展示公司、主题、风险和指标关系。
-- 本地回归评测扩展到 15 个投研问题，并检查证据卡、引用编号和子图是否生成。
-
-第三阶段投研智能体新增：
-
-- 每次问答会同步生成 `research_outputs`，包括研究报告、公司对比表、风险清单和证据缺口清单。
-- React 证据抽屉新增“投研”页签，用结构化视图展示报告、对比表、风险与缺口，不再只依赖答案正文。
-- Claim 证据卡支持前端修正 Claim 文本、主题、类型、敞口分级、置信度、时点、原文证据和审校备注。
-- Claim 修正不会覆盖原始 `claims.csv`，而是追加写入 `data/curated/claim_reviews.jsonl` 覆盖层；后续检索会读取最新修正，`rejected` 状态的 Claim 会从检索结果中过滤。
-
-### V1.2 仍未完善的地方
-
-- 原文级 Claim 抽取已经先覆盖 `industry_tech_*` 专业技术源，但年报、券商研报和普通行业白皮书仍主要依赖关系派生 Claim。后续需要把原文级抽取扩展到更多来源，并加入 LLM 审校和人工校验。
-- Segment dossier 是确定性聚合摘要，不是 LLM 多文档综合后的高质量社区报告；部分机理句仍会带有原始抽取噪声，需要进一步做 LLM 审校和人工校验。
-- 公司敞口分级已经可用，但仍是启发式规则。复杂场景下，例如“液冷兼容设计”“数据中心节能”“光模块上游材料”，还需要更细的敞口 taxonomy 和人工标注样本。
-- 当前已接入本地 JSONL embedding 语义召回，但 reranker 仍以规则打分为主；后续可继续加入 cross-encoder/LLM rerank 和真正的 GraphRAG global/local/DRIFT search。
-- 反证和冲突处理只是预留字段，尚未系统识别“券商乐观判断 vs 年报风险披露”“老报告 vs 新报告”“技术路线 A vs B”的矛盾。
-- 指标抽取还偏粗，不能稳定区分订单、合同负债、产能、毛利率、ASP、客户结构、资本开支、渗透率等投研指标。
-- 评测集仍偏 smoke test，能保证主流程不退化，但还不能衡量“是否产生超前 insight”。需要扩展高难投研问题和分维度评分。
-- 本次专业技术源并入的核心回归已通过；API 测试在当前沙箱里 `TestClient` 请求仍有挂起现象，后续需要单独定位 FastAPI/TestClient 与运行环境的兼容问题。
-
-## 下一步：完全体升级计划
-
-完全体目标是把系统做成“面向 AI 算力产业链上市公司的证据驱动投研分析引擎”，而不只是问答演示。核心标准是：答案能稳定给出技术因果链、产业传导路径、公司敞口排序、可验证领先指标、风险反证和证据边界。
-
-### 1. 原文级 Claim 抽取扩展与审校
-
-- 当前已经在 `scripts/build_research_artifacts.py` 中合并“关系派生 Claim”和“专业技术源原文直抽 Claim”。下一步要把直抽能力从 `industry_tech_*` 扩展到年报、券商研报和普通行业源。
-- Claim schema 继续固定为：`claim_text`、`claim_type`、`topic`、`companies`、`exposure_level`、`mechanism`、`direction`、`horizon`、`metric/value/unit`、`source`、`evidence_span`、`confidence`、`as_of_date`。
-- 抽取时强制区分：
-  - 技术机理：为什么某技术重要。
-  - 产业传导：需求如何从训练/推理、数据中心、芯片、互联传到上市公司。
-  - 公司敞口：core/direct/indirect/mentioned。
-  - 领先指标：订单、收入、毛利率、产能、客户导入、资本开支、PUE、功率密度、端口速率、渗透率。
-  - 反证风险：技术路线替代、供给约束、客户集中、价格压力、政策约束、需求不及预期。
-- 技术源默认不抽公司敞口，除非原文明确出现核心 A 股上市公司，避免把全球规范、论文或 benchmark 中的通用技术结论误映射到股票标的。
-
-### 2. 主题社区报告升级
-
-- 对每个主题生成 LLM 审校后的 `segment_dossier`，结构固定为：技术定义、需求驱动、瓶颈、产业链映射、公司敞口表、领先指标、风险反证、关键证据、证据缺口。
-- 使用分层摘要：chunk claims -> report summary -> segment dossier -> cross-segment thesis。
-- 对重点主题先做高质量白名单：AI 服务器、国产算力、训练/推理、光模块、CPO/LPO/硅光、液冷、电源、PCB/CCL、IDC/智算中心、算力网络。
-
-### 3. 检索升级为真正 GraphRAG
-
-- Query Router 明确分流：
-  - “哪些公司/谁受益”走公司敞口排序。
-  - “为什么/趋势/瓶颈”走 global dossier + claim 检索。
-  - “公司对比”走两家公司 claim bundle + 指标/风险矩阵。
-  - “订单/业绩/指标”只走指标 Claim，并在缺证据时明确拒答。
-  - “继续说/它们/上述”走历史问题改写后再路由。
-- 引入三阶段检索：BM25 高召回、dense embedding 语义召回、cross-encoder 或 LLM rerank 精排。
-- 实现 DRIFT 式流程：宽问题先召回全局 dossier，再自动拆成子问题，最后回到局部公司/指标/风险证据。
-- 图谱检索从单跳关系扩展到多跳路径：需求驱动 -> 技术瓶颈 -> 产业环节 -> 公司敞口 -> 指标验证 -> 风险反证。
-
-### 4. 数据质量与人工校验台
-
-- 为 `claims.csv` 增加 `review_status`、`reviewer_note`、`quality_flags`、`conflict_group_id`。
-- 建立人工校验表或轻量前端：支持按主题查看 Claim、合并重复 Claim、调整敞口强度、标记噪声和冲突。
-- 持续完善实体别名和技术 taxonomy。当前已初步覆盖 `UCIe`、`UALink`、`Ultra Ethernet/UET`、`Scale Up/Scale Out`、`SerDes`、`CPO/LPO/硅光`、`HBM`、`Chiplet`、`advanced packaging`、`FP8`、`FlashAttention`、`PagedAttention`、`MLPerf`、`cold plate/CDU` 等术语，后续需要继续做别名归一、主题映射和人工样本校验。
-- 对年报财务表格、研报图表和白皮书指标做结构化解析，不再只依赖正文 OCR 文本。
-
-### 5. 答案生成器升级
-
-- 答案生成前先构造 evidence pack，每个关键结论都绑定证据编号、来源、页码、置信度和时点。
-- 输出格式按问题类型变化：
-  - 主题研究：核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据。
-  - 公司对比：差异矩阵、共同驱动、分歧点、指标验证、风险差异。
-  - 公司画像：业务卡位、产品代际、客户/订单证据、财务兑现、风险。
-  - 空证据问题：明确缺口和建议补充的数据源。
-- 加入事实一致性检查：答案中的公司、指标、年份、数值必须能在 evidence pack 中找到。
-
-### 6. 高难评测体系
-
-- 扩展 30-50 个高难投研问题，覆盖训练/推理分化、国产算力瓶颈、液冷渗透、光模块代际、订单缺口、公司比较、反证判断。
-- 评分维度从关键词改为 2/1/0 或 5 分制：
-  - 事实正确性。
-  - 证据支撑。
-  - 公司敞口排序。
-  - 技术因果链。
-  - 领先指标。
-  - 反证/边界。
-  - 无幻觉。
-- 增加检索指标：claim recall@10、direct exposure precision@10、证据页码有效率、低价值片段占比。
-- 每次构建后输出评测报告，记录失败样例和错误类型。
-
-### 7. 工程化与前端展示
-
-- 前端证据抽屉增加 Claim/Dossier 视图，用户能看到“这个结论来自哪个 Claim、哪个原文片段、敞口强度如何判定”。
-- 数据概览页增加 Claim 数量、Dossier 数量、直接敞口公司分布、低质量证据比例。
-- API status 暴露 `research_enabled` 和 research artifact 错误。
-- Neo4j 导入支持新增本体和关系，并可选择导入 Claim 节点和 EvidenceSpan 节点。
-- 完成 `tests/test_api.py` 在当前环境中的挂起问题定位，恢复全量 `pytest -q` 一次性通过。
 
 ## 第一阶段：数据准备
 
@@ -327,8 +64,17 @@ cp .env.example .env
 解析 PDF 并生成文本块：
 
 ```bash
-python scripts/parse_pdfs.py --manifest data/metadata/reports_manifest.csv
+python scripts/parse_pdfs.py \
+  --manifest data/metadata/reports_manifest.csv \
+  --ocr-mode auto \
+  --ocr-language chi_sim+eng \
+  --min-text-chars 80
 ```
+
+解析器使用 PyMuPDF 的版面文本块和表格检测，将正文与表格分别清洗和分块。
+表格以结构化行列及 Markdown 保存，低文本页在本机具备 Tesseract 时自动 OCR；
+未安装 OCR 依赖时只记录警告。解析质量汇总写入
+`data/parsed_text/parse_quality.csv`。需要全量覆盖旧解析结果时增加 `--force`。
 
 调用 LLM 抽取实体关系。建议按报告类型分批跑：
 
@@ -385,23 +131,52 @@ python scripts/load_neo4j.py --dry-run
 python scripts/build_curated_graph.py
 ```
 
-构建本地 RAG 索引：
+启动 ParadeDB 并执行数据库 migration：
 
 ```bash
-python scripts/build_rag_index.py
+docker compose up -d postgres
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/migrate_postgres.py
 ```
 
-构建本地 embedding 语义索引：
+首次切换时，可把现有 RAG、Claim、Dossier 和审核覆盖层导入 PostgreSQL：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/bootstrap_postgres_retrieval.py
+```
+
+PDF 或清洗规则更新后的完整重建顺序：
+
+```bash
+python scripts/parse_pdfs.py --force --ocr-mode auto
+python scripts/build_rag_index.py
+python scripts/extract_knowledge.py --sleep 0.3
+python scripts/build_verified_graph.py
+python scripts/build_curated_graph.py
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/build_embedding_index.py --force
+```
+
+`build_rag_index.py`、`build_curated_graph.py` 和 `build_research_artifacts.py`
+会事务写入 PostgreSQL，并删除数据库中已不在本次构建结果内的旧记录。知识抽取和
+Embedding 会调用外部服务，执行前应确认密钥、费用和人工校验流程。
+
+增量生成 PostgreSQL embedding：
 
 ```bash
 UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/build_embedding_index.py
 ```
 
-该索引会把 `data/rag/documents.jsonl`、`data/curated/claims.csv` 和
-`data/curated/segment_dossiers.jsonl` 统一编码到 `data/semantic_index/`。
-问答时只向量化用户问题，并用 cosine 相似度召回语义证据；如果未配置
-`EMBEDDING_MODEL` 或索引加载失败，系统会自动降级到现有 BM25/Claim/Graph 链路。
-可先运行 `python scripts/build_embedding_index.py --dry-run` 查看待索引数量。
+默认只处理 missing、stale 或 failed 记录；`--force` 会重建全部向量。
+原文、Claim 和 Dossier 统一使用 2048 维向量，问答时通过 pgvector HNSW
+执行 cosine 召回。可先用 `--dry-run` 查看待处理数量。
+
+切换 API 前执行数量与检索质量门禁：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/validate_postgres_cutover.py --run-eval
+```
+
+默认验收 6189 个原文块、568 个 Claim、9 个 Dossier、6766 条 ready 向量，
+并要求 BM25、semantic、RRF 的 `recall@6` 分别不低于 0.51、0.85、0.85。
 
 如果只想重建投研推理层，可以单独运行：
 
@@ -424,9 +199,10 @@ python scripts/build_research_artifacts.py --no-direct-claims
 
 - `QuestionPlan` 先解析问题意图、公司、主题、关系、是否比较、是否只看核心上市公司。
 - 图谱检索默认读取 `data/curated/`；Neo4j 可用时作为增强后端，不可用时自动降级 CSV。
-- 本地 RAG 使用 `jieba + BM25` 检索原文块，带同义词扩展、来源优先级、噪声过滤和去重。技术问题会提升 roadmap、spec、paper、benchmark 类证据权重；普通公司敞口问题仍优先年报和券商研报。
+- 原文 RAG 使用 ParadeDB `pg_search` 的 Jieba BM25，保留同义词扩展、来源优先级、噪声过滤和去重。
 - 结构化证据会统一成 `evidence_cards`，再生成“结论、证据、研究要点、风险与边界”格式答案。
-- 投研增强证据会额外读取 `claims.csv`、`evidence_spans.csv` 和 `segment_dossiers.jsonl`，优先组织“核心判断、技术机理、产业传导、公司排序、领先指标、反证/边界、证据”格式答案。
+- Claim/Dossier 规则召回和原文/Claim/Dossier 向量召回均直接读取 PostgreSQL。
+- 旧 `data/rag`、Claim/Dossier 和 semantic index 文件只保留用于 bootstrap、基线对比和结果审计，不参与运行时查询。
 - 答案只做事实归纳和研究框架，不提供买卖建议、目标价或收益预测。
 
 新增配置：
@@ -441,17 +217,16 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_GLOBAL_DOSSIER_TOP_K`：GraphRAG global dossier 召回数量，默认 3。
 - `QA_LOCAL_CLAIM_TOP_K`：GraphRAG local claim 召回数量，默认 12。
 - `QA_GRAPH_PATH_TOP_K`：GraphRAG 多跳路径数量，默认 6。
-- `RAG_INDEX_DIR`：本地 RAG 索引目录，默认 `data/rag`。
-- `RAG_TOP_K`：每次问答检索的本地文档块数量。
-- `RAG_SEARCH_CACHE_SIZE`：本地 RAG 查询结果 LRU 缓存大小，默认 128。
+- `DATABASE_URL`：必填的 PostgreSQL 连接串。
+- `DB_POOL_MIN_SIZE`、`DB_POOL_MAX_SIZE`：共享同步连接池大小，默认 1 和 8。
+- `PG_HNSW_EF_SEARCH`：每次向量查询的 HNSW 搜索宽度，默认 100。
+- `RAG_TOP_K`：每次问答检索的原文块数量。
 - `EMBEDDING_BASE_URL`：OpenAI-compatible embedding 服务地址；未配置时回退 `LLM_BASE_URL`。
 - `EMBEDDING_API_KEY`：embedding 服务 API key；未配置时回退 `LLM_API_KEY`。
 - `EMBEDDING_MODEL`：embedding 模型名；为空时关闭 embedding 语义召回。
-- `EMBEDDING_BATCH_SIZE`：离线构建索引时的批量大小，默认 32。
-- `EMBEDDING_DIMENSIONS`：可选输出向量维度；为空时使用模型/服务默认维度。Qwen3-Embedding-8B 可设为 `64`、`128`、`256`、`512`、`768`、`1024`、`2048` 或 `4096`。修改后需要重建 embedding 索引。
-- `EMBEDDING_INDEX_DIR`：本地语义索引目录，默认 `data/semantic_index`。
+- `EMBEDDING_BATCH_SIZE`：增量向量化时的批量大小，默认 32。
+- `EMBEDDING_DIMENSIONS`：固定为 `2048`。
 - `SEMANTIC_TOP_K`：Agent 每轮语义召回数量，默认 8。
-- `RESEARCH_ARTIFACT_DIR`：投研 Claim/Dossier 目录，默认 `data/curated`。
 - `QA_GRAPH_LIMIT`：Neo4j 查询结果上限。
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
 - `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
@@ -459,8 +234,11 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_AGENT_RUNNER`：非流式 Agent 编排器，支持 `langgraph`、`legacy`，默认 `langgraph`；流式问答当前仍使用 legacy streaming runner。
 - `QA_AGENT_MAX_STEPS`：Agent ReAct 循环最大步数，默认 4，实现上限 4。
 - `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
-- `QA_HISTORY_MAX_TURNS`：连续问答时传入模型的最近对话轮数，默认 3。
-- `QA_HISTORY_MAX_CHARS`：连续问答历史的最大字符数，默认 4000。
+- `QA_HISTORY_MAX_TURNS`：LLM 压缩后仍保留原文的最近对话轮数，默认 3。
+- `QA_HISTORY_MAX_CHARS`：历史摘要与最近原文的总字符预算，默认 4000。
+- `QA_HISTORY_COMPRESSION_ENABLED`：是否用 LLM 将更早对话压成短期记忆摘要，默认开启。
+- `QA_HISTORY_SUMMARY_MAX_CHARS`：短期记忆摘要的最大字符数，默认 1600。
+- `QA_HISTORY_COMPRESSION_CHUNK_CHARS`：长历史分段压缩时单段的最大字符数，默认 12000。
 - `QA_UI_RENDER_LATEST_ONLY`：前端是否只默认渲染选中轮次的证据详情，默认开启。
 - `LLM_THINKING_ENABLED`：是否向 DeepSeek 请求开启思考模式，快问快答默认关闭。
 - `LLM_REASONING_EFFORT`：DeepSeek 思考强度，快问快答默认 `low`。
@@ -494,7 +272,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 
 ## 第五阶段：React + FastAPI 前端展示
 
-推荐使用新的 React 工作台。后端 API 复用现有 `QAEngine`、本地图谱和 RAG 索引，并把问答历史自动保存到 `data/conversations/`，前端可以直接点击历史会话恢复并继续追问。
+推荐使用新的 React 工作台。后端 API 复用现有 `QAEngine`、CSV/Neo4j 图谱和 PostgreSQL 检索后端，并把问答历史自动保存到 `data/conversations/`，前端可以直接点击历史会话恢复并继续追问。
 
 安装 Python 依赖后启动 API：
 
@@ -533,4 +311,110 @@ React 工作台包括：
 ```bash
 cd web
 npm run build
+```
+
+## 第六阶段：RAG 检索评测与数据集标注增强
+
+基于 50 条测试用例（`data/eval/rag_retrieval_v1.jsonl`）对 BM25、语义搜索和 RRF 融合进行 chunk-level 检索评测。
+
+### 快速运行
+
+```bash
+# BM25 检索（仅需 PostgreSQL）
+DATABASE_URL=postgresql://aiqasys:aiqasys@localhost:5432/aiqasys \
+  uv run python main.py eval --suite rag --limit 50
+
+# BM25 + 语义 + RRF 融合（需先构建 embedding）
+DATABASE_URL=postgresql://aiqasys:aiqasys@localhost:5432/aiqasys \
+  uv run python main.py eval --suite rag --use-embedding --limit 50
+
+# 自定义参数
+DATABASE_URL=... uv run python main.py eval --suite rag \
+  --limit 10 --ks 1,3,6,12 --retrievers bm25,rrf \
+  --candidate-k 60 --json --no-save
+```
+
+### 评估指标
+
+| 指标 | 含义 |
+|---|---|
+| `recall@K` | 必需证据单元的召回率 |
+| `precision@K` | 返回 K 条中相关项比例 |
+| `hit_rate@K` | 至少命中一条直接证据的 case 比例 |
+| `mrr@K` | 平均倒数排名（第一个相关结果的排位倒数均值） |
+| `ndcg@K` | 归一化折损累计增益（排序质量） |
+| `unjudged@K` | 返回结果中未被数据集标注的比例 |
+
+### 降低 unjudged 率：LLM 自动标注增强
+
+当 `unjudged@K` 过高（如 >80%）时，评测指标的 precision/recall 可信度低。系统提供 LLM 自动标注流水线，批量判定 review queue 中的未标注 chunk 并写回数据集。
+
+**Step 1 — 运行评测，生成 review queue：**
+评测产生的 `*_unjudged.jsonl` 文件即为待标注队列，包含每个未标注 chunk 的来源、章节和内容片段。
+
+**Step 2 — LLM 批量自动标注：**
+
+```bash
+# 预览（不调用 LLM，查看去重统计）
+python scripts/auto_judge_review.py \
+  --input data/eval_runs/rag_eval_xxx_unjudged.jsonl \
+  --dataset data/eval/rag_retrieval_v1.jsonl \
+  --dry-run
+
+# 正式标注（8 chunk/批次，~290 次 LLM 调用处理全部 2313 个 unjudged chunk）
+python scripts/auto_judge_review.py \
+  --input data/eval_runs/rag_eval_xxx_unjudged.jsonl \
+  --dataset data/eval/rag_retrieval_v1.jsonl \
+  --output data/eval_runs/auto_judgments.jsonl \
+  --batch-size 8
+```
+
+LLM 对每个 chunk 输出 `grade`（0=不相关, 1=部分相关, 2=直接支撑）、匹配的 `unit_id`、置信度和判定理由。低置信度的项自动标记 `needs_review` 供人工抽查。
+
+**Step 3 — 写回增强数据集：**
+
+```bash
+# 预览变更（不写入文件）
+python scripts/apply_judgments.py \
+  --judgments data/eval_runs/auto_judgments.jsonl \
+  --dataset data/eval/rag_retrieval_v1.jsonl \
+  --dry-run
+
+# 生成增强版数据集
+python scripts/apply_judgments.py \
+  --judgments data/eval_runs/auto_judgments.jsonl \
+  --dataset data/eval/rag_retrieval_v1.jsonl \
+  --output data/eval/rag_retrieval_v2.jsonl \
+  --backup
+
+# 可选：仅应用高置信度标注，跳过 needs_review 项
+python scripts/apply_judgments.py \
+  --judgments data/eval_runs/auto_judgments.jsonl \
+  --dataset data/eval/rag_retrieval_v1.jsonl \
+  --output data/eval/rag_retrieval_v2.jsonl \
+  --skip-needs-review --min-confidence 0.7
+```
+
+**Step 4 — 用增强数据集重新评测：**
+
+```bash
+DATABASE_URL=postgresql://aiqasys:aiqasys@localhost:5432/aiqasys uv run python main.py eval \
+  --suite rag \
+  --benchmark data/eval/rag_retrieval_v2.jsonl \
+  --retrievers bm25,semantic,rrf \
+  --use-embedding
+```
+
+### 检索时间测试
+
+```bash
+docker exec aiqasys-postgres psql -U aiqasys -d aiqasys -c "
+EXPLAIN ANALYZE
+SELECT chunk_id, company, source_title,
+       pdb.score(id) AS bm25_score
+FROM rag_chunks
+WHERE search_text ||| '液冷 服务器 散热'
+ORDER BY pdb.score(id) DESC
+LIMIT 6;
+"
 ```

@@ -19,6 +19,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_AGENT_TASK_DIR = ROOT_DIR / "data" / "agent_tasks"
 DEFAULT_EVAL_RUN_DIR = ROOT_DIR / "data" / "eval_runs"
 DEFAULT_QA_BENCHMARK = ROOT_DIR / "data" / "eval" / "qa_benchmark_v1.jsonl"
+DEFAULT_RAG_BENCHMARK = ROOT_DIR / "data" / "eval" / "rag_retrieval_v1.jsonl"
 DEFAULT_DEMO_QUESTION = "液冷产业链有哪些上市公司，各自处于什么环节？"
 DEFAULT_DEMO_GOAL = "液冷产业链"
 
@@ -46,28 +47,35 @@ def build_parser() -> argparse.ArgumentParser:
     agent_parser.add_argument("goal", help="Research goal, for example: 液冷产业链")
     agent_parser.add_argument("--type", default="research_brief", choices=sorted(SUPPORTED_TASK_TYPES))
     agent_parser.add_argument("--task-dir", default=str(DEFAULT_AGENT_TASK_DIR))
-    agent_parser.add_argument("--offline", action="store_true", help="Force local CSV/RAG mode and disable LLM/embedding.")
+    agent_parser.add_argument("--offline", action="store_true", help="Use CSV graph and disable LLM/semantic retrieval.")
     agent_parser.add_argument("--use-llm", action="store_true", help="Use the configured LLM client.")
     agent_parser.add_argument("--use-embedding", action="store_true", help="Use the configured embedding index.")
     agent_parser.add_argument("--json", action="store_true", help="Print the full task JSON.")
     agent_parser.set_defaults(func=run_agent)
 
-    eval_parser = subparsers.add_parser("eval", help="Run deterministic QA or Agent evaluations.")
-    eval_parser.add_argument("--suite", choices=["qa", "agent"], default="qa")
+    eval_parser = subparsers.add_parser("eval", help="Run QA, RAG retrieval, or Agent evaluations.")
+    eval_parser.add_argument("--suite", choices=["qa", "rag", "agent"], default="qa")
     eval_parser.add_argument("--limit", type=int, default=0)
     eval_parser.add_argument("--task-dir", default=str(DEFAULT_AGENT_TASK_DIR))
-    eval_parser.add_argument("--benchmark", default=str(DEFAULT_QA_BENCHMARK), help="QA benchmark JSONL file.")
+    eval_parser.add_argument("--benchmark", default="", help="Benchmark JSONL file; defaults depend on --suite.")
     eval_parser.add_argument("--report-dir", default=str(DEFAULT_EVAL_RUN_DIR), help="Directory for eval run JSONL reports.")
     eval_parser.add_argument("--k", type=int, default=6, help="Top-k evidence cards used by retrieval metrics.")
+    eval_parser.add_argument("--ks", default="1,3,6,12", help="Comma-separated K values for RAG retrieval metrics.")
+    eval_parser.add_argument("--candidate-k", type=int, default=30, help="RAG candidate pool and review depth.")
+    eval_parser.add_argument(
+        "--retrievers",
+        default="auto",
+        help="RAG retrievers: auto, bm25, semantic, rrf, or a comma-separated combination.",
+    )
     eval_parser.add_argument("--no-save", action="store_true", help="Do not append the eval report to the local report store.")
-    eval_parser.add_argument("--offline", action="store_true", help="Force local CSV/RAG mode and disable LLM/embedding.")
+    eval_parser.add_argument("--offline", action="store_true", help="Use CSV graph and disable LLM/semantic retrieval.")
     eval_parser.add_argument("--use-llm", action="store_true", help="Use the configured LLM client.")
     eval_parser.add_argument("--use-embedding", action="store_true", help="Use the configured embedding index.")
     eval_parser.add_argument("--json", action="store_true", help="Print JSON results.")
     eval_parser.set_defaults(func=run_eval)
 
     demo_parser = subparsers.add_parser("demo", help="Run a minimal local QA + Agent demo.")
-    demo_parser.add_argument("--offline", action="store_true", help="Force local CSV/RAG mode and disable LLM/embedding.")
+    demo_parser.add_argument("--offline", action="store_true", help="Use CSV graph and disable LLM/semantic retrieval.")
     demo_parser.add_argument("--task-dir", default=str(DEFAULT_AGENT_TASK_DIR))
     demo_parser.add_argument("--use-llm", action="store_true", help="Use the configured LLM client.")
     demo_parser.add_argument("--use-embedding", action="store_true", help="Use the configured embedding index.")
@@ -138,6 +146,8 @@ def run_agent(args: argparse.Namespace) -> int:
 def run_eval(args: argparse.Namespace) -> int:
     if args.suite == "agent":
         return run_agent_eval(args)
+    if args.suite == "rag":
+        return run_rag_eval(args)
     return run_qa_eval(args)
 
 
@@ -149,7 +159,7 @@ def run_qa_eval(args: argparse.Namespace) -> int:
     try:
         report = run_qa_benchmark(
             engine,
-            benchmark_path=Path(args.benchmark),
+            benchmark_path=Path(args.benchmark or DEFAULT_QA_BENCHMARK),
             limit=args.limit,
             k=args.k,
             store=EvalRunStore(Path(args.report_dir)),
@@ -158,6 +168,57 @@ def run_qa_eval(args: argparse.Namespace) -> int:
     finally:
         engine.close()
     return print_qa_eval_report(report, args.json)
+
+
+def run_rag_eval(args: argparse.Namespace) -> int:
+    from src.embedding_client import OpenAICompatibleEmbeddingClient
+    from src.eval.rag_runner import RagRetrievalEvalError, run_rag_retrieval_benchmark
+    from src.eval.store import EvalRunStore
+    from src.postgres_retrieval import (
+        EMBEDDING_DIMENSIONS,
+        PostgresRagIndex,
+        PostgresRetrievalStore,
+        PostgresSemanticIndex,
+    )
+
+    store = None
+    try:
+        retrievers = parse_rag_retrievers(args.retrievers, use_embedding=bool(args.use_embedding))
+        ks = parse_positive_ints(args.ks)
+        semantic_requested = bool({"semantic", "rrf"} & set(retrievers))
+        if semantic_requested and not args.use_embedding:
+            print("semantic/rrf retrieval requires --use-embedding", file=sys.stderr)
+            return 2
+        store = PostgresRetrievalStore.from_env()
+        store.ensure_ready()
+        rag_index = PostgresRagIndex(store)
+        semantic_index = None
+        if semantic_requested:
+            embedding_client = OpenAICompatibleEmbeddingClient(dimensions=EMBEDDING_DIMENSIONS)
+            semantic_index = PostgresSemanticIndex(
+                store,
+                embedding_client=embedding_client,
+            )
+        report_dir = Path(args.report_dir)
+        report = run_rag_retrieval_benchmark(
+            rag_index,
+            benchmark_path=Path(args.benchmark or DEFAULT_RAG_BENCHMARK),
+            semantic_index=semantic_index,
+            retrievers=retrievers,
+            ks=ks,
+            candidate_k=args.candidate_k,
+            limit=args.limit,
+            store=EvalRunStore(report_dir),
+            save=not args.no_save,
+            review_dir=report_dir if not args.no_save else None,
+        )
+    except (OSError, RuntimeError, ValueError, RagRetrievalEvalError) as exc:
+        print(f"RAG retrieval evaluation failed: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        if store is not None:
+            store.close()
+    return print_rag_eval_report(report, args.json)
 
 
 def run_agent_eval(args: argparse.Namespace) -> int:
@@ -294,6 +355,59 @@ def print_qa_eval_report(report: dict[str, Any], as_json: bool) -> int:
             failure_text = ",".join(str(failure) for failure in item.get("failures", [])) or "-"
             print(f"[{item.get('category', '')}] {item.get('case_id', '')} score={item.get('score', 0)} failures={failure_text}")
     return 0 if float(summary.get("overall_score") or 0.0) >= 0.35 else 1
+
+
+def print_rag_eval_report(report: dict[str, Any], as_json: bool) -> int:
+    if as_json:
+        print(json.dumps(report, ensure_ascii=False, indent=2))
+        return 0
+    summary = report.get("summary", {})
+    primary_k = int(summary.get("primary_k") or 6)
+    print(
+        "RAG retrieval evaluation: "
+        f"run_id={report.get('run_id', '')} "
+        f"cases={summary.get('cases', 0)} "
+        f"primary_k={primary_k}"
+    )
+    for retriever, row in summary.get("by_retriever", {}).items():
+        metrics = row.get("primary", {})
+        print(
+            f"[{retriever}] "
+            f"recall@{primary_k}={float(metrics.get('recall') or 0.0):.1%} "
+            f"precision@{primary_k}={float(metrics.get('precision') or 0.0):.1%} "
+            f"hit_rate@{primary_k}={float(metrics.get('hit_rate') or 0.0):.1%} "
+            f"mrr@{primary_k}={float(metrics.get('mrr') or 0.0):.3f} "
+            f"ndcg@{primary_k}={float(metrics.get('ndcg') or 0.0):.3f} "
+            f"duplicate@{primary_k}={float(metrics.get('duplicate_rate') or 0.0):.1%} "
+            f"unjudged@{primary_k}={float(metrics.get('unjudged_rate') or 0.0):.1%}"
+        )
+    dataset = report.get("dataset", {})
+    print(f"Dataset: {dataset.get('name', '')} hash={dataset.get('hash', '')}")
+    review_queue = report.get("review_queue", {})
+    if review_queue.get("path"):
+        print(f"Unjudged review queue: {review_queue.get('unjudged', 0)} -> {review_queue['path']}")
+    return 0
+
+
+def parse_positive_ints(value: str) -> tuple[int, ...]:
+    try:
+        values = sorted({int(item.strip()) for item in str(value).split(",") if item.strip()})
+    except ValueError as exc:
+        raise ValueError("--ks must be a comma-separated list of positive integers") from exc
+    if not values or any(item <= 0 for item in values):
+        raise ValueError("--ks must contain at least one positive integer")
+    return tuple(values)
+
+
+def parse_rag_retrievers(value: str, *, use_embedding: bool) -> tuple[str, ...]:
+    normalized = str(value or "auto").strip().casefold()
+    if normalized == "auto":
+        return ("bm25", "semantic", "rrf") if use_embedding else ("bm25",)
+    values = tuple(item.strip() for item in normalized.split(",") if item.strip())
+    allowed = {"bm25", "semantic", "rrf"}
+    if not values or any(item not in allowed for item in values):
+        raise ValueError("--retrievers supports bm25, semantic, rrf, or auto")
+    return tuple(dict.fromkeys(values))
 
 
 def first_lines(text: str, *, limit: int) -> str:

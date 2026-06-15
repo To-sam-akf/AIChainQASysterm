@@ -321,6 +321,120 @@ class StreamingLLMClient(RecordingLLMClient):
         yield ChatStreamChunk(content="浪潮信息涉及 AI 服务器。")
 
 
+class HistoryCompressionLLMClient:
+    def __init__(self, *, fail_compression: bool = False) -> None:
+        self.fail_compression = fail_compression
+        self.calls: list[list[dict[str, str]]] = []
+
+    def chat_messages(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        temperature: float = 0.2,
+        **kwargs: object,
+    ) -> ChatTextResult:
+        del temperature, kwargs
+        self.calls.append(messages)
+        system_prompt = messages[0]["content"]
+        if "上下文压缩器" in system_prompt:
+            if self.fail_compression:
+                raise RuntimeError("compression unavailable")
+            return ChatTextResult(content="用户早期关注中际旭创与新易盛的光模块业务差异。")
+        return ChatTextResult(content="基于证据回答。")
+
+    def chat_text(
+        self,
+        *,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        **kwargs: object,
+    ) -> str:
+        del system_prompt, user_prompt, temperature, kwargs
+        return "基于证据回答。"
+
+
+def test_llm_compresses_older_history_and_keeps_recent_turns() -> None:
+    graph = LocalKnowledgeGraph(
+        entities=[],
+        relations=[
+            {
+                "head_type": "Company",
+                "head_name": "浪潮信息",
+                "relation": "HAS_PRODUCT",
+                "tail_type": "Product",
+                "tail_name": "AI服务器",
+                "evidence": "浪潮信息布局AI服务器。",
+                "source_title": "报告",
+                "page": "1",
+                "source_tier": "1",
+                "section": "主营业务",
+            }
+        ],
+    )
+    client = HistoryCompressionLLMClient()
+    engine = QAEngine(
+        csv_graph=graph,
+        rag_index=None,
+        llm_client=client,
+        enable_agent=False,
+        history_max_turns=1,
+        history_max_chars=1000,
+        history_summary_max_chars=300,
+    )
+    history = [
+        {"role": "user", "content": "中际旭创和新易盛在光模块业务上的差异是什么？"},
+        {"role": "assistant", "content": "两家公司都涉及高速光模块。"},
+        {"role": "user", "content": "液冷产业链有哪些公司？"},
+        {"role": "assistant", "content": "英维克等公司有直接敞口。"},
+    ]
+
+    result = engine.answer_question("哪些上市公司涉及AI服务器？", conversation_history=history)
+
+    diagnostics = result["diagnostics"]
+    assert diagnostics["history_strategy"] == "llm_compression"
+    assert diagnostics["history_compressed"] is True
+    assert diagnostics["history_source_messages"] == 4
+    assert diagnostics["history_summarized_messages"] == 2
+    compression_call = next(call for call in client.calls if "上下文压缩器" in call[0]["content"])
+    assert "中际旭创" in compression_call[1]["content"]
+    answer_call = client.calls[-1]
+    assert "历史对话压缩摘要" in answer_call[1]["content"]
+    assert answer_call[2:4] == history[-2:]
+    assert answer_call[-1]["role"] == "user"
+    assert all("两家公司都涉及高速光模块" not in message["content"] for message in answer_call[1:])
+
+
+def test_history_compression_failure_falls_back_to_recent_window() -> None:
+    client = HistoryCompressionLLMClient(fail_compression=True)
+    engine = QAEngine(
+        csv_graph=None,
+        rag_index=None,
+        llm_client=client,
+        history_max_turns=1,
+        history_max_chars=1000,
+    )
+    source = [
+        {"role": "user", "content": "第一问"},
+        {"role": "assistant", "content": "第一答"},
+        {"role": "user", "content": "第二问"},
+        {"role": "assistant", "content": "第二答"},
+    ]
+    errors: list[str] = []
+
+    history, metadata = engine._prepare_conversation_history(
+        source,
+        errors=errors,
+        llm_options={},
+        llm_client=client,
+    )
+
+    assert history == source[-2:]
+    assert metadata["history_strategy"] == "recent_window"
+    assert metadata["history_compressed"] is False
+    assert errors == ["Conversation history compression failed: compression unavailable"]
+
+
 def test_fast_path_limits_llm_calls_on_first_turn() -> None:
     graph = LocalKnowledgeGraph(
         entities=[],

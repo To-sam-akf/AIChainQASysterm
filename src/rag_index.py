@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import math
 import os
 import re
@@ -115,6 +116,8 @@ class RagDocument:
     source_type: str
     page: str
     section: str
+    content_type: str
+    table_id: str
     text: str
     token_counts: dict[str, int]
     token_count: int
@@ -129,6 +132,8 @@ class RagHit:
     source_type: str
     page: str
     section: str
+    content_type: str
+    table_id: str
     company: str
     text: str
     snippet: str
@@ -187,6 +192,7 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
     text = str(chunk.get("text") or "").strip()
     if not text:
         return None
+    content_type = str(chunk.get("content_type") or "text")
     search_text = "\n".join(
         str(chunk.get(key, "") or "")
         for key in ("company", "source_title", "source_type", "section", "context", "text")
@@ -205,7 +211,9 @@ def document_from_chunk(chunk: dict[str, Any]) -> RagDocument | None:
         source_type=str(chunk.get("source_type", "")),
         page=str(chunk.get("page", "")),
         section=str(chunk.get("section", "")),
-        text=text[:MAX_TEXT_CHARS],
+        content_type=content_type,
+        table_id=str(chunk.get("table_id") or ""),
+        text=text if content_type == "table" else text[:MAX_TEXT_CHARS],
         token_counts=dict(counts),
         token_count=sum(counts.values()),
     )
@@ -216,10 +224,10 @@ def build_rag_index(
     output_dir: Path = DEFAULT_RAG_DIR,
 ) -> RagIndexMetadata:
     output_dir.mkdir(parents=True, exist_ok=True)
-    documents = [doc for chunk in iter_chunk_records(chunks_dir) if (doc := document_from_chunk(chunk))]
+    documents = build_rag_documents(chunks_dir)
     write_jsonl(output_dir / DOCUMENTS_FILE, [asdict(document) for document in documents])
     metadata = RagIndexMetadata(
-        index_version="bm25-v2",
+        index_version="bm25-v3",
         built_at=datetime.now(timezone.utc).isoformat(),
         chunk_count=len(documents),
         source_dir=str(chunks_dir),
@@ -230,6 +238,12 @@ def build_rag_index(
         encoding="utf-8",
     )
     return metadata
+
+
+def build_rag_documents(chunks_dir: Path = CHUNKS_DIR) -> list[RagDocument]:
+    """Build normalized RAG documents without choosing a persistence backend."""
+
+    return [doc for chunk in iter_chunk_records(chunks_dir) if (doc := document_from_chunk(chunk))]
 
 
 class LocalRagIndex:
@@ -272,12 +286,33 @@ class LocalRagIndex:
                     source_type=str(row.get("source_type", "")),
                     page=str(row.get("page", "")),
                     section=str(row.get("section", "")),
+                    content_type=str(row.get("content_type") or "text"),
+                    table_id=str(row.get("table_id") or ""),
                     text=str(row.get("text", "")),
                     token_counts={str(k): int(v) for k, v in dict(row.get("token_counts", {})).items()},
                     token_count=int(row.get("token_count") or 0),
                 )
             )
         return cls(documents, index_dir=index_dir)
+
+    def chunk_ids(self) -> set[str]:
+        return {document.chunk_id for document in self.documents if document.chunk_id}
+
+    def metadata_dict(self) -> dict[str, Any]:
+        path = self.index_dir / METADATA_FILE
+        if not path.exists():
+            return {"index_dir": str(self.index_dir), "chunk_count": len(self.documents)}
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return {"index_dir": str(self.index_dir), "chunk_count": len(self.documents)}
+
+    def corpus_hash(self) -> str:
+        path = self.index_dir / DOCUMENTS_FILE
+        if path.exists():
+            return hashlib.sha256(path.read_bytes()).hexdigest()[:16]
+        payload = "\n".join(sorted(self.chunk_ids()))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
     @staticmethod
     def _build_doc_freq(documents: list[RagDocument]) -> Counter:
@@ -357,6 +392,8 @@ class LocalRagIndex:
                     source_type=hit.source_type,
                     page=hit.page,
                     section=hit.section,
+                    content_type=hit.content_type,
+                    table_id=hit.table_id,
                     company=hit.company,
                     text=hit.text,
                     snippet=hit.snippet,
@@ -486,6 +523,8 @@ class LocalRagIndex:
             source_type=document.source_type,
             page=document.page,
             section=document.section,
+            content_type=document.content_type,
+            table_id=document.table_id,
             company=document.company,
             text=document.text,
             snippet=make_snippet(document.text, query_tokens.keys()),

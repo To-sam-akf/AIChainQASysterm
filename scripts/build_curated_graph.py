@@ -12,6 +12,8 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from src.curated_graph import DEFAULT_CURATED_DIR, build_curated_graph
 from src.frontend_data import DEFAULT_ENTITIES_CSV, DEFAULT_RELATIONS_CSV
+from src.llm_client import load_dotenv
+from src.postgres_retrieval import PostgresRetrievalStore
 from src.research_claims import build_research_artifacts
 from src.text_cleaner import CHUNKS_DIR
 
@@ -25,6 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    load_dotenv()
     args = build_parser().parse_args()
     entities, relations = build_curated_graph(
         entities_csv=args.entities,
@@ -35,10 +38,18 @@ def main() -> int:
         relations_csv=args.output_dir / "relations.csv",
         output_dir=args.output_dir,
         chunks_dir=CHUNKS_DIR,
+        write_outputs=False,
     )
+    store = PostgresRetrievalStore.from_env()
+    try:
+        store.ensure_ready()
+        result = store.sync_research(claims, dossiers)
+    finally:
+        store.close()
     print(
         f"Wrote curated entities={len(entities)} relations={len(relations)} "
-        f"claims={len(claims)} evidence_spans={len(evidence_spans)} dossiers={len(dossiers)} -> {args.output_dir}"
+        f"and synced claims={result['claims']} evidence_spans={len(evidence_spans)} "
+        f"dossiers={result['dossiers']} -> PostgreSQL"
     )
     return 0
 

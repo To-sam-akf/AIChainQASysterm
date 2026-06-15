@@ -361,6 +361,16 @@ class SemanticIndex:
         scored.sort(key=lambda hit: (-hit.score, hit.kind, hit.topic, hit.company, hit.title))
         return scored[: max(0, top_k)]
 
+    def rag_chunk_ids(self) -> set[str]:
+        return {
+            str(document.ref_id or document.doc_id.removeprefix("rag:"))
+            for document in self.documents
+            if document.kind == "rag"
+        }
+
+    def metadata_dict(self) -> dict[str, Any]:
+        return self.metadata.to_dict()
+
 
 def document_matches_filters(document: SemanticDocument, filters: dict[str, list[str]]) -> bool:
     kinds = filters.get("kinds")

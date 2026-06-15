@@ -67,3 +67,12 @@ data/semantic_index/
 !data/curated/
 !data/curated/*.csv
 !data/curated/**/.gitkeep
+
+data/
+
+# Version reproducible evaluation benchmarks, while keeping other data ignored.
+!data/
+data/*
+!data/eval/
+data/eval/*
+!data/eval/*.jsonl

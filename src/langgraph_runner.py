@@ -36,6 +36,7 @@ class LangGraphAgentState(TypedDict, total=False):
     tools: AgentTools
     langchain_tool_names: list[str]
     history: list[dict[str, str]]
+    history_memory: dict[str, Any]
     contextual_question: str
     plan: Any
     task_plan: Any
@@ -117,7 +118,7 @@ class LangGraphAgentRunner(AgentRunner):
         return builder.compile()
 
     def _plan_node(self, state: LangGraphAgentState) -> dict[str, Any]:
-        history, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
+        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
             str(state.get("question") or ""),
             state.get("conversation_history"),
             state["tools"],
@@ -125,6 +126,7 @@ class LangGraphAgentRunner(AgentRunner):
         )
         return {
             "history": history,
+            "history_memory": history_memory,
             "contextual_question": contextual_question,
             "plan": plan,
             "task_plan": task_plan,
@@ -267,6 +269,7 @@ class LangGraphAgentRunner(AgentRunner):
             thinking_enabled=state.get("thinking_enabled"),
             reasoning_effort=state.get("reasoning_effort"),
             total_start=float(state.get("total_start") or time.perf_counter()),
+            history_memory=state.get("history_memory") or {},
         )
         diagnostics = result.setdefault("diagnostics", {})
         diagnostics["agent_runner"] = "langgraph"

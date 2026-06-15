@@ -1,10 +1,11 @@
-"""Build the local JSONL embedding index for semantic recall."""
+"""Build or incrementally refresh PostgreSQL embeddings."""
 
 from __future__ import annotations
 
 import argparse
 import os
 import sys
+
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -13,52 +14,57 @@ if str(ROOT_DIR) not in sys.path:
 
 from src.embedding_client import OpenAICompatibleEmbeddingClient
 from src.llm_client import load_dotenv
-from src.rag_index import DEFAULT_RAG_DIR
-from src.research_claims import DEFAULT_RESEARCH_DIR
-from src.semantic_index import DEFAULT_SEMANTIC_DIR, build_semantic_documents, build_semantic_index
+from src.postgres_retrieval import EMBEDDING_DIMENSIONS, PostgresRetrievalStore
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Build local semantic embedding index.")
-    parser.add_argument("--rag-dir", type=Path, default=None, help="RAG index directory containing documents.jsonl.")
-    parser.add_argument("--research-dir", type=Path, default=None, help="Research artifacts directory.")
-    parser.add_argument("--output-dir", type=Path, default=None, help="Semantic index output directory.")
-    parser.add_argument("--limit", type=int, default=None, help="Index at most this many semantic documents.")
+    parser = argparse.ArgumentParser(description="Build PostgreSQL semantic embeddings.")
+    parser.add_argument("--limit", type=int, default=None, help="Embed at most this many records.")
     parser.add_argument("--batch-size", type=int, default=None, help="Override EMBEDDING_BATCH_SIZE.")
-    parser.add_argument("--dry-run", action="store_true", help="Only count semantic documents; do not call embeddings or write files.")
+    parser.add_argument("--force", action="store_true", help="Rebuild every embedding.")
+    parser.add_argument("--dry-run", action="store_true", help="Only count records that would be embedded.")
     return parser.parse_args()
 
 
 def main() -> None:
     load_dotenv()
     args = parse_args()
-    rag_dir = args.rag_dir or Path(os.getenv("RAG_INDEX_DIR", str(DEFAULT_RAG_DIR)))
-    research_dir = args.research_dir or Path(os.getenv("RESEARCH_ARTIFACT_DIR", str(DEFAULT_RESEARCH_DIR)))
-    output_dir = args.output_dir or Path(os.getenv("EMBEDDING_INDEX_DIR", str(DEFAULT_SEMANTIC_DIR)))
-    documents = build_semantic_documents(rag_dir=rag_dir, research_dir=research_dir, limit=args.limit)
-
-    print(f"semantic_documents={len(documents)}")
-    print(f"rag_dir={rag_dir}")
-    print(f"research_dir={research_dir}")
-    print(f"output_dir={output_dir}")
-    if args.dry_run:
-        return
-
-    def show_progress(done: int, total: int) -> None:
-        print(f"embedded_texts={done}/{total}", flush=True)
-
-    client = OpenAICompatibleEmbeddingClient(batch_size=args.batch_size)
-    metadata = build_semantic_index(
-        documents=documents,
-        embedding_client=client,
-        output_dir=output_dir,
-        rag_dir=rag_dir,
-        research_dir=research_dir,
-        progress_callback=show_progress,
-    )
-    print(f"vector_count={metadata.vector_count}")
-    print(f"dimension={metadata.dimension}")
-    print(f"embedding_model={metadata.embedding_model}")
+    configured_dimensions = int(os.getenv("EMBEDDING_DIMENSIONS", str(EMBEDDING_DIMENSIONS)))
+    if configured_dimensions != EMBEDDING_DIMENSIONS:
+        raise ValueError(
+            f"EMBEDDING_DIMENSIONS must be {EMBEDDING_DIMENSIONS} for PostgreSQL retrieval"
+        )
+    store = PostgresRetrievalStore.from_env()
+    try:
+        store.ensure_ready()
+        rows = store.pending_embeddings(force=args.force, limit=args.limit)
+        print(f"semantic_documents={len(rows)}")
+        print(f"embedding_dimensions={EMBEDDING_DIMENSIONS}")
+        if args.dry_run or not rows:
+            return
+        client = OpenAICompatibleEmbeddingClient(
+            batch_size=args.batch_size,
+            dimensions=EMBEDDING_DIMENSIONS,
+        )
+        completed = 0
+        batch_size = int(args.batch_size or client.batch_size)
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start : start + batch_size]
+            try:
+                vectors = client.embed_texts([str(row["semantic_text"]) for row in batch])
+                store.update_embeddings(batch, vectors, model=client.model)
+            except Exception:
+                for row in batch:
+                    store.mark_embedding_failed(row)
+                store.record_embedding_build(model=client.model, count=completed, status="failed")
+                raise
+            completed += len(batch)
+            print(f"embedded_texts={completed}/{len(rows)}", flush=True)
+        store.record_embedding_build(model=client.model, count=completed)
+        print(f"vector_count={completed}")
+        print(f"embedding_model={client.model}")
+    finally:
+        store.close()
 
 
 if __name__ == "__main__":

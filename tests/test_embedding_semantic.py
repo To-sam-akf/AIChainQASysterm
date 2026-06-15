@@ -1,6 +1,7 @@
 import csv
 import json
 import math
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -222,31 +223,22 @@ def test_semantic_index_builds_normalized_vectors_and_searches(tmp_path: Path) -
     assert hits[0].topic == "液冷" or "液冷" in hits[0].text
 
 
-def test_embedding_index_dry_run_does_not_write_files(tmp_path: Path) -> None:
-    rag_dir = tmp_path / "rag"
-    research_dir = tmp_path / "curated"
-    output_dir = tmp_path / "semantic"
-    write_jsonl(rag_dir / "documents.jsonl", [{"chunk_id": "r1", "source_title": "报告", "text": "液冷"}])
-    write_claims(research_dir / "claims.csv")
-    write_jsonl(research_dir / "segment_dossiers.jsonl", [{"topic": "液冷", "summary": "液冷"}])
-
+def test_embedding_index_requires_database_url() -> None:
+    env = os.environ.copy()
+    env["DATABASE_URL"] = ""
+    env["EMBEDDING_DIMENSIONS"] = "2048"
     result = subprocess.run(
         [
             sys.executable,
             "scripts/build_embedding_index.py",
-            "--rag-dir",
-            str(rag_dir),
-            "--research-dir",
-            str(research_dir),
-            "--output-dir",
-            str(output_dir),
             "--dry-run",
         ],
-        check=True,
+        check=False,
         cwd=Path(__file__).resolve().parents[1],
         capture_output=True,
         text=True,
+        env=env,
     )
 
-    assert "semantic_documents=3" in result.stdout
-    assert not output_dir.exists()
+    assert result.returncode != 0
+    assert "DATABASE_URL is required" in result.stderr

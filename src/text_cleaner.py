@@ -21,6 +21,12 @@ RELEVANT_TERMS = (
     "研发投入",
     "风险因素",
     "财务指标",
+    "营业收入",
+    "净利润",
+    "毛利率",
+    "研发费用",
+    "市场份额",
+    "出货量",
     "产业链",
     "AI",
     "人工智能",
@@ -67,7 +73,7 @@ def is_noise_line(line: str) -> bool:
         return True
     if re.fullmatch(r"\d{1,4}", stripped):
         return True
-    if re.search(r"\.{5,}\s*\d{1,4}$", stripped):
+    if re.search(r"(?:\.|·|…){5,}\s*\d{1,4}$", stripped):
         return True
     if stripped in {"目录", "释义", "重要提示"}:
         return True
@@ -107,6 +113,7 @@ def is_valid_section_title(value: str) -> bool:
 # 去页码、目录、免责声明、空行等噪声
 def clean_text(text: str) -> str:
     text = text.replace("\u3000", " ").replace("\x00", "")
+    text = "".join(char for char in text if char in "\n\t" or ord(char) >= 32)
     text = re.sub(r"[ \t]+", " ", text)
     lines = [line.strip() for line in text.splitlines()]
     lines = [line for line in lines if not is_noise_line(line)]
@@ -167,48 +174,229 @@ def build_chunks_from_pages(
     overlap: int = 200,
     include_all_if_no_relevant: bool = True,
 ) -> list[dict[str, Any]]:
-    page_units = []
+    page_units: list[dict[str, Any]] = []
     inherited_section = ""
     for page in pages:
         cleaned = clean_text(page.get("text", ""))
-        if not cleaned:
-            continue
-        score = relevance_score(cleaned)
-        detected_section = detect_section(cleaned)
+        detected_section = detect_section(cleaned) if cleaned else ""
         if detected_section:
             inherited_section = detected_section
-        page_units.append((score, page, cleaned, inherited_section))
-    selected = [item for item in page_units if item[0] > 0]
+        page_score = relevance_score(cleaned)
+        if cleaned:
+            page_units.append(
+                {
+                    "score": page_score,
+                    "content_type": "text",
+                    "page": page,
+                    "text": cleaned,
+                    "section": inherited_section,
+                }
+            )
+        for table in page.get("tables", []) or []:
+            table_title = str(table.get("title") or "").strip()
+            table_text = " ".join(
+                str(value or "")
+                for value in (
+                    table_title,
+                    " ".join(str(cell or "") for cell in table.get("headers", [])),
+                    table.get("markdown", ""),
+                )
+            )
+            table_section = detect_section(table_title)
+            if not table_section and is_valid_section_title(table_title):
+                table_section = table_title
+            page_units.append(
+                {
+                    "score": max(page_score, relevance_score(table_text)),
+                    "content_type": "table",
+                    "page": page,
+                    "table": table,
+                    "section": table_section or inherited_section,
+                }
+            )
+    selected = [item for item in page_units if item["score"] > 0]
     if not selected and include_all_if_no_relevant:
         selected = page_units
     chunks: list[dict[str, Any]] = []
-    for _, page, cleaned, inherited in selected:
-        for index, text in enumerate(split_text(cleaned, max_chars=max_chars, overlap=overlap), start=1):
-            section = detect_section(text) or inherited
+    for unit in selected:
+        page = unit["page"]
+        if unit["content_type"] == "table":
+            chunks.extend(build_table_chunks(page, unit["table"], unit["section"], max_chars=max_chars))
+            continue
+        for index, text in enumerate(split_text(unit["text"], max_chars=max_chars, overlap=overlap), start=1):
+            section = detect_section(text) or unit["section"]
             chunk_id = stable_id("chunk", page["report_id"], page["page"], index, text[:80])
-            context = build_chunk_context(page, section)
             chunks.append(
-                {
-                    "chunk_id": chunk_id,
-                    "report_id": page["report_id"],
-                    "kind": page.get("kind", ""),
-                    "company": page.get("company", ""),
-                    "stock_code": page.get("stock_code", ""),
-                    "year": page.get("year", ""),
-                    "source_title": page.get("source_title", ""),
-                    "source_url": page.get("source_url", ""),
-                    "source_tier": page.get("source_tier", ""),
-                    "source_type": page.get("source_type", ""),
-                    "page": page.get("page", ""),
-                    "section": section,
-                    "context": context,
-                    "text": text,
-                }
+                build_chunk_record(
+                    page,
+                    chunk_id=chunk_id,
+                    section=section,
+                    text=text,
+                    content_type="text",
+                )
             )
     return chunks
 
 
-def build_chunk_context(page: dict[str, Any], section: str) -> str:
+def build_table_chunks(
+    page: dict[str, Any],
+    table: dict[str, Any],
+    section: str,
+    *,
+    max_chars: int,
+) -> list[dict[str, Any]]:
+    headers = [normalize_table_value(cell) for cell in table.get("headers", [])]
+    rows = [
+        [normalize_table_value(cell) for cell in row]
+        for row in table.get("rows", [])
+        if isinstance(row, list) and any(normalize_table_value(cell) for cell in row)
+    ]
+    title = normalize_table_value(table.get("title", ""))
+    table_id = str(table.get("table_id") or stable_id("table", page["report_id"], page.get("page", ""), title))
+    row_groups = split_table_rows(headers, rows, title=title, max_chars=max_chars)
+    if not row_groups:
+        markdown = str(table.get("markdown") or "").strip()
+        if not markdown:
+            return []
+        row_groups = [(0, 0, markdown)]
+
+    chunks = []
+    for index, (row_start, row_end, text) in enumerate(row_groups, start=1):
+        chunk_id = stable_id("chunk", table_id, row_start, row_end, index, text[:80])
+        chunks.append(
+            build_chunk_record(
+                page,
+                chunk_id=chunk_id,
+                section=section,
+                text=text,
+                content_type="table",
+                table_id=table_id,
+                table_title=title,
+                table_row_start=row_start,
+                table_row_end=row_end,
+            )
+        )
+    return chunks
+
+
+def split_table_rows(
+    headers: list[str],
+    rows: list[list[str]],
+    *,
+    title: str = "",
+    max_chars: int = 2800,
+) -> list[tuple[int, int, str]]:
+    if not headers and not rows:
+        return []
+    if not rows:
+        return [(0, 0, render_table_markdown(headers, [], title=title))]
+
+    groups: list[tuple[int, int, str]] = []
+    current_rows: list[list[str]] = []
+    current_start = 1
+    for row_number, row in enumerate(rows, start=1):
+        candidate_rows = [*current_rows, row]
+        candidate = render_table_markdown(headers, candidate_rows, title=title)
+        if current_rows and len(candidate) > max_chars:
+            groups.append(
+                (
+                    current_start,
+                    row_number - 1,
+                    render_table_markdown(headers, current_rows, title=title),
+                )
+            )
+            current_rows = [row]
+            current_start = row_number
+        else:
+            current_rows = candidate_rows
+    if current_rows:
+        groups.append(
+            (
+                current_start,
+                current_start + len(current_rows) - 1,
+                render_table_markdown(headers, current_rows, title=title),
+            )
+        )
+    return groups
+
+
+def render_table_markdown(headers: list[str], rows: list[list[str]], *, title: str = "") -> str:
+    column_count = max([len(headers), *(len(row) for row in rows)], default=0)
+    if column_count == 0:
+        return ""
+    padded_headers = [headers[index] if index < len(headers) else "" for index in range(column_count)]
+    lines = []
+    if title:
+        lines.extend([f"### {title}", ""])
+    lines.extend(
+        [
+            "| " + " | ".join(markdown_escape(cell) for cell in padded_headers) + " |",
+            "| " + " | ".join("---" for _ in range(column_count)) + " |",
+        ]
+    )
+    for row in rows:
+        padded = [row[index] if index < len(row) else "" for index in range(column_count)]
+        lines.append("| " + " | ".join(markdown_escape(cell) for cell in padded) + " |")
+    return "\n".join(lines)
+
+
+def normalize_table_value(value: Any) -> str:
+    value = str(value or "").replace("\u3000", " ").replace("\x00", "")
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in value.splitlines()]
+    return " ".join(line for line in lines if line)
+
+
+def markdown_escape(value: str) -> str:
+    return str(value or "").replace("\\", "\\\\").replace("|", "\\|").replace("\n", "<br>")
+
+
+def build_chunk_record(
+    page: dict[str, Any],
+    *,
+    chunk_id: str,
+    section: str,
+    text: str,
+    content_type: str,
+    table_id: str = "",
+    table_title: str = "",
+    table_row_start: int = 0,
+    table_row_end: int = 0,
+) -> dict[str, Any]:
+    return {
+        "chunk_id": chunk_id,
+        "report_id": page["report_id"],
+        "kind": page.get("kind", ""),
+        "company": page.get("company", ""),
+        "stock_code": page.get("stock_code", ""),
+        "year": page.get("year", ""),
+        "source_title": page.get("source_title", ""),
+        "source_url": page.get("source_url", ""),
+        "source_tier": page.get("source_tier", ""),
+        "source_type": page.get("source_type", ""),
+        "page": page.get("page", ""),
+        "section": section,
+        "context": build_chunk_context(
+            page,
+            section,
+            content_type=content_type,
+            table_title=table_title,
+        ),
+        "content_type": content_type,
+        "table_id": table_id,
+        "table_title": table_title,
+        "table_row_start": table_row_start,
+        "table_row_end": table_row_end,
+        "text": text,
+    }
+
+
+def build_chunk_context(
+    page: dict[str, Any],
+    section: str,
+    *,
+    content_type: str = "text",
+    table_title: str = "",
+) -> str:
     parts = []
     if page.get("source_title"):
         parts.append(f"报告：{page.get('source_title')}")
@@ -220,6 +408,10 @@ def build_chunk_context(page: dict[str, Any], section: str) -> str:
         parts.append(f"章节：{section}")
     if page.get("page"):
         parts.append(f"页码：{page.get('page')}")
+    if content_type == "table":
+        parts.append("内容：表格")
+    if table_title:
+        parts.append(f"表格：{table_title}")
     return "；".join(str(part) for part in parts if part)
 
 

@@ -355,6 +355,7 @@ def build_research_artifacts(
     output_dir: Path = DEFAULT_RESEARCH_DIR,
     chunks_dir: Path | None = None,
     include_direct_claims: bool = True,
+    write_outputs: bool = True,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Build claims, evidence spans, and segment dossiers.
 
@@ -385,12 +386,13 @@ def build_research_artifacts(
             evidence_spans.append(evidence_span_from_claim(claim))
 
     dossiers = build_segment_dossiers(claims)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    write_csv(output_dir / CLAIMS_FILE, CLAIM_CSV_FIELDS, claims)
-    write_csv(output_dir / EVIDENCE_SPANS_FILE, EVIDENCE_SPAN_FIELDS, evidence_spans)
-    with (output_dir / SEGMENT_DOSSIERS_FILE).open("w", encoding="utf-8") as file:
-        for dossier in dossiers:
-            file.write(json.dumps(dossier, ensure_ascii=False, sort_keys=True) + "\n")
+    if write_outputs:
+        output_dir.mkdir(parents=True, exist_ok=True)
+        write_csv(output_dir / CLAIMS_FILE, CLAIM_CSV_FIELDS, claims)
+        write_csv(output_dir / EVIDENCE_SPANS_FILE, EVIDENCE_SPAN_FIELDS, evidence_spans)
+        with (output_dir / SEGMENT_DOSSIERS_FILE).open("w", encoding="utf-8") as file:
+            for dossier in dossiers:
+                file.write(json.dumps(dossier, ensure_ascii=False, sort_keys=True) + "\n")
     return claims, evidence_spans, dossiers
 
 

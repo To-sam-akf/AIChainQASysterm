@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,12 @@ ROOT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_EVAL_RUN_DIR = ROOT_DIR / "data" / "eval_runs"
 EVAL_RUNS_FILE = "eval_runs.jsonl"
 RUN_ID_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
+
+def _json_default(obj: Any) -> str:
+    """Serialize datetime objects to ISO-format strings for JSON."""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
 
 
 class EvalRunNotFoundError(KeyError):
@@ -32,7 +39,7 @@ class EvalRunStore:
         self._validate_id(str(payload.get("run_id") or ""))
         self.directory.mkdir(parents=True, exist_ok=True)
         with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+            handle.write(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=_json_default))
             handle.write("\n")
         return payload
 

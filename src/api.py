@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,7 @@ from src.eval.store import EvalRunNotFoundError, EvalRunStore, InvalidEvalRunErr
 from src.frontend_data import LocalKnowledgeGraph, RELATION_LABELS, render_svg_graph, subgraph_edges
 from src.llm_client import load_dotenv
 from src.qa_engine import QAEngine, normalize_agent_max_steps, normalize_agent_runner
-from src.research_claims import DEFAULT_RESEARCH_DIR, write_claim_review
+from src.research_claims import normalize_claim_review
 
 
 REASONING_EFFORTS = ["low", "medium", "high"]
@@ -226,10 +227,6 @@ def public_stream_payload(event: dict[str, Any]) -> dict[str, Any]:
     payload = dict(event)
     payload.pop("type", None)
     return payload
-
-
-def research_artifact_dir() -> Path:
-    return Path(os.getenv("RESEARCH_ARTIFACT_DIR", str(DEFAULT_RESEARCH_DIR)))
 
 
 def agent_task_markdown(task: dict[str, Any]) -> str:
@@ -702,7 +699,7 @@ async def review_claim(
     except KeyError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Claim not found") from exc
 
-    review = write_claim_review(research_artifact_dir(), claim_id, updates)
+    review = normalize_claim_review(claim_id, updates, reviewer="frontend")
     try:
         claim = research_memory.review_claim(claim_id, review)
     except KeyError as exc:
@@ -749,9 +746,19 @@ async def graph_subgraph(
     }
 
 
+@asynccontextmanager
+async def app_lifespan(_: FastAPI):
+    engine = _cached_qa_engine()
+    try:
+        yield
+    finally:
+        engine.close()
+        _cached_qa_engine.cache_clear()
+
+
 def create_app() -> FastAPI:
     load_dotenv()
-    app = FastAPI(title="AIQASYS API", version="0.1.0")
+    app = FastAPI(title="AIQASYS API", version="0.1.0", lifespan=app_lifespan)
     app.include_router(router)
     return app
 

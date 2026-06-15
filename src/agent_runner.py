@@ -80,7 +80,7 @@ class AgentRunner:
         llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
         tools = AgentTools(self.engine, errors=errors, llm_options=llm_options, llm_client=llm_client)
 
-        history, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
+        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
             question,
             conversation_history,
             tools,
@@ -105,6 +105,7 @@ class AgentRunner:
             thinking_enabled=thinking_enabled,
             reasoning_effort=reasoning_effort,
             total_start=total_start,
+            history_memory=history_memory,
         )
         return result
 
@@ -128,7 +129,7 @@ class AgentRunner:
 
         if thinking_enabled:
             yield stream_progress("agent_plan", "Agent 正在规划问题、上下文和检索路径")
-        history, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
+        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
             question,
             conversation_history,
             tools,
@@ -266,6 +267,7 @@ class AgentRunner:
             reasoning_effort=reasoning_effort,
             total_start=total_start,
             history_count=len(history),
+            history_memory=history_memory,
         )
         yield {"type": "final", "result": result}
 
@@ -275,15 +277,16 @@ class AgentRunner:
         conversation_history: list[dict[str, str]] | None,
         tools: AgentTools,
         timings_ms: dict[str, float],
-    ) -> tuple[list[dict[str, str]], str, QuestionPlan, AgentTaskPlan, str, Any, list[AgentTraceStep]]:
-        from src.qa_engine import describe_plan_progress, normalize_conversation_history
+    ) -> tuple[list[dict[str, str]], dict[str, Any], str, QuestionPlan, AgentTaskPlan, str, Any, list[AgentTraceStep]]:
+        from src.qa_engine import describe_plan_progress
 
         trace: list[AgentTraceStep] = []
         stage_start = time.perf_counter()
-        history = normalize_conversation_history(
+        history, history_memory = self.engine._prepare_conversation_history(
             conversation_history,
-            max_turns=self.engine.history_max_turns,
-            max_chars=self.engine.history_max_chars,
+            errors=tools.errors,
+            llm_options=tools.llm_options,
+            llm_client=tools.llm_client,
         )
         self._record_timing(timings_ms, "history", stage_start)
 
@@ -310,7 +313,7 @@ class AgentRunner:
                 observation=describe_plan_progress(plan),
             )
         )
-        return history, contextual_question, plan, task_plan, planner_source, generated, trace
+        return history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace
 
     def _retrieve(
         self,
@@ -475,6 +478,7 @@ class AgentRunner:
         thinking_enabled: bool | None,
         reasoning_effort: str | None,
         total_start: float,
+        history_memory: dict[str, Any],
     ) -> dict[str, Any]:
         stage_start = time.perf_counter()
         raw_cards, evidence_cards, rank_call = tools.rank_evidence(
@@ -568,6 +572,7 @@ class AgentRunner:
             reasoning_effort=reasoning_effort,
             total_start=total_start,
             history_count=len(history),
+            history_memory=history_memory,
         )
 
     def _build_result(
@@ -592,6 +597,7 @@ class AgentRunner:
         reasoning_effort: str | None,
         total_start: float,
         history_count: int,
+        history_memory: dict[str, Any],
     ) -> dict[str, Any]:
         from src.qa_engine import answer_subgraph
         from src.research_agent import build_research_outputs
@@ -634,6 +640,7 @@ class AgentRunner:
             "evidence_cards": len(evidence_cards),
             "rerank_top_n": self.engine.rerank_top_n,
             "history_messages": history_count,
+            **history_memory,
             "contextualized": contextual_question != question,
             "contextualizer_mode": self.engine.contextualizer_mode,
             "planner_source": planner_source,

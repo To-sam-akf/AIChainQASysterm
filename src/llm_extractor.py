@@ -48,7 +48,16 @@ def kind_instructions(kind: str, source_type: str = "") -> str:
 
 def build_user_prompt(chunk: dict[str, Any]) -> str:
     kind = str(chunk.get("kind", ""))
+    content_type = str(chunk.get("content_type") or "text")
     core_companies = "、".join(core_company_names())
+    table_instructions = ""
+    if content_type == "table":
+        table_instructions = """
+表格抽取约束：
+- 输入是从 PDF 表格恢复的 Markdown；必须按同一行及明确表头对应指标、年份、数值和单位。
+- 空单元格表示原文缺失，不得沿用上一行、补全、推断或重新计算。
+- 多级表头含义不明确时宁可不抽 Metric；负号、百分比、括号和单位必须按原文保留。
+- evidence 应包含能够验证该关系的表头和数据行。"""
     return f"""请从以下财报或研报文本中抽取中国 AI 算力产业链相关知识。
 
 实体类型只能使用：{", ".join(ENTITY_TYPES)}
@@ -58,6 +67,7 @@ def build_user_prompt(chunk: dict[str, Any]) -> str:
 {core_companies}
 
 {kind_instructions(kind, str(chunk.get("source_type", "")))}
+{table_instructions}
 
 关系约束：
 - Company USES_TECHNOLOGY Technology
@@ -112,6 +122,9 @@ def build_user_prompt(chunk: dict[str, Any]) -> str:
 - source_type: {chunk.get("source_type", "")}
 - page: {chunk.get("page", "")}
 - section: {chunk.get("section", "")}
+- content_type: {content_type}
+- table_id: {chunk.get("table_id", "")}
+- table_title: {chunk.get("table_title", "")}
 
 文本：
 {chunk.get("text", "")}

@@ -18,7 +18,7 @@ from src.conversation_store import ConversationStore
 from src.eval.feedback import FeedbackStore
 from src.eval.store import EvalRunStore
 from src.frontend_data import LocalKnowledgeGraph
-from src.research_claims import CLAIM_REVIEWS_FILE, ResearchMemory
+from src.research_claims import ResearchMemory
 
 
 @pytest.fixture
@@ -339,7 +339,7 @@ async def test_api_agent_task_lifecycle_and_export(tmp_path: Path) -> None:
 
 
 @pytest.mark.anyio
-async def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatch) -> None:
+async def test_api_reviews_claim_through_research_store(tmp_path: Path) -> None:
     engine = FakeEngine()
     engine.research_memory = ResearchMemory(
         claims=[
@@ -357,8 +357,6 @@ async def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatc
         ],
         dossiers=[],
     )
-    artifact_dir = tmp_path / "research"
-    monkeypatch.setenv("RESEARCH_ARTIFACT_DIR", str(artifact_dir))
     client = make_test_client(tmp_path / "store", engine)
     try:
         response = await client.post(
@@ -373,9 +371,8 @@ async def test_api_reviews_claim_and_persists_overlay(tmp_path: Path, monkeypatc
 
         assert response.status_code == 200
         assert response.json()["claim"]["exposure_level"] == "core"
+        assert response.json()["review"]["reviewer"] == "frontend"
         assert engine.research_memory.get_claim("c1")["review_status"] == "revised"
-        assert (artifact_dir / CLAIM_REVIEWS_FILE).exists()
-        assert "人工确认" in (artifact_dir / CLAIM_REVIEWS_FILE).read_text(encoding="utf-8")
     finally:
         await client.aclose()
         app.dependency_overrides.clear()

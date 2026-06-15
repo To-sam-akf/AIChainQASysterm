@@ -15,6 +15,8 @@ dependencies = [
     "pydantic>=2.0,<3.0",
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
+    "pgvector>=0.4,<0.5",
+    "psycopg[binary,pool]>=3.2,<3.3",
     "rank-bm25>=0.2.2",
     "requests>=2.31",
     "uvicorn>=0.30",
@@ -38,3 +40,6 @@ package = false
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "integration: requires an external service such as PostgreSQL",
+]

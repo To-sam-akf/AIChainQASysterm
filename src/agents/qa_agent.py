@@ -13,6 +13,18 @@ class QAAgent(BaseAgent):
         self.engine = engine
         self.max_steps = max_steps
 
+    """
+    非流式
+    QAEngine.answer_question()
+    → QAAgent.run()
+    → LangGraphAgentRunner.run()      # 默认
+
+    流式
+    QAEngine.answer_question_stream()
+    → QAAgent.run_stream()
+    → AgentRunner.run_stream()        # 固定旧版
+    """
+
     def run(
         self,
         question: str,

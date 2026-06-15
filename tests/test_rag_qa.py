@@ -68,6 +68,33 @@ def test_rag_index_hits_industry_whitepaper_terms(tmp_path: Path) -> None:
     assert "液冷" in hits[0].snippet
 
 
+def test_rag_index_preserves_table_metadata_and_searches_metric_values(tmp_path: Path) -> None:
+    chunks_dir = tmp_path / "chunks"
+    index_dir = tmp_path / "rag"
+    table_text = (
+        "| 指标 | 2024 | 2025 |\n|---|---|---|\n| 毛利率 | 20% | 25% |\n"
+        f"| 说明 | {'长' * 1900} | |"
+    )
+    write_chunk(
+        chunks_dir / "table.jsonl",
+        chunk_id="chunk_table_1",
+        content_type="table",
+        table_id="table_1",
+        section="主要财务指标",
+        text=table_text,
+    )
+
+    build_rag_index(chunks_dir, index_dir)
+    index = LocalRagIndex.load(index_dir)
+    hits = index.search("2025年毛利率25%", top_k=3)
+
+    assert hits
+    assert hits[0].content_type == "table"
+    assert hits[0].table_id == "table_1"
+    assert "25%" in hits[0].snippet
+    assert index.documents[0].text == table_text
+
+
 def test_cypher_guard_allows_read_query_and_rejects_writes() -> None:
     cypher = "MATCH (c:Company)-[r]->(x) RETURN c.name AS company, r.evidence AS evidence"
 

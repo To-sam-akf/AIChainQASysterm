@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark local QA retrieval speed without remote LLM latency."""
+"""Benchmark PostgreSQL QA retrieval speed without remote LLM latency."""
 
 from __future__ import annotations
 
@@ -14,8 +14,9 @@ sys.path.insert(0, str(ROOT_DIR))
 
 from src.curated_graph import DEFAULT_CURATED_DIR
 from src.frontend_data import LocalKnowledgeGraph
+from src.llm_client import load_dotenv
+from src.postgres_retrieval import PostgresRagIndex, PostgresResearchMemory, PostgresRetrievalStore
 from src.qa_engine import QAEngine
-from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex
 
 
 QUESTIONS = [
@@ -26,46 +27,52 @@ QUESTIONS = [
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Benchmark local KG/RAG QA speed.")
+    parser = argparse.ArgumentParser(description="Benchmark CSV graph + PostgreSQL retrieval speed.")
     parser.add_argument("--kg-dir", type=Path, default=DEFAULT_CURATED_DIR)
-    parser.add_argument("--rag-dir", type=Path, default=DEFAULT_RAG_DIR)
     parser.add_argument("--repeat", type=int, default=3)
     parser.add_argument("--json", action="store_true", help="Print JSON lines instead of a compact table.")
     return parser
 
 
 def main() -> int:
+    load_dotenv()
     args = build_parser().parse_args()
     graph = LocalKnowledgeGraph.from_dir(args.kg_dir)
-    rag = LocalRagIndex.load(args.rag_dir)
+    retrieval_store = PostgresRetrievalStore.from_env()
+    retrieval_store.ensure_ready()
     engine = QAEngine(
         csv_graph=graph,
-        rag_index=rag,
+        rag_index=PostgresRagIndex(retrieval_store),
+        research_memory=PostgresResearchMemory(retrieval_store),
+        retrieval_store=retrieval_store,
         llm_client=None,
         enable_llm_cypher=False,
         enable_llm_planner=False,
     )
 
     rows = []
-    for question in QUESTIONS:
-        for run in range(1, max(args.repeat, 1) + 1):
-            started_at = time.perf_counter()
-            result = engine.answer_question(question)
-            elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
-            timings = result["diagnostics"].get("timings_ms", {})
-            rows.append(
-                {
-                    "run": run,
-                    "question": question,
-                    "elapsed_ms": elapsed_ms,
-                    "graph_ms": timings.get("graph", 0),
-                    "rag_ms": timings.get("rag", 0),
-                    "total_ms": timings.get("total", 0),
-                    "graph_records": len(result["graph_records"]),
-                    "rag_hits": len(result["rag_hits"]),
-                    "llm_calls": result["diagnostics"].get("llm_calls", {}).get("total", 0),
-                }
-            )
+    try:
+        for question in QUESTIONS:
+            for run in range(1, max(args.repeat, 1) + 1):
+                started_at = time.perf_counter()
+                result = engine.answer_question(question)
+                elapsed_ms = round((time.perf_counter() - started_at) * 1000, 2)
+                timings = result["diagnostics"].get("timings_ms", {})
+                rows.append(
+                    {
+                        "run": run,
+                        "question": question,
+                        "elapsed_ms": elapsed_ms,
+                        "graph_ms": timings.get("graph", 0),
+                        "rag_ms": timings.get("rag", 0),
+                        "total_ms": timings.get("total", 0),
+                        "graph_records": len(result["graph_records"]),
+                        "rag_hits": len(result["rag_hits"]),
+                        "llm_calls": result["diagnostics"].get("llm_calls", {}).get("total", 0),
+                    }
+                )
+    finally:
+        engine.close()
 
     if args.json:
         for row in rows:
