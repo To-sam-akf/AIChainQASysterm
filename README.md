@@ -231,9 +231,15 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_ENABLE_LLM_CYPHER`：是否启用 LLM 生成 Cypher；默认关闭，使用本地模板查询。
 - `QA_ENABLE_LLM_PLANNER`：是否启用 LLM 问题规划；默认关闭，优先使用本地启发式规划。
 - `QA_ENABLE_AGENT`：是否启用智能体 Runner；默认开启，可设为 `false` 回退旧 workflow。
-- `QA_AGENT_RUNNER`：非流式 Agent 编排器，支持 `langgraph`、`legacy`，默认 `langgraph`；流式问答当前仍使用 legacy streaming runner。
+- `QA_AGENT_RUNNER`：Agent 编排器，支持中心化并行 multi-agent 的 `langgraph` 和串行回退 `legacy`，默认 `langgraph`；同步与流式问答共用所选 runner。
 - `QA_AGENT_MAX_STEPS`：Agent ReAct 循环最大步数，默认 4，实现上限 4。
+- `QA_MULTI_AGENT_MAX_WORKERS`：中心化 runner 每轮查询 Agent 最大并发数，默认 5。
+- `QA_MULTI_AGENT_MAX_LLM_CALLS`：中心化 runner 单次问答共享的 LLM 调用预算，默认 12；耗尽后自动使用确定性规则。
+- `QA_MULTI_AGENT_TASK_TIMEOUT_SECONDS`：中心化 runner 单轮并行查询超时秒数，默认 90。
 - `QA_CONTEXTUALIZER_MODE`：追问改写模式，支持 `auto`、`heuristic`、`llm`，默认 `auto`。
+- `QA_ENABLE_HYDE`：是否启用 HYDE 检索扩展，默认开启；无 LLM 或生成失败时自动回退原问题检索。
+- `QA_HYDE_QUERY_MODE`：HYDE 文本检索 query 模式，支持 `hybrid`（原问题 + 假想答案，默认）和 `answer_only`。
+- `QA_HYDE_MAX_CHARS`：HYDE 假想答案最大字符数，默认 700；HYDE 只用于 RAG/Claim/Dossier/semantic/GraphRAG 文本召回，不作为最终证据。
 - `QA_HISTORY_MAX_TURNS`：LLM 压缩后仍保留原文的最近对话轮数，默认 3。
 - `QA_HISTORY_MAX_CHARS`：历史摘要与最近原文的总字符预算，默认 4000。
 - `QA_HISTORY_COMPRESSION_ENABLED`：是否用 LLM 将更早对话压成短期记忆摘要，默认开启。

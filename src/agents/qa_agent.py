@@ -17,12 +17,12 @@ class QAAgent(BaseAgent):
     非流式
     QAEngine.answer_question()
     → QAAgent.run()
-    → LangGraphAgentRunner.run()      # 默认
+    → LangGraphAgentRunner.run()      # 默认，中心化并行
 
     流式
     QAEngine.answer_question_stream()
     → QAAgent.run_stream()
-    → AgentRunner.run_stream()        # 固定旧版
+    → LangGraphAgentRunner.run_stream()  # 默认，与非流式共用中心 runner
     """
 
     def run(
@@ -69,17 +69,27 @@ class QAAgent(BaseAgent):
         reasoning_effort: str | None = None,
     ) -> Iterator[dict[str, Any]]:
         if self._can_use_agent_runner():
-            from src.agent_runner import AgentRunner
+            if self._agent_runner_name() == "legacy":
+                from src.agent_runner import AgentRunner
 
-            for event in AgentRunner(self.engine, max_steps=self._agent_max_steps()).run_stream(
+                for event in AgentRunner(self.engine, max_steps=self._agent_max_steps()).run_stream(
+                    question,
+                    conversation_history=conversation_history,
+                    thinking_enabled=thinking_enabled,
+                    reasoning_effort=reasoning_effort,
+                ):
+                    if event.get("type") == "final" and isinstance(event.get("result"), dict):
+                        self._mark_runner(event["result"], runner="legacy_stream", langgraph_enabled=False)
+                    yield event
+                return
+            from src.langgraph_runner import LangGraphAgentRunner
+
+            yield from LangGraphAgentRunner(self.engine, max_steps=self._agent_max_steps()).run_stream(
                 question,
                 conversation_history=conversation_history,
                 thinking_enabled=thinking_enabled,
                 reasoning_effort=reasoning_effort,
-            ):
-                if event.get("type") == "final" and isinstance(event.get("result"), dict):
-                    self._mark_runner(event["result"], runner="legacy_stream", langgraph_enabled=False)
-                yield event
+            )
             return
         if hasattr(self.engine, "answer_question_stream"):
             yield from self.engine.answer_question_stream(

@@ -182,6 +182,25 @@ class AgentTools:
             lambda result: 1 if result.cypher else 0,
         )
 
+    def build_hyde_query(self, question: str, plan: QuestionPlan) -> tuple[Any, AgentToolCall]:
+        """生成本轮文本检索使用的 HYDE query。"""
+        return self._call(
+            "build_hyde_query",
+            {
+                "enabled": bool(getattr(self.engine, "enable_hyde", True)),
+                "query_mode": str(getattr(self.engine, "hyde_query_mode", "hybrid")),
+                "answer_type": plan.answer_type,
+            },
+            lambda: self.engine._build_hyde_query(
+                question,
+                plan,
+                self.errors,
+                self.llm_options,
+                self.llm_client,
+            ),
+            lambda result: 1 if getattr(result, "hypothetical_answer", "") else 0,
+        )
+
     def query_graph(self, generated: GeneratedCypher, plan: QuestionPlan) -> tuple[list[dict[str, Any]], AgentToolCall]:
         """执行 Cypher 查询，从知识图谱中获取结构化数据。
 

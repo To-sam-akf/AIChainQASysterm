@@ -331,6 +331,33 @@ def run_graphrag(
     local_top_k: int = 12,
     path_top_k: int = 6,
 ) -> GraphRagResult:
+    partial = retrieve_graphrag(
+        question=question,
+        plan=plan,
+        research_memory=research_memory,
+        max_subquestions=max_subquestions,
+        global_top_k=global_top_k,
+        local_top_k=local_top_k,
+        path_top_k=path_top_k,
+    )
+    return finalize_graphrag(
+        partial,
+        plan=plan,
+        graph_records=graph_records,
+        path_top_k=path_top_k,
+    )
+
+
+def retrieve_graphrag(
+    *,
+    question: str,
+    plan: QuestionPlan,
+    research_memory: Any | None,
+    max_subquestions: int = 6,
+    global_top_k: int = 3,
+    local_top_k: int = 12,
+    path_top_k: int = 6,
+) -> GraphRagResult:
     route = QueryRouter().route(question, plan)
     subquestions = DriftPlanner(max_subquestions=max_subquestions).plan(question, plan, route)
     global_hits: list[ResearchHit] = []
@@ -376,29 +403,55 @@ def run_graphrag(
         paths=[],
         limit=max(8, path_top_k * 2),
     )
+    return GraphRagResult(
+        route=route,
+        subquestions=subquestions,
+        global_hits=global_hits,
+        local_hits=local_hits,
+        paths=[],
+        company_rankings=rankings,
+        edges=[],
+    )
+
+
+def finalize_graphrag(
+    partial: GraphRagResult,
+    *,
+    plan: QuestionPlan,
+    graph_records: list[dict[str, Any]],
+    path_top_k: int = 6,
+) -> GraphRagResult:
+    rankings = partial.company_rankings or CompanyExposureRanker().rank(
+        plan=plan,
+        local_hits=partial.local_hits,
+        global_hits=partial.global_hits,
+        paths=[],
+        limit=max(8, path_top_k * 2),
+    )
     paths = GraphRagPathBuilder().build(
         plan=plan,
         graph_records=graph_records,
-        local_hits=local_hits,
+        local_hits=partial.local_hits,
         rankings=rankings,
         limit=path_top_k,
     )
     if paths:
         rankings = CompanyExposureRanker().rank(
             plan=plan,
-            local_hits=local_hits,
-            global_hits=global_hits,
+            local_hits=partial.local_hits,
+            global_hits=partial.global_hits,
             paths=paths,
             limit=max(8, path_top_k * 2),
         )
     return GraphRagResult(
-        route=route,
-        subquestions=subquestions,
-        global_hits=global_hits,
-        local_hits=local_hits,
+        route=partial.route,
+        subquestions=partial.subquestions,
+        global_hits=partial.global_hits,
+        local_hits=partial.local_hits,
         paths=paths,
         company_rankings=rankings,
         edges=edges_from_paths(paths),
+        reranker=dict(partial.reranker),
     )
 
 

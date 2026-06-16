@@ -8,13 +8,14 @@ QA 引擎核心模块，协调多源数据检索和 LLM 生成的全流程。
 1. history — 较早对话 LLM 压缩 + 最近对话原文保留
 2. contextualize — 追问上下文补全
 3. plan — 问题规划（启发式 / LLM）
-4. cypher — 生成图谱查询语句
-5. graph — 执行图查询获取结构化关系
-6. rag — 语义检索非结构化文本
-7. research — 检索研究报告声明
-8. evidence — 证据排序与筛选
-9. answer — LLM 生成最终答案
-10. verify — 答案事实一致性验证
+4. hyde — 生成检索用假想答案
+5. cypher — 生成图谱查询语句
+6. graph — 执行图查询获取结构化关系
+7. rag — 语义检索非结构化文本
+8. research — 检索研究报告声明
+9. evidence — 证据排序与筛选
+10. answer — LLM 生成最终答案
+11. verify — 答案事实一致性验证
 """
 
 from __future__ import annotations
@@ -86,6 +87,13 @@ HISTORY_COMPRESSION_SYSTEM_PROMPT = """你是对话上下文压缩器。
 删除寒暄、重复表述和无关细节，不得补充原对话中没有的信息。
 只输出摘要正文，不要回答最新问题，不要使用 Markdown 标题。"""
 
+HYDE_SYSTEM_PROMPT = """你是中国 AI 算力产业链问答系统的 HYDE 检索生成器。
+根据用户问题和结构化问题规划，生成一段可能出现在年报、研报或技术白皮书中的假想答案。
+这段内容只用于改进检索召回，不是最终答案，也不是证据。
+不要输出 Markdown 标题，不要引用证据编号，不要给股票买卖建议、目标价或收益预测。
+不得编造具体数值、日期、页码、报告名或政策名称；缺少证据时用概括性产业机制、公司敞口、风险、指标和同义表达扩展语义。
+公司、主题和答案类型必须服从给定的问题规划。只输出假想答案正文。"""
+
 HISTORY_SUMMARY_PREFIX = "历史对话压缩摘要（仅作上下文，不是对当前问题的回答）：\n"
 
 # 模板化 Cypher 查询中支持的关系类型集合
@@ -153,6 +161,18 @@ class QAEngineStatus:
     llm_error: str = ""
 
 
+@dataclass(frozen=True)
+class HydeQuery:
+    """HYDE 生成结果和最终用于文本检索的 query。"""
+
+    enabled: bool
+    source: str
+    query_mode: str
+    hypothetical_answer: str = ""
+    retrieval_query: str = ""
+    error: str = ""
+
+
 class CountingLLMClient:
     """LLM 客户端代理，在保持 hasattr 行为的同时记录远程调用次数。
 
@@ -217,6 +237,9 @@ class QAEngine:
         history_compression_enabled: bool = True,
         history_summary_max_chars: int = 1600,
         history_compression_chunk_chars: int = 12000,
+        enable_hyde: bool = True,
+        hyde_query_mode: str = "hybrid",
+        hyde_max_chars: int = 700,
         enable_agent: bool = True,
         agent_max_steps: int = 4,
         agent_runner: str = "langgraph",
@@ -225,6 +248,9 @@ class QAEngine:
         global_dossier_top_k: int = 3,
         local_claim_top_k: int = 12,
         graph_path_top_k: int = 6,
+        multi_agent_max_workers: int = 5,
+        multi_agent_max_llm_calls: int = 12,
+        multi_agent_task_timeout_seconds: float = 90.0,
         status: QAEngineStatus | None = None,
     ) -> None:
         """初始化 QA 引擎。
@@ -251,6 +277,9 @@ class QAEngine:
             history_compression_enabled: 是否使用 LLM 压缩较早对话
             history_summary_max_chars: 压缩摘要的最大字符数
             history_compression_chunk_chars: 单次送入压缩器的历史字符数
+            enable_hyde: 是否启用 HYDE 检索前假想答案生成
+            hyde_query_mode: HYDE 检索 query 模式（"hybrid" / "answer_only"）
+            hyde_max_chars: HYDE 假想答案最大字符数
             enable_agent: 是否启用 Agent 模式
             agent_max_steps: Agent 最大步数（1-4）
             agent_runner: Agent 运行器（"langgraph" / "legacy"）
@@ -259,6 +288,9 @@ class QAEngine:
             global_dossier_top_k: 全局档案检索 top-k
             local_claim_top_k: 本地声明检索 top-k
             graph_path_top_k: 图谱路径检索 top-k
+            multi_agent_max_workers: 中心化查询 Agent 最大并发数
+            multi_agent_max_llm_calls: 单次问答的中心化 Agent LLM 调用预算
+            multi_agent_task_timeout_seconds: 单轮并行查询的超时时间
             status: 引擎状态对象（可选，不传则自动生成）
         """
         self.llm_client = llm_client
@@ -282,6 +314,9 @@ class QAEngine:
         self.history_compression_enabled = bool(history_compression_enabled)
         self.history_summary_max_chars = max(200, int(history_summary_max_chars or 1600))
         self.history_compression_chunk_chars = max(1000, int(history_compression_chunk_chars or 12000))
+        self.enable_hyde = bool(enable_hyde)
+        self.hyde_query_mode = normalize_hyde_query_mode(hyde_query_mode)
+        self.hyde_max_chars = max(80, int(hyde_max_chars or 700))
         self.enable_agent = enable_agent
         self.agent_max_steps = normalize_agent_max_steps(agent_max_steps)
         self.agent_runner = normalize_agent_runner(agent_runner)
@@ -290,6 +325,9 @@ class QAEngine:
         self.global_dossier_top_k = max(0, int(global_dossier_top_k or 3))
         self.local_claim_top_k = max(0, int(local_claim_top_k or 12))
         self.graph_path_top_k = max(0, int(graph_path_top_k or 6))
+        self.multi_agent_max_workers = max(1, int(multi_agent_max_workers or 5))
+        self.multi_agent_max_llm_calls = max(0, int(multi_agent_max_llm_calls or 12))
+        self.multi_agent_task_timeout_seconds = max(1.0, float(multi_agent_task_timeout_seconds or 90.0))
         self.status = status or QAEngineStatus(
             neo4j_enabled=graph_client is not None,
             csv_graph_enabled=csv_graph is not None,
@@ -325,6 +363,9 @@ class QAEngine:
         history_compression_enabled = os.getenv("QA_HISTORY_COMPRESSION_ENABLED", "true").casefold() != "false"
         history_summary_max_chars = int(os.getenv("QA_HISTORY_SUMMARY_MAX_CHARS", "1600"))
         history_compression_chunk_chars = int(os.getenv("QA_HISTORY_COMPRESSION_CHUNK_CHARS", "12000"))
+        enable_hyde = os.getenv("QA_ENABLE_HYDE", "true").casefold() != "false"
+        hyde_query_mode = normalize_hyde_query_mode(os.getenv("QA_HYDE_QUERY_MODE", "hybrid"))
+        hyde_max_chars = int(os.getenv("QA_HYDE_MAX_CHARS", "700"))
         enable_agent = os.getenv("QA_ENABLE_AGENT", "true").casefold() != "false"
         agent_max_steps = normalize_agent_max_steps(os.getenv("QA_AGENT_MAX_STEPS", "4"))
         agent_runner = normalize_agent_runner(os.getenv("QA_AGENT_RUNNER", "langgraph"))
@@ -333,6 +374,9 @@ class QAEngine:
         global_dossier_top_k = int(os.getenv("QA_GLOBAL_DOSSIER_TOP_K", "3"))
         local_claim_top_k = int(os.getenv("QA_LOCAL_CLAIM_TOP_K", "12"))
         graph_path_top_k = int(os.getenv("QA_GRAPH_PATH_TOP_K", "6"))
+        multi_agent_max_workers = int(os.getenv("QA_MULTI_AGENT_MAX_WORKERS", "5"))
+        multi_agent_max_llm_calls = int(os.getenv("QA_MULTI_AGENT_MAX_LLM_CALLS", "12"))
+        multi_agent_task_timeout_seconds = float(os.getenv("QA_MULTI_AGENT_TASK_TIMEOUT_SECONDS", "90"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
 
         # PostgreSQL 检索存储
@@ -440,6 +484,9 @@ class QAEngine:
             history_compression_enabled=history_compression_enabled,
             history_summary_max_chars=history_summary_max_chars,
             history_compression_chunk_chars=history_compression_chunk_chars,
+            enable_hyde=enable_hyde,
+            hyde_query_mode=hyde_query_mode,
+            hyde_max_chars=hyde_max_chars,
             enable_agent=enable_agent,
             agent_max_steps=agent_max_steps,
             agent_runner=agent_runner,
@@ -448,6 +495,9 @@ class QAEngine:
             global_dossier_top_k=global_dossier_top_k,
             local_claim_top_k=local_claim_top_k,
             graph_path_top_k=graph_path_top_k,
+            multi_agent_max_workers=multi_agent_max_workers,
+            multi_agent_max_llm_calls=multi_agent_max_llm_calls,
+            multi_agent_task_timeout_seconds=multi_agent_task_timeout_seconds,
             status=status,
         )
 
@@ -687,29 +737,35 @@ class QAEngine:
             planner_source = "llm"
         record_timing(timings_ms, "plan", stage_start)
 
-        # 阶段 4: 生成 Cypher 查询
+        # 阶段 4: HYDE 检索前假想答案
+        stage_start = time.perf_counter()
+        hyde_query = self._build_hyde_query(contextual_question, plan, errors, llm_options, llm_client)
+        retrieval_question = hyde_query.retrieval_query or contextual_question
+        record_timing(timings_ms, "hyde", stage_start)
+
+        # 阶段 5: 生成 Cypher 查询
         stage_start = time.perf_counter()
         generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options, llm_client)
         if generated.error:
             errors.append(generated.error)
         record_timing(timings_ms, "cypher", stage_start)
 
-        # 阶段 5: 执行图查询
+        # 阶段 6: 执行图查询
         stage_start = time.perf_counter()
         graph_records = self._query_graph(generated, plan, errors)
         record_timing(timings_ms, "graph", stage_start)
 
-        # 阶段 6: RAG 检索
+        # 阶段 7: RAG 检索
         stage_start = time.perf_counter()
-        rag_hits = self._search_rag(contextual_question, plan, errors)
+        rag_hits = self._search_rag(retrieval_question, plan, errors)
         record_timing(timings_ms, "rag", stage_start)
 
-        # 阶段 7: 研究报告检索
+        # 阶段 8: 研究报告检索
         stage_start = time.perf_counter()
-        research_hits = self._search_research(contextual_question, plan, errors)
+        research_hits = self._search_research(retrieval_question, plan, errors)
         record_timing(timings_ms, "research", stage_start)
 
-        # 阶段 8: 证据合并与排序
+        # 阶段 9: 证据合并与排序
         stage_start = time.perf_counter()
         raw_cards = [
             *cards_from_research_hits(research_hits, plan),
@@ -722,7 +778,7 @@ class QAEngine:
         evidence_cards = assign_citation_ids(evidence_cards)
         record_timing(timings_ms, "evidence", stage_start)
 
-        # 阶段 9: LLM 生成答案
+        # 阶段 10: LLM 生成答案
         stage_start = time.perf_counter()
         answer, reasoning_content = self._generate_answer(
             question,
@@ -737,7 +793,7 @@ class QAEngine:
         )
         record_timing(timings_ms, "answer", stage_start)
 
-        # 阶段 10: 答案事实一致性验证
+        # 阶段 11: 答案事实一致性验证
         verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
         if verification.get("status") == "fail":
             answer = build_evidence_limited_answer(plan, evidence_cards, verification)
@@ -775,6 +831,7 @@ class QAEngine:
             "contextualized": contextual_question != question,
             "contextualizer_mode": self.contextualizer_mode,
             "planner_source": planner_source,
+            "hyde": hyde_diagnostics(hyde_query),
             "enable_llm_cypher": self.enable_llm_cypher,
             "enable_llm_planner": self.enable_llm_planner,
             "thinking_enabled": thinking_enabled,
@@ -887,6 +944,16 @@ class QAEngine:
             yield stream_progress("plan", describe_plan_progress(plan))
 
         if thinking_enabled:
+            yield stream_progress("hyde", "正在生成用于检索扩展的假想答案")
+        stage_start = time.perf_counter()
+        hyde_query = self._build_hyde_query(contextual_question, plan, errors, llm_options, llm_client)
+        retrieval_question = hyde_query.retrieval_query or contextual_question
+        record_timing(timings_ms, "hyde", stage_start)
+        if thinking_enabled:
+            message = "HYDE 已生成检索扩展" if hyde_query.hypothetical_answer else "HYDE 未生成，使用原问题检索"
+            yield stream_progress("hyde", message)
+
+        if thinking_enabled:
             yield stream_progress("cypher", "正在准备图谱查询条件")
         stage_start = time.perf_counter()
         generated = self._generate_display_cypher(contextual_question, plan, errors, llm_options, llm_client)
@@ -903,13 +970,13 @@ class QAEngine:
         if thinking_enabled:
             yield stream_progress("rag", "正在召回本地研报与原文片段")
         stage_start = time.perf_counter()
-        rag_hits = self._search_rag(contextual_question, plan, errors)
+        rag_hits = self._search_rag(retrieval_question, plan, errors)
         record_timing(timings_ms, "rag", stage_start)
 
         if thinking_enabled:
             yield stream_progress("research", "正在召回投研 Claim 与产业链摘要")
         stage_start = time.perf_counter()
-        research_hits = self._search_research(contextual_question, plan, errors)
+        research_hits = self._search_research(retrieval_question, plan, errors)
         record_timing(timings_ms, "research", stage_start)
 
         if thinking_enabled:
@@ -988,6 +1055,7 @@ class QAEngine:
             "contextualized": contextual_question != question,
             "contextualizer_mode": self.contextualizer_mode,
             "planner_source": planner_source,
+            "hyde": hyde_diagnostics(hyde_query),
             "enable_llm_cypher": self.enable_llm_cypher,
             "enable_llm_planner": self.enable_llm_planner,
             "thinking_enabled": thinking_enabled,
@@ -1057,6 +1125,93 @@ class QAEngine:
         if not self.enable_llm_planner or llm_client is None or not hasattr(llm_client, "chat_json"):
             return False
         return plan.answer_type == "thematic_research" and not plan.companies and not plan.topics
+
+    def _build_hyde_query(
+        self,
+        question: str,
+        plan: QuestionPlan,
+        errors: list[str],
+        llm_options: dict[str, Any],
+        llm_client: Any | None,
+    ) -> HydeQuery:
+        """生成 HYDE 检索 query，失败时回退原问题。"""
+        base_query = normalize_query_text(question)
+        query_mode = self.hyde_query_mode
+        if not self.enable_hyde:
+            return HydeQuery(
+                enabled=False,
+                source="disabled",
+                query_mode=query_mode,
+                retrieval_query=base_query,
+            )
+        if llm_client is None or not (hasattr(llm_client, "chat_text") or hasattr(llm_client, "chat_messages")):
+            return HydeQuery(
+                enabled=True,
+                source="fallback_no_llm",
+                query_mode=query_mode,
+                retrieval_query=base_query,
+                error="LLM client unavailable",
+            )
+
+        prompt = build_hyde_prompt(base_query, plan, max_chars=self.hyde_max_chars)
+        try:
+            if hasattr(llm_client, "chat_text"):
+                content = llm_client.chat_text(
+                    system_prompt=HYDE_SYSTEM_PROMPT,
+                    user_prompt=prompt,
+                    temperature=0.0,
+                    **llm_options,
+                )
+            else:
+                response = llm_client.chat_messages(
+                    messages=[
+                        {"role": "system", "content": HYDE_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.0,
+                    **llm_options,
+                )
+                content = getattr(response, "content", "")
+            hypothetical_answer = sanitize_hyde_answer(str(content or ""), max_chars=self.hyde_max_chars)
+            if not hypothetical_answer:
+                return HydeQuery(
+                    enabled=True,
+                    source="fallback_empty",
+                    query_mode=query_mode,
+                    retrieval_query=base_query,
+                    error="empty HYDE answer",
+                )
+            retrieval_query = build_hyde_retrieval_query(
+                base_query,
+                HydeQuery(
+                    enabled=True,
+                    source="llm",
+                    query_mode=query_mode,
+                    hypothetical_answer=hypothetical_answer,
+                    retrieval_query=base_query,
+                ),
+            )
+            return HydeQuery(
+                enabled=True,
+                source="llm",
+                query_mode=query_mode,
+                hypothetical_answer=hypothetical_answer,
+                retrieval_query=retrieval_query,
+            )
+        except Exception as exc:
+            message = f"HYDE generation failed: {exc}"
+            errors.append(message)
+            return HydeQuery(
+                enabled=True,
+                source="fallback_error",
+                query_mode=query_mode,
+                retrieval_query=base_query,
+                error=str(exc),
+            )
+
+    def _hyde_retrieval_query(self, question: str, hyde_query: HydeQuery | None) -> str:
+        """将任意检索问题与本轮 HYDE 假想答案组合。"""
+        return build_hyde_retrieval_query(question, hyde_query)
 
     def _generate_display_cypher(
         self,
@@ -1452,6 +1607,87 @@ def normalize_contextualizer_mode(value: str) -> str:
     if mode not in {"auto", "heuristic", "llm"}:
         return "auto"
     return mode
+
+
+def normalize_hyde_query_mode(value: str) -> str:
+    """归一化 HYDE 检索 query 模式。"""
+    mode = str(value or "hybrid").strip().casefold()
+    if mode not in {"hybrid", "answer_only"}:
+        return "hybrid"
+    return mode
+
+
+def normalize_query_text(value: str) -> str:
+    """压缩 query 中的空白，保留中文和英文关键词。"""
+    return " ".join(str(value or "").split()).strip()
+
+
+def build_hyde_prompt(question: str, plan: QuestionPlan, *, max_chars: int) -> str:
+    """构建 HYDE 假想答案 prompt。"""
+    payload = {
+        "question": question,
+        "question_plan": plan.to_dict(),
+        "max_chars": max_chars,
+        "output": "只输出一段用于检索召回的假想答案正文，不要输出解释。",
+    }
+    return "请为以下问题生成 HYDE 检索用假想答案：\n" + json.dumps(
+        payload,
+        ensure_ascii=False,
+        indent=2,
+    )
+
+
+def sanitize_hyde_answer(content: str, *, max_chars: int) -> str:
+    """清洗 HYDE 输出，避免把提示性包装文本带入检索。"""
+    text = str(content or "").strip()
+    text = re.sub(r"^```(?:\w+)?\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    text = re.sub(r"(?im)^\s*(#+\s*)?(HYDE|假想答案|检索答案|初步答案)[:：]\s*", "", text).strip()
+    text = normalize_query_text(text)
+    if not text:
+        return ""
+    limit = max(80, int(max_chars or 700))
+    return text[:limit].strip()
+
+
+def build_hyde_retrieval_query(question: str, hyde_query: HydeQuery | None) -> str:
+    """根据 HYDE 结果生成文本检索 query。"""
+    base_query = normalize_query_text(question)
+    if hyde_query is None or not hyde_query.hypothetical_answer.strip():
+        return base_query
+    hypothetical_answer = normalize_query_text(hyde_query.hypothetical_answer)
+    if not hypothetical_answer:
+        return base_query
+    if normalize_hyde_query_mode(hyde_query.query_mode) == "answer_only":
+        return hypothetical_answer
+    return normalize_query_text(f"{base_query} {hypothetical_answer}")
+
+
+def hyde_diagnostics(hyde_query: HydeQuery | None) -> dict[str, Any]:
+    """序列化 HYDE 诊断信息。"""
+    if hyde_query is None:
+        return {
+            "enabled": False,
+            "generated": False,
+            "source": "missing",
+            "query_mode": "hybrid",
+            "answer_chars": 0,
+            "query_chars": 0,
+            "error": "",
+            "preview": "",
+        }
+    answer = hyde_query.hypothetical_answer or ""
+    retrieval_query = hyde_query.retrieval_query or ""
+    return {
+        "enabled": hyde_query.enabled,
+        "generated": bool(answer.strip()),
+        "source": hyde_query.source,
+        "query_mode": hyde_query.query_mode,
+        "answer_chars": len(answer),
+        "query_chars": len(retrieval_query),
+        "error": hyde_query.error,
+        "preview": answer[:160],
+    }
 
 
 def normalize_agent_max_steps(value: Any) -> int:

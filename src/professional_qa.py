@@ -50,9 +50,12 @@ class EvidenceCard:
     reviewer_note: str = ""
     semantic_score: float = 0.0
     semantic_ref_id: str = ""
+    candidate_ids: list[str] | None = None
+    retrieval_agent: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         row = asdict(self)
+        row["candidate_ids"] = list(self.candidate_ids or [])
         row["relation_label"] = RELATION_LABELS.get(self.relation, self.relation)
         return row
 

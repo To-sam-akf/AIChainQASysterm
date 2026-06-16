@@ -296,6 +296,9 @@ export interface ApiStatus {
     reasoning_efforts: string[];
     agent_enabled: boolean;
     agent_max_steps: number;
+    hyde_enabled?: boolean;
+    hyde_query_mode?: string;
+    hyde_max_chars?: number;
   };
 }
 

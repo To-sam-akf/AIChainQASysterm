@@ -377,6 +377,12 @@ async def api_status(
             "agent_enabled": getattr(engine, "enable_agent", default_agent_enabled()),
             "agent_max_steps": getattr(engine, "agent_max_steps", default_agent_max_steps()),
             "agent_runner": getattr(engine, "agent_runner", default_agent_runner()),
+            "multi_agent_max_workers": getattr(engine, "multi_agent_max_workers", 5),
+            "multi_agent_max_llm_calls": getattr(engine, "multi_agent_max_llm_calls", 12),
+            "multi_agent_task_timeout_seconds": getattr(engine, "multi_agent_task_timeout_seconds", 90.0),
+            "hyde_enabled": getattr(engine, "enable_hyde", True),
+            "hyde_query_mode": getattr(engine, "hyde_query_mode", "hybrid"),
+            "hyde_max_chars": getattr(engine, "hyde_max_chars", 700),
         },
     }
 

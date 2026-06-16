@@ -435,7 +435,7 @@ def test_history_compression_failure_falls_back_to_recent_window() -> None:
     assert errors == ["Conversation history compression failed: compression unavailable"]
 
 
-def test_fast_path_limits_llm_calls_on_first_turn() -> None:
+def test_centralized_agent_stays_within_llm_budget_on_first_turn() -> None:
     graph = LocalKnowledgeGraph(
         entities=[],
         relations=[
@@ -446,7 +446,8 @@ def test_fast_path_limits_llm_calls_on_first_turn() -> None:
 
     result = engine.answer_question("哪些上市公司涉及AI服务器？")
 
-    assert result["diagnostics"]["llm_calls"]["total"] <= 1
+    assert result["diagnostics"]["llm_calls"]["total"] <= 12
+    assert result["diagnostics"]["multi_agent"]["llm"]["calls_by_role"]["supervisor"] == 1
     assert result["diagnostics"]["planner_source"] == "heuristic"
     assert result["cypher_source"] == "question_plan_csv"
     assert "timings_ms" in result["diagnostics"]
@@ -470,7 +471,8 @@ def test_independent_multiturn_question_skips_contextualizer_llm() -> None:
     )
 
     assert result["diagnostics"]["contextualized"] is False
-    assert result["diagnostics"]["llm_calls"]["total"] == 1
+    assert result["diagnostics"]["llm_calls"]["total"] <= 12
+    assert "contextualize_question" not in result["diagnostics"]["llm_calls"]
 
 
 def test_followup_question_uses_contextualizer_llm_when_needed() -> None:
@@ -492,7 +494,8 @@ def test_followup_question_uses_contextualizer_llm_when_needed() -> None:
     )
 
     assert result["diagnostics"]["contextualized"] is True
-    assert result["diagnostics"]["llm_calls"]["total"] == 2
+    assert result["diagnostics"]["llm_calls"]["total"] <= 12
+    assert result["diagnostics"]["llm_calls"]["chat_messages"] >= 1
     assert result["answer_type"] == "risk_analysis"
 
 
@@ -515,6 +518,6 @@ def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None
     final = events[-1]
     assert final["type"] == "final"
     assert final["result"]["answer"] == "结论：浪潮信息涉及 AI 服务器。"
-    assert final["result"]["diagnostics"]["agent_runner"] == "legacy_stream"
-    assert final["result"]["diagnostics"]["langgraph_enabled"] is False
+    assert final["result"]["diagnostics"]["agent_runner"] == "langgraph"
+    assert final["result"]["diagnostics"]["langgraph_enabled"] is True
     assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1

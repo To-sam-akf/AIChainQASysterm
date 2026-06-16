@@ -5,7 +5,7 @@ import pytest
 
 from src.cypher_guard import CypherSafetyError, ensure_limit, validate_read_only_cypher
 from src.qa_engine import NO_EVIDENCE_ANSWER, QAEngine
-from src.rag_index import LocalRagIndex, build_rag_index
+from src.rag_index import LocalRagIndex, RagHit, build_rag_index
 
 
 def write_chunk(path: Path, **overrides: str) -> None:
@@ -121,8 +121,95 @@ class FakeGraphClient:
 
 class FakeLLMClient:
     def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2) -> str:
-        assert "Neo4j" in user_prompt
+        if "HYDE" in system_prompt:
+            return "浪潮信息 AI服务器 算力基础设施"
+        assert "Neo4j" in user_prompt or "证据" in user_prompt
         return "浪潮信息涉及AI服务器，证据来自浪潮信息2025年年度报告第10页。"
+
+
+class RecordingRagIndex:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def search(self, question: str, *, top_k: int = 6, filters: dict[str, str] | None = None) -> list[RagHit]:
+        del top_k, filters
+        self.queries.append(question)
+        return [
+            RagHit(
+                chunk_id="chunk_hyde",
+                report_id="report_hyde",
+                source_title="测试报告",
+                source_tier="1",
+                source_type="research_report",
+                page="3",
+                section="正文",
+                content_type="text",
+                table_id="",
+                company="英维克",
+                text="英维克液冷业务涉及 CDU、冷板和数据中心温控。",
+                snippet="英维克液冷业务涉及 CDU、冷板和数据中心温控。",
+                score=10.0,
+            )
+        ]
+
+
+class HydeLLMClient:
+    def __init__(self, *, hyde_text: str = "HYDE_ONLY_TERM 液冷假想答案包含 CDU 冷板 温控", fail_hyde: bool = False) -> None:
+        self.hyde_text = hyde_text
+        self.fail_hyde = fail_hyde
+        self.hyde_calls = 0
+
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
+        del user_prompt, temperature, kwargs
+        if "HYDE" in system_prompt:
+            self.hyde_calls += 1
+            if self.fail_hyde:
+                raise RuntimeError("hyde unavailable")
+            return self.hyde_text
+        return "核心判断：英维克涉及液冷温控 [E1]。"
+
+
+def test_workflow_hyde_uses_question_and_hypothetical_answer_for_rag() -> None:
+    rag = RecordingRagIndex()
+    client = HydeLLMClient()
+    engine = QAEngine(rag_index=rag, llm_client=client, enable_agent=False)
+
+    result = engine.answer_question("英维克液冷业务有哪些环节？")
+
+    assert client.hyde_calls == 1
+    assert rag.queries
+    assert "英维克液冷业务有哪些环节" in rag.queries[0]
+    assert "HYDE_ONLY_TERM" in rag.queries[0]
+    assert "CDU" in rag.queries[0]
+    assert result["diagnostics"]["hyde"]["generated"] is True
+    assert "hyde" in result["diagnostics"]["timings_ms"]
+
+
+def test_workflow_hyde_fallbacks_keep_original_query() -> None:
+    cases = [
+        {"llm_client": None, "enable_hyde": True, "source": "fallback_no_llm", "has_error": False},
+        {"llm_client": HydeLLMClient(), "enable_hyde": False, "source": "disabled", "has_error": False},
+        {"llm_client": HydeLLMClient(fail_hyde=True), "enable_hyde": True, "source": "fallback_error", "has_error": True},
+        {"llm_client": HydeLLMClient(hyde_text=""), "enable_hyde": True, "source": "fallback_empty", "has_error": False},
+    ]
+    for case in cases:
+        rag = RecordingRagIndex()
+        engine = QAEngine(
+            rag_index=rag,
+            llm_client=case["llm_client"],
+            enable_agent=False,
+            enable_hyde=bool(case["enable_hyde"]),
+        )
+
+        result = engine.answer_question("英维克液冷业务有哪些环节？")
+
+        assert len(rag.queries) == 1
+        assert rag.queries[0].startswith("英维克液冷业务有哪些环节？")
+        assert "HYDE_ONLY_TERM" not in rag.queries[0]
+        assert result["diagnostics"]["hyde"]["source"] == case["source"]
+        assert result["diagnostics"]["hyde"]["generated"] is False
+        if case["has_error"]:
+            assert any("HYDE generation failed" in error for error in result["errors"])
 
 
 def test_qa_engine_combines_graph_and_rag_evidence(tmp_path: Path) -> None:

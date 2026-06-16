@@ -80,14 +80,14 @@ class AgentRunner:
         llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
         tools = AgentTools(self.engine, errors=errors, llm_options=llm_options, llm_client=llm_client)
 
-        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
+        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, hyde_query, trace = self._plan(
             question,
             conversation_history,
             tools,
             timings_ms,
         )
-        retrieval_state = self._retrieve(generated, contextual_question, plan, tools, trace, timings_ms)
-        coverage_report = self._supplement(contextual_question, plan, task_plan, tools, retrieval_state, trace, timings_ms)
+        retrieval_state = self._retrieve(generated, contextual_question, plan, hyde_query, tools, trace, timings_ms)
+        coverage_report = self._supplement(contextual_question, plan, task_plan, hyde_query, tools, retrieval_state, trace, timings_ms)
         result = self._verify_and_answer(
             question,
             contextual_question,
@@ -97,6 +97,7 @@ class AgentRunner:
             planner_source,
             retrieval_state,
             coverage_report,
+            hyde_query,
             tools,
             trace,
             timings_ms,
@@ -129,7 +130,7 @@ class AgentRunner:
 
         if thinking_enabled:
             yield stream_progress("agent_plan", "Agent 正在规划问题、上下文和检索路径")
-        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace = self._plan(
+        history, history_memory, contextual_question, plan, task_plan, planner_source, generated, hyde_query, trace = self._plan(
             question,
             conversation_history,
             tools,
@@ -140,7 +141,7 @@ class AgentRunner:
 
         if thinking_enabled:
             yield stream_progress("agent_retrieve", "Agent 正在调用图谱、RAG、投研证据和语义召回工具")
-        retrieval_state = self._retrieve(generated, contextual_question, plan, tools, trace, timings_ms)
+        retrieval_state = self._retrieve(generated, contextual_question, plan, hyde_query, tools, trace, timings_ms)
         if thinking_enabled:
             yield stream_progress("agent_retrieve", trace[-1].observation)
 
@@ -150,6 +151,7 @@ class AgentRunner:
             contextual_question,
             plan,
             task_plan,
+            hyde_query,
             tools,
             retrieval_state,
             trace,
@@ -259,6 +261,7 @@ class AgentRunner:
             retrieval_state,
             evidence_cards,
             verification,
+            hyde_query,
             trace,
             timings_ms,
             errors,
@@ -277,7 +280,7 @@ class AgentRunner:
         conversation_history: list[dict[str, str]] | None,
         tools: AgentTools,
         timings_ms: dict[str, float],
-    ) -> tuple[list[dict[str, str]], dict[str, Any], str, QuestionPlan, AgentTaskPlan, str, Any, list[AgentTraceStep]]:
+    ) -> tuple[list[dict[str, str]], dict[str, Any], str, QuestionPlan, AgentTaskPlan, str, Any, Any, list[AgentTraceStep]]:
         from src.qa_engine import describe_plan_progress
 
         trace: list[AgentTraceStep] = []
@@ -299,6 +302,10 @@ class AgentRunner:
         self._record_timing(timings_ms, "plan", stage_start)
 
         stage_start = time.perf_counter()
+        hyde_query, hyde_call = tools.build_hyde_query(contextual_question, plan)
+        self._record_timing(timings_ms, "hyde", stage_start)
+
+        stage_start = time.perf_counter()
         generated, cypher_call = tools.prepare_cypher(contextual_question, plan)
         self._record_timing(timings_ms, "cypher", stage_start)
         task_plan = TaskPlanner(max_steps=self.max_steps).plan(contextual_question, plan)
@@ -307,19 +314,20 @@ class AgentRunner:
             AgentTraceStep(
                 step=1,
                 phase="plan",
-                thought="先把问题改写为可检索问题，并确定答案类型、公司、主题和图谱查询。",
-                action="contextualize_question -> plan_question -> prepare_cypher",
-                tool_calls=[contextualize_call, plan_call, cypher_call],
+                thought="先把问题改写为可检索问题，并确定答案类型、公司、主题、HYDE 检索扩展和图谱查询。",
+                action="contextualize_question -> plan_question -> build_hyde_query -> prepare_cypher",
+                tool_calls=[contextualize_call, plan_call, hyde_call, cypher_call],
                 observation=describe_plan_progress(plan),
             )
         )
-        return history, history_memory, contextual_question, plan, task_plan, planner_source, generated, trace
+        return history, history_memory, contextual_question, plan, task_plan, planner_source, generated, hyde_query, trace
 
     def _retrieve(
         self,
         generated: Any,
         contextual_question: str,
         plan: QuestionPlan,
+        hyde_query: Any,
         tools: AgentTools,
         trace: list[AgentTraceStep],
         timings_ms: dict[str, float],
@@ -328,20 +336,22 @@ class AgentRunner:
         graph_records, graph_call = tools.query_graph(generated, plan)
         self._record_timing(timings_ms, "graph", stage_start)
 
+        retrieval_question = self.engine._hyde_retrieval_query(contextual_question, hyde_query)
+
         stage_start = time.perf_counter()
-        rag_hits, rag_call = tools.search_rag(contextual_question, plan)
+        rag_hits, rag_call = tools.search_rag(retrieval_question, plan)
         self._record_timing(timings_ms, "rag", stage_start)
 
         stage_start = time.perf_counter()
-        research_hits, research_call = tools.search_research(contextual_question, plan)
+        research_hits, research_call = tools.search_research(retrieval_question, plan)
         self._record_timing(timings_ms, "research", stage_start)
 
         stage_start = time.perf_counter()
-        semantic_hits, semantic_call = tools.search_semantic(contextual_question, plan)
+        semantic_hits, semantic_call = tools.search_semantic(retrieval_question, plan)
         self._record_timing(timings_ms, "semantic", stage_start)
 
         stage_start = time.perf_counter()
-        graphrag, graphrag_call = tools.run_graphrag(contextual_question, plan, graph_records)
+        graphrag, graphrag_call = tools.run_graphrag(retrieval_question, plan, graph_records)
         research_hits = merge_research_hits(research_hits, [*graphrag.global_hits, *graphrag.local_hits])
         self._record_timing(timings_ms, "graphrag", stage_start)
 
@@ -374,6 +384,7 @@ class AgentRunner:
         contextual_question: str,
         plan: QuestionPlan,
         task_plan: AgentTaskPlan,
+        hyde_query: Any,
         tools: AgentTools,
         state: AgentRetrievalState,
         trace: list[AgentTraceStep],
@@ -404,6 +415,7 @@ class AgentRunner:
                 break
             rounds += 1
             supplemental_question = build_supplemental_question(contextual_question, gap.to_dict())
+            supplemental_retrieval_question = self.engine._hyde_retrieval_query(supplemental_question, hyde_query)
             supplement_plan = tools.supplemental_plan(plan, supplemental_question, gap.companies or None)
             round_calls: list[AgentToolCall] = []
 
@@ -414,17 +426,17 @@ class AgentRunner:
             round_calls.extend([cypher_call, graph_call])
 
             stage_start = time.perf_counter()
-            rag_hits, rag_call = tools.search_rag(supplemental_question, supplement_plan)
+            rag_hits, rag_call = tools.search_rag(supplemental_retrieval_question, supplement_plan)
             self._record_timing(timings_ms, f"supplement_{rounds}_rag", stage_start)
             round_calls.append(rag_call)
 
             stage_start = time.perf_counter()
-            research_hits, research_call = tools.search_research(supplemental_question, supplement_plan)
+            research_hits, research_call = tools.search_research(supplemental_retrieval_question, supplement_plan)
             self._record_timing(timings_ms, f"supplement_{rounds}_research", stage_start)
             round_calls.append(research_call)
 
             stage_start = time.perf_counter()
-            semantic_hits, semantic_call = tools.search_semantic(supplemental_question, supplement_plan)
+            semantic_hits, semantic_call = tools.search_semantic(supplemental_retrieval_question, supplement_plan)
             self._record_timing(timings_ms, f"supplement_{rounds}_semantic", stage_start)
             round_calls.append(semantic_call)
 
@@ -469,6 +481,7 @@ class AgentRunner:
         planner_source: str,
         state: AgentRetrievalState,
         coverage_report: CoverageReport,
+        hyde_query: Any,
         tools: AgentTools,
         trace: list[AgentTraceStep],
         timings_ms: dict[str, float],
@@ -564,6 +577,7 @@ class AgentRunner:
             state,
             evidence_cards,
             verification,
+            hyde_query,
             trace,
             timings_ms,
             errors,
@@ -588,6 +602,7 @@ class AgentRunner:
         state: AgentRetrievalState,
         evidence_cards: list[EvidenceCard],
         verification: dict[str, Any],
+        hyde_query: Any,
         trace: list[AgentTraceStep],
         timings_ms: dict[str, float],
         errors: list[str],
@@ -599,7 +614,7 @@ class AgentRunner:
         history_count: int,
         history_memory: dict[str, Any],
     ) -> dict[str, Any]:
-        from src.qa_engine import answer_subgraph
+        from src.qa_engine import answer_subgraph, hyde_diagnostics
         from src.research_agent import build_research_outputs
 
         stage_start = time.perf_counter()
@@ -644,6 +659,7 @@ class AgentRunner:
             "contextualized": contextual_question != question,
             "contextualizer_mode": self.engine.contextualizer_mode,
             "planner_source": planner_source,
+            "hyde": hyde_diagnostics(hyde_query),
             "enable_llm_cypher": self.engine.enable_llm_cypher,
             "enable_llm_planner": self.engine.enable_llm_planner,
             "thinking_enabled": thinking_enabled,

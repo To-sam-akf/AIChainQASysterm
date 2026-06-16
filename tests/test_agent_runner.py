@@ -1,5 +1,7 @@
 from src.frontend_data import LocalKnowledgeGraph
+from src.llm_client import ChatTextResult
 from src.qa_engine import NO_EVIDENCE_ANSWER, QAEngine
+from src.rag_index import RagHit
 from src.semantic_index import SemanticHit
 
 
@@ -34,6 +36,99 @@ class UnsupportedNumberLLMClient:
     def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
         del system_prompt, user_prompt, temperature, kwargs
         return "结论：浪潮信息 2026 年 AI服务器收入达到 10亿元 [E1]。"
+
+
+class RecordingAgentRagIndex:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def search(self, question: str, *, top_k: int = 6, filters: dict[str, str] | None = None) -> list[RagHit]:
+        del top_k, filters
+        self.queries.append(question)
+        return [
+            RagHit(
+                chunk_id="agent-hyde-rag",
+                report_id="agent-hyde-report",
+                source_title="测试报告",
+                source_tier="1",
+                source_type="annual_report",
+                page="1",
+                section="主营业务",
+                content_type="text",
+                table_id="",
+                company="浪潮信息",
+                text="浪潮信息布局AI服务器。",
+                snippet="浪潮信息布局AI服务器。",
+                score=10.0,
+            )
+        ]
+
+
+class RecordingGraphClient:
+    def __init__(self) -> None:
+        self.queries: list[str] = []
+
+    def run_read_query(self, cypher: str, params: dict | None = None, *, limit: int = 50) -> list[dict]:
+        del limit
+        rendered = f"{cypher} {params or {}}"
+        self.queries.append(rendered)
+        assert "HYDE_MARKER" not in rendered
+        return [
+            {
+                "company": "浪潮信息",
+                "company_labels": ["Company"],
+                "relation": "HAS_PRODUCT",
+                "target": "AI服务器",
+                "target_labels": ["Product"],
+                "evidence": "浪潮信息布局AI服务器。",
+                "source": "测试报告",
+                "page": "1",
+                "section": "主营业务",
+                "source_tier": "1",
+            }
+        ]
+
+
+class AgentHydeLLMClient:
+    def __init__(self) -> None:
+        self.hyde_calls = 0
+
+    def chat_text(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.2, **kwargs: object) -> str:
+        del user_prompt, temperature, kwargs
+        if "HYDE" in system_prompt:
+            self.hyde_calls += 1
+            return "HYDE_MARKER AI服务器 算力基础设施 产业链"
+        return "核心判断：浪潮信息布局AI服务器 [E1]。"
+
+    def chat_messages(self, *, messages: list[dict[str, str]], temperature: float = 0.2, **kwargs: object) -> ChatTextResult:
+        del messages, temperature, kwargs
+        return ChatTextResult(content="核心判断：浪潮信息布局AI服务器 [E1]。")
+
+    def chat_json(self, *, system_prompt: str, user_prompt: str, temperature: float = 0.0, **kwargs: object) -> dict:
+        del temperature, kwargs
+        import json
+
+        payload = json.loads(user_prompt)
+        if "中心调度 Agent" in system_prompt:
+            return {
+                "assignments": [
+                    {"agent_type": "graph", "query": payload["question"], "filters": {}, "coverage_goals": payload["required_coverage"]},
+                    {"agent_type": "rag", "query": payload["question"], "filters": {}, "coverage_goals": payload["required_coverage"]},
+                ]
+            }
+        if "查询 Agent" in system_prompt:
+            return {"query": payload["question"], "filters": {}}
+        if "证据审核 Agent" in system_prompt:
+            return {
+                "accepted_ids": [item["candidate_id"] for item in payload["candidates"]],
+                "rejected_ids": [],
+                "missing_coverage": [],
+                "conflicts": [],
+            }
+        if "证据归纳 Agent" in system_prompt:
+            candidate_ids = [item["candidate_id"] for item in payload["candidates"][:1]]
+            return {"cards": [{"candidate_ids": candidate_ids, "title": "AI服务器证据", "reason": "直接支撑问题"}]}
+        return {}
 
 
 def test_agent_runner_is_enabled_by_default_and_records_four_phase_trace() -> None:
@@ -124,6 +219,36 @@ def test_agent_can_be_disabled_to_use_legacy_workflow() -> None:
     assert result["diagnostics"]["langgraph_enabled"] is False
     assert result["diagnostics"]["agent_trace"] == []
     assert result["evidence_cards"]
+
+
+def test_legacy_agent_uses_hyde_for_text_retrieval_only() -> None:
+    rag = RecordingAgentRagIndex()
+    graph = RecordingGraphClient()
+    llm = AgentHydeLLMClient()
+    engine = QAEngine(graph_client=graph, rag_index=rag, llm_client=llm, agent_runner="legacy")
+
+    result = engine.answer_question("浪潮信息有哪些AI服务器产品？")
+
+    assert llm.hyde_calls == 1
+    assert rag.queries and all("HYDE_MARKER" in query for query in rag.queries)
+    assert graph.queries
+    assert result["diagnostics"]["hyde"]["generated"] is True
+    assert result["diagnostics"]["agent_runner"] == "legacy"
+
+
+def test_langgraph_agent_reuses_single_hyde_query_for_text_agents() -> None:
+    rag = RecordingAgentRagIndex()
+    graph = RecordingGraphClient()
+    llm = AgentHydeLLMClient()
+    engine = QAEngine(graph_client=graph, rag_index=rag, llm_client=llm)
+
+    result = engine.answer_question("浪潮信息有哪些AI服务器产品？")
+
+    assert llm.hyde_calls == 1
+    assert rag.queries and all("HYDE_MARKER" in query for query in rag.queries)
+    assert graph.queries
+    assert result["diagnostics"]["hyde"]["generated"] is True
+    assert result["diagnostics"]["agent_runner"] == "langgraph"
 
 
 def test_agent_supplements_risk_question_when_risk_evidence_is_missing() -> None:
