@@ -287,6 +287,7 @@ def build_engine(args: argparse.Namespace) -> QAEngine:
     offline = effective_offline(args)
     if offline:
         os.environ["QA_GRAPH_BACKEND"] = "csv"
+        os.environ["QA_DISABLE_POSTGRES"] = "true"
     if offline or not getattr(args, "use_embedding", False):
         os.environ["EMBEDDING_MODEL"] = ""
 

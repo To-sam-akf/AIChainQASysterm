@@ -27,6 +27,13 @@ jobs:
       - name: Python tests
         run: UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 
+      - name: Offline demo smoke
+        env:
+          DATABASE_URL: ""
+          LLM_API_KEY: ""
+          EMBEDDING_MODEL: ""
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
+
       - name: QA smoke evaluation
         run: UV_CACHE_DIR=/tmp/uv-cache uv run python main.py eval --suite qa --offline --limit 5 --report-dir /tmp/aiqasys-eval --json
 

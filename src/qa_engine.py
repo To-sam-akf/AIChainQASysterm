@@ -378,18 +378,28 @@ class QAEngine:
         multi_agent_max_llm_calls = int(os.getenv("QA_MULTI_AGENT_MAX_LLM_CALLS", "12"))
         multi_agent_task_timeout_seconds = float(os.getenv("QA_MULTI_AGENT_TASK_TIMEOUT_SECONDS", "90"))
         graph_backend = os.getenv("QA_GRAPH_BACKEND", "auto").casefold()
+        disable_postgres = os.getenv("QA_DISABLE_POSTGRES", "false").strip().casefold() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
         # PostgreSQL 检索存储
-        retrieval_store = PostgresRetrievalStore.from_env()
-        try:
-            retrieval_store.ensure_ready()
-        except Exception:
-            retrieval_store.close()
-            raise
-        rag_index = PostgresRagIndex(retrieval_store)
-        research_memory = PostgresResearchMemory(retrieval_store)
+        retrieval_store = None
+        rag_index = None
+        research_memory = None
         rag_error = ""
         research_error = ""
+        if not disable_postgres:
+            retrieval_store = PostgresRetrievalStore.from_env()
+            try:
+                retrieval_store.ensure_ready()
+            except Exception:
+                retrieval_store.close()
+                raise
+            rag_index = PostgresRagIndex(retrieval_store)
+            research_memory = PostgresResearchMemory(retrieval_store)
 
         # LLM 客户端
         llm_client = None
@@ -402,17 +412,18 @@ class QAEngine:
         # 语义向量索引
         semantic_index = None
         embedding_error = ""
-        try:
-            from src.embedding_client import OpenAICompatibleEmbeddingClient, embedding_configured
+        if retrieval_store is not None:
+            try:
+                from src.embedding_client import OpenAICompatibleEmbeddingClient, embedding_configured
 
-            if embedding_configured():
-                embedding_client = OpenAICompatibleEmbeddingClient(dimensions=EMBEDDING_DIMENSIONS)
-                semantic_index = PostgresSemanticIndex(
-                    retrieval_store,
-                    embedding_client=embedding_client,
-                )
-        except Exception as exc:
-            embedding_error = str(exc)
+                if embedding_configured():
+                    embedding_client = OpenAICompatibleEmbeddingClient(dimensions=EMBEDDING_DIMENSIONS)
+                    semantic_index = PostgresSemanticIndex(
+                        retrieval_store,
+                        embedding_client=embedding_client,
+                    )
+            except Exception as exc:
+                embedding_error = str(exc)
 
         # CSV 图谱
         csv_graph = None

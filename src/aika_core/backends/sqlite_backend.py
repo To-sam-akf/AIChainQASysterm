@@ -1,0 +1,984 @@
+"""SQLite FTS5 backend for the lightweight public AIKA Core path."""
+
+from __future__ import annotations
+
+import csv
+import json
+import os
+import re
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Iterable
+
+from src.aika_core.data_paths import (
+    CLAIMS_FILE,
+    EVIDENCE_SPANS_FILE,
+    RELATIONS_FILE,
+    SEGMENT_DOSSIERS_FILE,
+)
+from src.aika_core.models import ClaimRecord, CompanyProfile, EvidenceCard, GraphEdge, ResearchBackend
+
+
+SCHEMA_VERSION = "1"
+DEFAULT_PROFILE = "sample"
+AIKA_HOME_ENV = "AIKA_HOME"
+
+CLAIM_COLUMNS = [
+    "claim_id",
+    "claim_type",
+    "topic",
+    "claim_text",
+    "companies",
+    "mechanism",
+    "direction",
+    "horizon",
+    "metric",
+    "value",
+    "unit",
+    "source_report_id",
+    "source_title",
+    "page",
+    "section",
+    "source_tier",
+    "evidence_span",
+    "confidence",
+    "as_of_date",
+    "exposure_level",
+    "review_status",
+    "reviewer_note",
+    "quality_flags",
+    "conflict_group_id",
+]
+
+EVIDENCE_COLUMNS = [
+    "evidence_id",
+    "claim_id",
+    "evidence",
+    "source_report_id",
+    "source_title",
+    "page",
+    "section",
+    "source_tier",
+    "as_of_date",
+    "quality",
+    "company",
+    "topic",
+    "claim_type",
+    "confidence",
+    "exposure_level",
+]
+
+DOSSIER_COLUMNS = ["dossier_id", "topic", "title", "content", "raw_json"]
+
+RELATION_COLUMNS = [
+    "relation_id",
+    "head_type",
+    "head_name",
+    "relation",
+    "tail_type",
+    "tail_name",
+    "evidence",
+    "source_report_id",
+    "source_title",
+    "page",
+    "section",
+    "source_tier",
+    "confidence",
+    "review_status",
+]
+
+
+def resolve_aika_home(home: str | Path | None = None) -> Path:
+    """Resolve the local AIKA home directory without creating it."""
+    value = home or os.getenv(AIKA_HOME_ENV) or "~/.aika"
+    return Path(value).expanduser().resolve()
+
+
+def profile_knowledge_dir(home: str | Path | None = None, *, profile: str = DEFAULT_PROFILE) -> Path:
+    return resolve_aika_home(home) / "knowledge" / profile
+
+
+def profile_index_path(home: str | Path | None = None, *, profile: str = DEFAULT_PROFILE) -> Path:
+    return resolve_aika_home(home) / "indexes" / f"{profile}.sqlite"
+
+
+def sqlite_fts_status() -> dict[str, Any]:
+    """Return SQLite FTS5/trigram support details for doctor output."""
+    status: dict[str, Any] = {
+        "sqlite_version": sqlite3.sqlite_version,
+        "fts5": False,
+        "trigram": False,
+        "tokenizer": "",
+        "error": "",
+    }
+    try:
+        with sqlite3.connect(":memory:") as connection:
+            connection.execute("CREATE VIRTUAL TABLE fts_probe USING fts5(x)")
+            status["fts5"] = True
+            try:
+                connection.execute("CREATE VIRTUAL TABLE trigram_probe USING fts5(x, tokenize='trigram')")
+                status["trigram"] = True
+                status["tokenizer"] = "trigram"
+            except sqlite3.OperationalError:
+                status["tokenizer"] = "unicode61"
+    except sqlite3.OperationalError as exc:
+        status["error"] = str(exc)
+    return status
+
+
+def build_sqlite_index(knowledge_dir: str | Path, index_path: str | Path) -> dict[str, Any]:
+    """Build a deterministic SQLite FTS5 index from local CSV/JSONL artifacts."""
+    source_dir = Path(knowledge_dir).expanduser().resolve()
+    target_path = Path(index_path).expanduser().resolve()
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = target_path.with_name(f".{target_path.name}.{os.getpid()}.tmp")
+    if tmp_path.exists():
+        tmp_path.unlink()
+
+    counts = {"claims": 0, "evidence_spans": 0, "dossiers": 0, "relations": 0}
+    try:
+        with sqlite3.connect(tmp_path) as connection:
+            connection.row_factory = sqlite3.Row
+            tokenizer = _select_tokenizer(connection)
+            _create_schema(connection, tokenizer=tokenizer)
+            claim_lookup = _load_claims(connection, source_dir / CLAIMS_FILE)
+            counts["claims"] = len(claim_lookup)
+            counts["evidence_spans"] = _load_evidence_spans(
+                connection,
+                source_dir / EVIDENCE_SPANS_FILE,
+                claim_lookup,
+            )
+            counts["dossiers"] = _load_dossiers(connection, source_dir / SEGMENT_DOSSIERS_FILE)
+            counts["relations"] = _load_relations(connection, source_dir / RELATIONS_FILE)
+            _write_metadata(
+                connection,
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "built_at": datetime.now(timezone.utc).isoformat(),
+                    "source_dir": str(source_dir),
+                    "tokenizer": tokenizer,
+                    **{f"{key}_count": str(value) for key, value in counts.items()},
+                },
+            )
+            connection.commit()
+        tmp_path.replace(target_path)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
+    return {"index_path": str(target_path), "knowledge_dir": str(source_dir), "counts": counts}
+
+
+def inspect_sqlite_index(index_path: str | Path) -> dict[str, Any]:
+    path = Path(index_path).expanduser().resolve()
+    result: dict[str, Any] = {
+        "exists": path.exists(),
+        "path": str(path),
+        "metadata": {},
+        "counts": {},
+        "error": "",
+    }
+    if not path.exists():
+        return result
+    try:
+        with _connect(path) as connection:
+            result["metadata"] = {
+                str(row["key"]): str(row["value"])
+                for row in connection.execute("SELECT key, value FROM metadata").fetchall()
+            }
+            for table in ("claims", "evidence_spans", "dossiers", "relations"):
+                row = connection.execute(f"SELECT count(*) AS count FROM {table}").fetchone()
+                result["counts"][table] = int(row["count"] or 0)
+    except sqlite3.Error as exc:
+        result["error"] = str(exc)
+    return result
+
+
+class SQLiteResearchBackend(ResearchBackend):
+    """Research backend backed by a single local SQLite FTS5 index."""
+
+    def __init__(self, index_path: str | Path | None = None, *, home: str | Path | None = None, profile: str = DEFAULT_PROFILE) -> None:
+        self.index_path = Path(index_path).expanduser().resolve() if index_path else profile_index_path(home, profile=profile)
+
+    @classmethod
+    def from_home(cls, home: str | Path | None = None, *, profile: str = DEFAULT_PROFILE) -> "SQLiteResearchBackend":
+        return cls(home=home, profile=profile)
+
+    def search_evidence(self, query: str, *, top_k: int = 8, **filters: Any) -> list[EvidenceCard]:
+        limit = _limit(top_k)
+        if limit == 0 or not self.index_path.exists():
+            return []
+        try:
+            rows = self._search_evidence_rows(query, limit=limit, filters=filters)
+        except sqlite3.Error:
+            return []
+        cards = [_evidence_card_from_row(row, citation_id=f"E{index}") for index, row in enumerate(rows, start=1)]
+        return cards[:limit]
+
+    def search_claims(self, query: str, *, top_k: int = 8, **filters: Any) -> list[ClaimRecord]:
+        limit = _limit(top_k)
+        if limit == 0 or not self.index_path.exists():
+            return []
+        try:
+            rows = self._search_claim_rows(query, limit=limit, filters=filters)
+        except sqlite3.Error:
+            return []
+        return [ClaimRecord.from_row(dict(row), score=float(row["score"] or 0.0)) for row in rows[:limit]]
+
+    def search_dossiers(self, query: str, *, top_k: int = 3, **filters: Any) -> list[EvidenceCard]:
+        limit = _limit(top_k)
+        if limit == 0 or not self.index_path.exists():
+            return []
+        try:
+            rows = self._search_dossier_rows(query, limit=limit, filters=filters)
+        except sqlite3.Error:
+            return []
+        return [_dossier_card_from_row(row, citation_id=f"D{index}") for index, row in enumerate(rows, start=1)]
+
+    def query_graph(
+        self,
+        *,
+        company: str = "",
+        technology: str = "",
+        relation_type: str = "",
+        limit: int = 80,
+    ) -> list[GraphEdge]:
+        row_limit = _limit(limit)
+        if row_limit == 0 or not self.index_path.exists():
+            return []
+        clauses: list[str] = []
+        params: list[Any] = []
+        if company:
+            clauses.append("(head_name LIKE ? OR tail_name LIKE ?)")
+            params.extend([f"%{company}%", f"%{company}%"])
+        if technology:
+            clauses.append("(head_name LIKE ? OR tail_name LIKE ? OR evidence LIKE ?)")
+            params.extend([f"%{technology}%", f"%{technology}%", f"%{technology}%"])
+        if relation_type:
+            clauses.append("relation = ?")
+            params.append(relation_type)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        try:
+            with _connect(self.index_path) as connection:
+                rows = connection.execute(
+                    f"""
+                    SELECT * FROM relations
+                    {where}
+                    ORDER BY relation_id
+                    LIMIT ?
+                    """,
+                    [*params, row_limit],
+                ).fetchall()
+        except sqlite3.Error:
+            return []
+        return [_graph_edge_from_row(row) for row in rows]
+
+    def get_company_profile(self, company: str, *, topic: str = "") -> CompanyProfile:
+        query = f"{company} {topic}".strip()
+        evidence_cards = self.search_evidence(query, top_k=8, company=company, topic=topic or None)
+        claims = self.search_claims(query, top_k=5, company=company, topic=topic or None)
+        edges = self.query_graph(company=company, technology=topic, limit=12)
+        summary = claims[0].claim_text if claims else ""
+        return CompanyProfile(
+            company=company,
+            topic=topic,
+            summary=summary,
+            evidence_cards=evidence_cards,
+            graph_edges=edges,
+            research_outputs={
+                "claims": [claim.to_dict() for claim in claims],
+                "backend": "sqlite",
+                "index_path": str(self.index_path),
+            },
+        )
+
+    def _search_claim_rows(self, query: str, *, limit: int, filters: dict[str, Any]) -> list[sqlite3.Row]:
+        match_query = _fts_query(query)
+        filter_sql, filter_params = _claim_filter_sql(filters, alias="c")
+        with _connect(self.index_path) as connection:
+            if match_query:
+                try:
+                    candidate_limit = max(limit * 20, limit)
+                    rows = connection.execute(
+                        f"""
+                        SELECT c.*, -bm25(claims_fts) AS score
+                        FROM claims_fts
+                        JOIN claims c ON c.id = claims_fts.rowid
+                        WHERE claims_fts MATCH ?
+                        {filter_sql}
+                        ORDER BY bm25(claims_fts), c.topic, c.claim_type, c.claim_id
+                        LIMIT ?
+                        """,
+                        [match_query, *filter_params, candidate_limit],
+                    ).fetchall()
+                    if rows:
+                        fallback_rows = _fallback_claim_rows(connection, query, limit=candidate_limit, filters=filters)
+                        ranked = _score_rows(
+                            _dedupe_rows([*rows, *fallback_rows]),
+                            query,
+                            fields=("claim_text", "evidence_span", "topic", "companies"),
+                        )
+                        return ranked[:limit] or rows[:limit]
+                except sqlite3.OperationalError:
+                    pass
+            return _fallback_claim_rows(connection, query, limit=limit, filters=filters)
+
+    def _search_evidence_rows(self, query: str, *, limit: int, filters: dict[str, Any]) -> list[sqlite3.Row]:
+        match_query = _fts_query(query)
+        filter_sql, filter_params = _evidence_filter_sql(filters, alias="e")
+        with _connect(self.index_path) as connection:
+            if match_query:
+                try:
+                    candidate_limit = max(limit * 20, limit)
+                    rows = connection.execute(
+                        f"""
+                        SELECT e.*, -bm25(evidence_fts) AS score
+                        FROM evidence_fts
+                        JOIN evidence_spans e ON e.id = evidence_fts.rowid
+                        WHERE evidence_fts MATCH ?
+                        {filter_sql}
+                        ORDER BY bm25(evidence_fts), e.topic, e.company, e.evidence_id
+                        LIMIT ?
+                        """,
+                        [match_query, *filter_params, candidate_limit],
+                    ).fetchall()
+                    if rows:
+                        fallback_rows = _fallback_evidence_rows(connection, query, limit=candidate_limit, filters=filters)
+                        ranked = _score_rows(
+                            _dedupe_rows([*rows, *fallback_rows]),
+                            query,
+                            fields=("evidence", "source_title", "company", "topic"),
+                        )
+                        return ranked[:limit] or rows[:limit]
+                except sqlite3.OperationalError:
+                    pass
+            return _fallback_evidence_rows(connection, query, limit=limit, filters=filters)
+
+    def _search_dossier_rows(self, query: str, *, limit: int, filters: dict[str, Any]) -> list[sqlite3.Row]:
+        match_query = _fts_query(query)
+        filter_sql, filter_params = _topic_filter_sql(filters, alias="d")
+        with _connect(self.index_path) as connection:
+            if match_query:
+                try:
+                    candidate_limit = max(limit * 20, limit)
+                    rows = connection.execute(
+                        f"""
+                        SELECT d.*, -bm25(dossiers_fts) AS score
+                        FROM dossiers_fts
+                        JOIN dossiers d ON d.id = dossiers_fts.rowid
+                        WHERE dossiers_fts MATCH ?
+                        {filter_sql}
+                        ORDER BY bm25(dossiers_fts), d.topic
+                        LIMIT ?
+                        """,
+                        [match_query, *filter_params, candidate_limit],
+                    ).fetchall()
+                    if rows:
+                        fallback_rows = _fallback_dossier_rows(connection, query, limit=candidate_limit, filters=filters)
+                        ranked = _score_rows(
+                            _dedupe_rows([*rows, *fallback_rows]),
+                            query,
+                            fields=("title", "content", "topic"),
+                        )
+                        return ranked[:limit] or rows[:limit]
+                except sqlite3.OperationalError:
+                    pass
+            return _fallback_dossier_rows(connection, query, limit=limit, filters=filters)
+
+
+def _connect(path: str | Path) -> sqlite3.Connection:
+    connection = sqlite3.connect(Path(path))
+    connection.row_factory = sqlite3.Row
+    return connection
+
+
+def _select_tokenizer(connection: sqlite3.Connection) -> str:
+    try:
+        connection.execute("CREATE VIRTUAL TABLE tokenizer_probe USING fts5(x, tokenize='trigram')")
+        connection.execute("DROP TABLE tokenizer_probe")
+        return "trigram"
+    except sqlite3.OperationalError:
+        connection.execute("CREATE VIRTUAL TABLE tokenizer_probe USING fts5(x, tokenize='unicode61')")
+        connection.execute("DROP TABLE tokenizer_probe")
+        return "unicode61"
+
+
+def _create_schema(connection: sqlite3.Connection, *, tokenizer: str) -> None:
+    claim_definitions = ",\n                ".join(f"{column} TEXT" for column in CLAIM_COLUMNS)
+    evidence_definitions = ",\n                ".join(f"{column} TEXT" for column in EVIDENCE_COLUMNS)
+    dossier_definitions = ",\n                ".join(f"{column} TEXT" for column in DOSSIER_COLUMNS)
+    relation_definitions = ",\n                ".join(f"{column} TEXT" for column in RELATION_COLUMNS)
+    connection.executescript(
+        f"""
+        PRAGMA journal_mode = OFF;
+        PRAGMA synchronous = OFF;
+
+        CREATE TABLE metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+
+        CREATE TABLE claims (
+            id INTEGER PRIMARY KEY,
+            {claim_definitions}
+        );
+
+        CREATE TABLE evidence_spans (
+            id INTEGER PRIMARY KEY,
+            {evidence_definitions}
+        );
+
+        CREATE TABLE dossiers (
+            id INTEGER PRIMARY KEY,
+            {dossier_definitions}
+        );
+
+        CREATE TABLE relations (
+            id INTEGER PRIMARY KEY,
+            {relation_definitions}
+        );
+
+        CREATE VIRTUAL TABLE claims_fts USING fts5(
+            claim_text,
+            evidence_span,
+            topic,
+            companies,
+            tokenize='{tokenizer}'
+        );
+
+        CREATE VIRTUAL TABLE evidence_fts USING fts5(
+            evidence,
+            source_title,
+            company,
+            topic,
+            tokenize='{tokenizer}'
+        );
+
+        CREATE VIRTUAL TABLE dossiers_fts USING fts5(
+            title,
+            content,
+            topic,
+            tokenize='{tokenizer}'
+        );
+
+        CREATE INDEX claims_topic_idx ON claims(topic);
+        CREATE INDEX claims_type_idx ON claims(claim_type);
+        CREATE INDEX claims_id_idx ON claims(claim_id);
+        CREATE INDEX evidence_claim_idx ON evidence_spans(claim_id);
+        CREATE INDEX evidence_topic_idx ON evidence_spans(topic);
+        CREATE INDEX evidence_company_idx ON evidence_spans(company);
+        CREATE INDEX relations_head_idx ON relations(head_name);
+        CREATE INDEX relations_tail_idx ON relations(tail_name);
+        """
+    )
+
+
+def _load_claims(connection: sqlite3.Connection, path: Path) -> dict[str, dict[str, str]]:
+    lookup: dict[str, dict[str, str]] = {}
+    for index, row in enumerate(_read_csv_rows(path), start=1):
+        normalized = {column: _text(row.get(column)) for column in CLAIM_COLUMNS}
+        if not normalized["claim_id"]:
+            normalized["claim_id"] = f"claim_row_{index}"
+        record = ClaimRecord.from_row(normalized)
+        normalized["companies"] = _serialize_cell(row.get("companies") or normalized["companies"])
+        cursor = connection.execute(
+            _insert_sql("claims", CLAIM_COLUMNS),
+            [normalized[column] for column in CLAIM_COLUMNS],
+        )
+        rowid = int(cursor.lastrowid)
+        connection.execute(
+            "INSERT INTO claims_fts(rowid, claim_text, evidence_span, topic, companies) VALUES (?, ?, ?, ?, ?)",
+            (
+                rowid,
+                normalized["claim_text"],
+                normalized["evidence_span"],
+                normalized["topic"],
+                normalized["companies"],
+            ),
+        )
+        lookup[normalized["claim_id"]] = {
+            "company": record.companies[0] if record.companies else "",
+            "topic": normalized["topic"],
+            "claim_type": normalized["claim_type"],
+            "confidence": normalized["confidence"],
+            "exposure_level": normalized["exposure_level"],
+        }
+    return lookup
+
+
+def _load_evidence_spans(connection: sqlite3.Connection, path: Path, claim_lookup: dict[str, dict[str, str]]) -> int:
+    count = 0
+    for index, row in enumerate(_read_csv_rows(path), start=1):
+        claim_id = _text(row.get("claim_id"))
+        claim = claim_lookup.get(claim_id, {})
+        normalized = {
+            "evidence_id": _text(row.get("evidence_id")) or f"evidence_row_{index}",
+            "claim_id": claim_id,
+            "evidence": _text(row.get("evidence") or row.get("text")),
+            "source_report_id": _text(row.get("source_report_id")),
+            "source_title": _text(row.get("source_title") or row.get("source")),
+            "page": _text(row.get("page")),
+            "section": _text(row.get("section")),
+            "source_tier": _text(row.get("source_tier")),
+            "as_of_date": _text(row.get("as_of_date")),
+            "quality": _text(row.get("quality")),
+            "company": _text(row.get("company") or claim.get("company")),
+            "topic": _text(row.get("topic") or claim.get("topic")),
+            "claim_type": _text(row.get("claim_type") or claim.get("claim_type")),
+            "confidence": _text(row.get("confidence") or claim.get("confidence")),
+            "exposure_level": _text(row.get("exposure_level") or claim.get("exposure_level")),
+        }
+        cursor = connection.execute(
+            _insert_sql("evidence_spans", EVIDENCE_COLUMNS),
+            [normalized[column] for column in EVIDENCE_COLUMNS],
+        )
+        rowid = int(cursor.lastrowid)
+        connection.execute(
+            "INSERT INTO evidence_fts(rowid, evidence, source_title, company, topic) VALUES (?, ?, ?, ?, ?)",
+            (
+                rowid,
+                normalized["evidence"],
+                normalized["source_title"],
+                normalized["company"],
+                normalized["topic"],
+            ),
+        )
+        count += 1
+    return count
+
+
+def _load_dossiers(connection: sqlite3.Connection, path: Path) -> int:
+    count = 0
+    for index, dossier in enumerate(_read_jsonl_rows(path), start=1):
+        topic = _text(dossier.get("topic"))
+        title = _text(dossier.get("title")) or f"{topic} segment dossier".strip()
+        content = _dossier_content(dossier)
+        normalized = {
+            "dossier_id": _text(dossier.get("dossier_id")) or f"dossier_{topic or index}",
+            "topic": topic,
+            "title": title,
+            "content": content,
+            "raw_json": json.dumps(dossier, ensure_ascii=False, sort_keys=True),
+        }
+        cursor = connection.execute(
+            _insert_sql("dossiers", DOSSIER_COLUMNS),
+            [normalized[column] for column in DOSSIER_COLUMNS],
+        )
+        rowid = int(cursor.lastrowid)
+        connection.execute(
+            "INSERT INTO dossiers_fts(rowid, title, content, topic) VALUES (?, ?, ?, ?)",
+            (rowid, title, content, topic),
+        )
+        count += 1
+    return count
+
+
+def _load_relations(connection: sqlite3.Connection, path: Path) -> int:
+    count = 0
+    for index, row in enumerate(_read_csv_rows(path), start=1):
+        normalized = {column: _text(row.get(column)) for column in RELATION_COLUMNS}
+        if not normalized["relation_id"]:
+            normalized["relation_id"] = f"relation_row_{index}"
+        connection.execute(
+            _insert_sql("relations", RELATION_COLUMNS),
+            [normalized[column] for column in RELATION_COLUMNS],
+        )
+        count += 1
+    return count
+
+
+def _write_metadata(connection: sqlite3.Connection, values: dict[str, Any]) -> None:
+    connection.executemany(
+        "INSERT INTO metadata(key, value) VALUES (?, ?)",
+        [(str(key), str(value)) for key, value in sorted(values.items())],
+    )
+
+
+def _insert_sql(table: str, columns: list[str]) -> str:
+    names = ", ".join(columns)
+    placeholders = ", ".join("?" for _ in columns)
+    return f"INSERT INTO {table}({names}) VALUES ({placeholders})"
+
+
+def _read_csv_rows(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    with path.open(newline="", encoding="utf-8-sig") as file:
+        return [dict(row) for row in csv.DictReader(file)]
+
+
+def _read_jsonl_rows(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not path.exists():
+        return rows
+    with path.open(encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(value, dict):
+                rows.append(value)
+    return rows
+
+
+def _fallback_claim_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    *,
+    limit: int,
+    filters: dict[str, Any],
+) -> list[sqlite3.Row]:
+    filter_sql, filter_params = _claim_filter_sql(filters, alias="c")
+    search_sql, search_params = _like_search_sql(
+        query,
+        alias="c",
+        columns=("claim_text", "evidence_span", "topic", "companies", "source_title"),
+    )
+    rows = connection.execute(
+        f"""
+        SELECT c.*, 0.0 AS score
+        FROM claims c
+        WHERE 1=1
+        {filter_sql}
+        {search_sql}
+        ORDER BY c.topic, c.claim_type, c.claim_id
+        LIMIT ?
+        """,
+        [*filter_params, *search_params, limit],
+    ).fetchall()
+    return _score_rows(rows, query, fields=("claim_text", "evidence_span", "topic", "companies"))
+
+
+def _fallback_evidence_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    *,
+    limit: int,
+    filters: dict[str, Any],
+) -> list[sqlite3.Row]:
+    filter_sql, filter_params = _evidence_filter_sql(filters, alias="e")
+    search_sql, search_params = _like_search_sql(
+        query,
+        alias="e",
+        columns=("evidence", "source_title", "company", "topic"),
+    )
+    rows = connection.execute(
+        f"""
+        SELECT e.*, 0.0 AS score
+        FROM evidence_spans e
+        WHERE 1=1
+        {filter_sql}
+        {search_sql}
+        ORDER BY e.topic, e.company, e.evidence_id
+        LIMIT ?
+        """,
+        [*filter_params, *search_params, max(limit * 5, limit)],
+    ).fetchall()
+    return _score_rows(rows, query, fields=("evidence", "source_title", "company", "topic"))[:limit]
+
+
+def _fallback_dossier_rows(
+    connection: sqlite3.Connection,
+    query: str,
+    *,
+    limit: int,
+    filters: dict[str, Any],
+) -> list[sqlite3.Row]:
+    filter_sql, filter_params = _topic_filter_sql(filters, alias="d")
+    search_sql, search_params = _like_search_sql(query, alias="d", columns=("title", "content", "topic"))
+    rows = connection.execute(
+        f"""
+        SELECT d.*, 0.0 AS score
+        FROM dossiers d
+        WHERE 1=1
+        {filter_sql}
+        {search_sql}
+        ORDER BY d.topic
+        LIMIT ?
+        """,
+        [*filter_params, *search_params, max(limit * 5, limit)],
+    ).fetchall()
+    return _score_rows(rows, query, fields=("title", "content", "topic"))[:limit]
+
+
+def _claim_filter_sql(filters: dict[str, Any], *, alias: str) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    companies = _values(filters.get("company") or filters.get("companies"))
+    if companies:
+        parts = []
+        for company in companies:
+            parts.append(f"({alias}.companies LIKE ? OR {alias}.claim_text LIKE ? OR {alias}.evidence_span LIKE ?)")
+            params.extend([f"%{company}%", f"%{company}%", f"%{company}%"])
+        clauses.append(f"({' OR '.join(parts)})")
+    topics = _values(filters.get("topic") or filters.get("topics"))
+    if topics:
+        parts = [f"{alias}.topic LIKE ?" for _ in topics]
+        clauses.append(f"({' OR '.join(parts)})")
+        params.extend(f"%{topic}%" for topic in topics)
+    claim_types = _values(filters.get("claim_type") or filters.get("claim_types"))
+    if claim_types:
+        placeholders = ", ".join("?" for _ in claim_types)
+        clauses.append(f"{alias}.claim_type IN ({placeholders})")
+        params.extend(claim_types)
+    return _where_suffix(clauses), params
+
+
+def _evidence_filter_sql(filters: dict[str, Any], *, alias: str) -> tuple[str, list[Any]]:
+    clauses: list[str] = []
+    params: list[Any] = []
+    companies = _values(filters.get("company") or filters.get("companies"))
+    if companies:
+        parts = []
+        for company in companies:
+            parts.append(f"({alias}.company LIKE ? OR {alias}.evidence LIKE ?)")
+            params.extend([f"%{company}%", f"%{company}%"])
+        clauses.append(f"({' OR '.join(parts)})")
+    topics = _values(filters.get("topic") or filters.get("topics"))
+    if topics:
+        parts = [f"{alias}.topic LIKE ?" for _ in topics]
+        clauses.append(f"({' OR '.join(parts)})")
+        params.extend(f"%{topic}%" for topic in topics)
+    claim_types = _values(filters.get("claim_type") or filters.get("claim_types"))
+    if claim_types:
+        placeholders = ", ".join("?" for _ in claim_types)
+        clauses.append(f"{alias}.claim_type IN ({placeholders})")
+        params.extend(claim_types)
+    return _where_suffix(clauses), params
+
+
+def _topic_filter_sql(filters: dict[str, Any], *, alias: str) -> tuple[str, list[Any]]:
+    topics = _values(filters.get("topic") or filters.get("topics"))
+    if not topics:
+        return "", []
+    parts = [f"{alias}.topic LIKE ?" for _ in topics]
+    return f"AND ({' OR '.join(parts)})", [f"%{topic}%" for topic in topics]
+
+
+def _where_suffix(clauses: list[str]) -> str:
+    return f"AND {' AND '.join(clauses)}" if clauses else ""
+
+
+def _like_search_sql(query: str, *, alias: str, columns: Iterable[str]) -> tuple[str, list[Any]]:
+    terms = _query_terms(query)
+    if not terms:
+        return "", []
+    clauses: list[str] = []
+    params: list[Any] = []
+    for term in terms:
+        parts = [f"{alias}.{column} LIKE ?" for column in columns]
+        clauses.append(f"({' OR '.join(parts)})")
+        params.extend(f"%{term}%" for _ in columns)
+    return f"AND ({' OR '.join(clauses)})", params
+
+
+def _fts_query(query: str) -> str:
+    terms = _query_terms(query)
+    if not terms:
+        return ""
+    return " OR ".join(f'"{term.replace(chr(34), chr(34) + chr(34))}"' for term in terms)
+
+
+def _query_terms(query: str) -> list[str]:
+    text = _text(query)
+    if not text:
+        return []
+    terms: list[str] = []
+    for term in re.split(r"[\s,，;；]+", text):
+        if not term.strip():
+            continue
+        terms.extend(_expand_query_term(term.strip()))
+    return _dedupe(terms)
+
+
+def _expand_query_term(term: str) -> list[str]:
+    terms = [term]
+    for suffix in ("产业链", "行业", "领域", "公司", "业务"):
+        if term.endswith(suffix) and len(term) > len(suffix):
+            stem = term[: -len(suffix)].strip()
+            if stem:
+                terms.append(stem)
+            terms.append(suffix)
+    return terms
+
+
+def _score_rows(rows: list[sqlite3.Row], query: str, *, fields: tuple[str, ...]) -> list[sqlite3.Row]:
+    if not query.strip():
+        return rows
+    scored = [(float(_text_score(" ".join(_text(row[field]) for field in fields), query)), row) for row in rows]
+    scored = [item for item in scored if item[0] > 0]
+    scored.sort(key=lambda item: -item[0])
+    return [_row_with_score(row, score) for score, row in scored]
+
+
+def _dedupe_rows(rows: Iterable[sqlite3.Row]) -> list[sqlite3.Row]:
+    output: list[sqlite3.Row] = []
+    seen: set[Any] = set()
+    for row in rows:
+        key = row["id"] if "id" in row.keys() else tuple(sorted(dict(row).items()))
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(row)
+    return output
+
+
+def _row_with_score(row: sqlite3.Row, score: float) -> sqlite3.Row:
+    data = dict(row)
+    data["score"] = round(score, 4)
+    return _MappingRow(data)
+
+
+class _MappingRow(dict):
+    def keys(self) -> Any:
+        return super().keys()
+
+
+def _text_score(text: str, query: str) -> float:
+    normalized = _normalize(text)
+    score = 0.0
+    full = _normalize(query)
+    if full and full in normalized:
+        score += 12.0
+    for term in _query_terms(query):
+        value = _normalize(term)
+        if value and value in normalized:
+            if value in {"产业链", "行业", "领域", "公司", "业务"}:
+                score += 1.0
+            else:
+                score += 5.0 if len(value) >= 2 else 1.0
+    return score
+
+
+def _evidence_card_from_row(row: sqlite3.Row, *, citation_id: str) -> EvidenceCard:
+    data = dict(row)
+    return EvidenceCard(
+        citation_id=citation_id,
+        kind="evidence",
+        title=_text(data.get("source_title") or data.get("topic")),
+        evidence=_text(data.get("evidence")),
+        claim_id=_text(data.get("claim_id")),
+        source=_text(data.get("source_title")),
+        page=_text(data.get("page")),
+        section=_text(data.get("section")),
+        company=_text(data.get("company")),
+        source_tier=_text(data.get("source_tier")),
+        score=_floatish(data.get("score")),
+        reason="sqlite fts",
+        topic=_text(data.get("topic")),
+        claim_type=_text(data.get("claim_type")),
+        exposure_level=_text(data.get("exposure_level")),
+        confidence=_text(data.get("confidence")),
+        as_of_date=_text(data.get("as_of_date")),
+        evidence_span=_text(data.get("evidence")),
+        raw=data,
+    )
+
+
+def _dossier_card_from_row(row: sqlite3.Row, *, citation_id: str) -> EvidenceCard:
+    data = dict(row)
+    return EvidenceCard(
+        citation_id=citation_id,
+        kind="dossier",
+        title=_text(data.get("title")),
+        evidence=_text(data.get("content")),
+        score=_floatish(data.get("score")),
+        reason="sqlite dossier fts",
+        topic=_text(data.get("topic")),
+        raw=data,
+    )
+
+
+def _graph_edge_from_row(row: sqlite3.Row) -> GraphEdge:
+    data = dict(row)
+    return GraphEdge(
+        source=_text(data.get("head_name")),
+        target=_text(data.get("tail_name")),
+        relation=_text(data.get("relation")),
+        label=_text(data.get("relation")),
+        source_type=_text(data.get("head_type")),
+        target_type=_text(data.get("tail_type")),
+        evidence=_text(data.get("evidence")),
+        source_title=_text(data.get("source_title")),
+        page=_text(data.get("page")),
+        section=_text(data.get("section")),
+        source_tier=_text(data.get("source_tier")),
+        report_id=_text(data.get("source_report_id")),
+        raw=data,
+    )
+
+
+def _dossier_content(dossier: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for key in (
+        "summary",
+        "technology_mechanism",
+        "industry_chain",
+        "bottlenecks",
+        "leading_indicators",
+        "risks",
+        "policies",
+        "gaps",
+    ):
+        value = dossier.get(key)
+        if isinstance(value, list):
+            parts.extend(_text(item) for item in value if _text(item))
+        elif isinstance(value, dict):
+            parts.append(json.dumps(value, ensure_ascii=False, sort_keys=True))
+        elif _text(value):
+            parts.append(_text(value))
+    return "\n".join(part for part in parts if part)
+
+
+def _values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [item.strip() for item in re.split(r"[,，;；|]", value) if item.strip()]
+    if isinstance(value, Iterable):
+        return [_text(item) for item in value if _text(item)]
+    return [_text(value)] if _text(value) else []
+
+
+def _dedupe(values: Iterable[str]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        text = _text(value)
+        key = _normalize(text)
+        if key and key not in seen:
+            seen.add(key)
+            output.append(text)
+    return output
+
+
+def _serialize_cell(value: Any) -> str:
+    if isinstance(value, (list, dict)):
+        return json.dumps(value, ensure_ascii=False, sort_keys=True)
+    return _text(value)
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def _normalize(value: str) -> str:
+    return re.sub(r"\s+", "", _text(value)).casefold()
+
+
+def _floatish(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _limit(value: Any) -> int:
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return 0

@@ -13,6 +13,13 @@ wheels/
 .venv
 .env
 
+# Local AIKA lightweight index state
+.aika/
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.tmp
+
 # Frontend dependencies
 node_modules/
 web/node_modules/
@@ -76,3 +83,5 @@ data/*
 !data/eval/
 data/eval/*
 !data/eval/*.jsonl
+
+skillsDesign/

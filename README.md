@@ -17,6 +17,29 @@ python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
 
 默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
 
+### 轻量本地索引
+
+公开版可以不启动 PostgreSQL/ParadeDB，直接使用单文件 SQLite FTS5 索引检索 Claim、证据片段和 Dossier。默认本地目录为 `~/.aika`，也可以通过 `AIKA_HOME` 或 `--home` 指定。
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli init --sample
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli build-index
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli doctor
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-evidence "液冷产业链" --top-k 5
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-claims "中际旭创 光模块" --top-k 5
+```
+
+生成后的目录形态：
+
+```text
+~/.aika/
+  config.toml
+  knowledge/sample/
+  indexes/sample.sqlite
+```
+
+`src.aika_cli` 显式使用 SQLite backend；现有 Web/API/QAEngine 默认路径仍保持 CSV、Neo4j、PostgreSQL 的原有行为。
+
 ## 第一阶段：数据准备
 
 初始化并下载最新可用年报、公开 AI 算力产业链研报、权威行业白皮书和专业技术源：
@@ -218,6 +241,7 @@ python scripts/build_research_artifacts.py --no-direct-claims
 - `QA_LOCAL_CLAIM_TOP_K`：GraphRAG local claim 召回数量，默认 12。
 - `QA_GRAPH_PATH_TOP_K`：GraphRAG 多跳路径数量，默认 6。
 - `DATABASE_URL`：必填的 PostgreSQL 连接串。
+- `QA_DISABLE_POSTGRES`：设为 `true` 时完全跳过 PostgreSQL retrieval 初始化，用于纯离线 CSV demo/eval；默认 `false`。
 - `DB_POOL_MIN_SIZE`、`DB_POOL_MAX_SIZE`：共享同步连接池大小，默认 1 和 8。
 - `PG_HNSW_EF_SEARCH`：每次向量查询的 HNSW 搜索宽度，默认 100。
 - `RAG_TOP_K`：每次问答检索的原文块数量。
