@@ -17,6 +17,29 @@ python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
 
 默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
 
+### Local MCP Quick Start
+
+公开版 AIKA 可以作为本地 MCP Server 接入 Claude Code。用户不需要手写 `.mcp.json` 或 `~/.claude.json`，源码运行版只需要执行一条安装命令：
+
+```bash
+uv --directory /path/to/AIQASYS run aika mcp install --host claude-code --scope user
+claude
+/mcp
+```
+
+常用诊断和高级配置命令：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host claude-code
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp doctor
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host claude-code --scope user --dry-run
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host claude-code --scope user --force
+```
+
+- `aika mcp config`：只打印 Claude Code 需要的 MCP server JSON，适合高级用户手动复制。
+- `aika mcp install`：通过 Claude Code CLI 注册名为 `aika` 的 MCP server；已有同名配置时需要显式 `--force`。
+- `aika mcp doctor`：检查 `uv`、AIKA MCP tools、SQLite index 和 Claude Code 配置，并给出修复建议。
+
 ### 轻量本地索引
 
 公开版可以不启动 PostgreSQL/ParadeDB，直接使用单文件 SQLite FTS5 索引检索 Claim、证据片段和 Dossier。默认本地目录为 `~/.aika`，也可以通过 `AIKA_HOME` 或 `--home` 指定。

@@ -17,7 +17,16 @@ from src.aika_core.data_paths import (
     RELATIONS_FILE,
     SEGMENT_DOSSIERS_FILE,
 )
-from src.aika_core.models import ClaimRecord, CompanyProfile, EvidenceCard, GraphEdge, ResearchBackend
+from src.aika_core.models import (
+    ClaimRecord,
+    CompanyComparison,
+    CompanyProfile,
+    EvidenceCard,
+    EvidenceGap,
+    GraphEdge,
+    ResearchBackend,
+    ResearchBrief,
+)
 
 
 SCHEMA_VERSION = "1"
@@ -291,6 +300,152 @@ class SQLiteResearchBackend(ResearchBackend):
                 "backend": "sqlite",
                 "index_path": str(self.index_path),
             },
+        )
+
+    def compare_companies(self, companies: Iterable[str], *, topic: str = "") -> CompanyComparison:
+        company_list = _dedupe(_text(company) for company in companies if _text(company))
+        rows: list[dict[str, Any]] = []
+        all_cards: list[EvidenceCard] = []
+        all_gaps: list[EvidenceGap] = []
+        for company in company_list:
+            profile = self.get_company_profile(company, topic=topic)
+            all_cards.extend(profile.evidence_cards)
+            all_gaps.extend(profile.evidence_gaps)
+            rows.append(
+                {
+                    "company": company,
+                    "chain_segment": _infer_chain_segment(profile.graph_edges),
+                    "exposure_level": _strongest_exposure(profile.evidence_cards),
+                    "business_evidence": _summarize_cards(profile.evidence_cards, {"company_exposure", "mechanism", "supply_chain", ""}),
+                    "leading_indicators": _summarize_cards(profile.evidence_cards, {"indicator"}),
+                    "risks": _summarize_cards(profile.evidence_cards, {"risk", "bottleneck"}),
+                    "citations": "、".join(_card_citations(profile.evidence_cards)[:6]),
+                }
+            )
+            if not profile.evidence_cards:
+                all_gaps.append(
+                    EvidenceGap(
+                        gap=f"{company} 缺少可用于公司对比的证据卡片。",
+                        priority="高",
+                        suggested_source="补充公司年报、公告、研报或投资者关系记录。",
+                    )
+                )
+        return CompanyComparison(
+            companies=company_list,
+            topic=topic,
+            columns=["company", "chain_segment", "exposure_level", "business_evidence", "leading_indicators", "risks", "citations"],
+            rows=rows,
+            evidence_cards=_dedupe_evidence_cards(all_cards),
+            evidence_gaps=_dedupe_gaps(all_gaps),
+            research_outputs={
+                "backend": "sqlite",
+                "index_path": str(self.index_path),
+            },
+        )
+
+    def audit_evidence_gaps(
+        self,
+        query: str,
+        *,
+        companies: Iterable[str] | None = None,
+        topic: str = "",
+    ) -> list[EvidenceGap]:
+        company_list = _dedupe(_text(company) for company in (companies or []) if _text(company))
+        subject = _text(query) or "、".join(company_list) or _text(topic) or "AI算力产业链"
+        filters: dict[str, Any] = {}
+        if company_list:
+            filters["company"] = company_list
+        if topic:
+            filters["topic"] = topic
+        evidence_cards = self.search_evidence(subject, top_k=10, **filters)
+        claims = self.search_claims(subject, top_k=10, **filters)
+        claim_cards = _claim_cards_from_records(claims, start_index=len(evidence_cards) + 1)
+        cards = [*evidence_cards, *claim_cards]
+        gaps: list[EvidenceGap] = []
+        if not cards:
+            gaps.append(
+                EvidenceGap(
+                    gap="当前问题没有召回可用证据卡片。",
+                    priority="高",
+                    suggested_source="补充年报、研报原文或行业白皮书后重建本地索引。",
+                )
+            )
+            return gaps
+        for company in company_list:
+            if not any(company in _card_support_text(card) for card in cards):
+                gaps.append(
+                    EvidenceGap(
+                        gap=f"{company} 缺少直接证据，当前结论可能不完整。",
+                        priority="高",
+                        suggested_source="补充该公司产品、订单、客户导入或产业链位置证据。",
+                    )
+                )
+        if not any(card.claim_type == "indicator" for card in cards):
+            gaps.append(
+                EvidenceGap(
+                    gap=f"{subject} 缺少订单、收入、产能、客户导入或渗透率等领先指标证据。",
+                    priority="高",
+                    suggested_source="补充年报财务表、公告、研报指标表或产业数据库。",
+                )
+            )
+        if not any(card.claim_type in {"risk", "bottleneck"} for card in cards):
+            gaps.append(
+                EvidenceGap(
+                    gap=f"{subject} 缺少明确风险、反证或技术瓶颈证据。",
+                    priority="中",
+                    suggested_source="补充年报风险披露、行业竞争格局和技术路线替代证据。",
+                )
+            )
+        if not any(card.citation_id for card in cards):
+            gaps.append(
+                EvidenceGap(
+                    gap=f"{subject} 召回证据缺少 citation_id。",
+                    priority="中",
+                    suggested_source="重建 evidence spans 或 claims 索引，确保 citation_id 可追踪。",
+                )
+            )
+        return _dedupe_gaps(gaps)[:12]
+
+    def build_research_brief(self, query: str, *, topic: str = "") -> ResearchBrief:
+        subject = _text(query) or (f"{topic}投研简报" if topic else "AI算力产业链投研简报")
+        focus_topic = _text(topic)
+        evidence_cards = self.search_evidence(subject, top_k=8, topic=focus_topic or None)
+        claims = self.search_claims(subject, top_k=8, topic=focus_topic or None)
+        claim_cards = _claim_cards_from_records(claims, start_index=len(evidence_cards) + 1)
+        dossier_cards = self.search_dossiers(subject, top_k=2, topic=focus_topic or None)
+        cards = _dedupe_evidence_cards(_ensure_citations([*dossier_cards, *evidence_cards, *claim_cards]))
+        edges = self.query_graph(technology=focus_topic or subject, limit=12)
+        gaps = self.audit_evidence_gaps(subject, topic=focus_topic)
+        title = f"{focus_topic or subject}投研简报"
+        sections = [
+            {"title": "核心判断", "content": _core_judgment(cards, subject)},
+            {"title": "技术机理", "content": _card_bullets(cards, {"mechanism", "bottleneck", "trend"}, limit=4)},
+            {"title": "产业传导", "content": _graph_bullets(edges, limit=6) or _card_bullets(cards, {"supply_chain", "company_exposure"}, limit=4)},
+            {"title": "风险清单", "content": _card_bullets(cards, {"risk", "bottleneck"}, limit=6)},
+            {"title": "证据缺口", "content": _gap_bullets(gaps)},
+            {"title": "证据索引", "content": _evidence_index(cards, limit=8)},
+        ]
+        markdown = "\n\n".join(f"## {section['title']}\n{section['content']}" for section in sections)
+        research_outputs = {
+            "report": {"title": title, "markdown": markdown, "sections": sections},
+            "evidence_gaps": [gap.to_dict() for gap in gaps],
+            "verification": {"status": "not_run", "checks": {}},
+            "meta": {
+                "question": subject,
+                "topic": focus_topic,
+                "evidence_cards": len(cards),
+                "backend": "sqlite",
+                "index_path": str(self.index_path),
+            },
+        }
+        return ResearchBrief(
+            title=title,
+            markdown=markdown,
+            sections=sections,
+            evidence_cards=cards,
+            evidence_gaps=gaps,
+            meta=research_outputs["meta"],
+            research_outputs=research_outputs,
         )
 
     def _search_claim_rows(self, query: str, *, limit: int, filters: dict[str, Any]) -> list[sqlite3.Row]:
@@ -912,6 +1067,150 @@ def _graph_edge_from_row(row: sqlite3.Row) -> GraphEdge:
     )
 
 
+def _claim_cards_from_records(claims: Iterable[ClaimRecord], *, start_index: int = 1) -> list[EvidenceCard]:
+    return [claim.to_evidence_card(citation_id=f"E{index}") for index, claim in enumerate(claims, start=start_index)]
+
+
+def _ensure_citations(cards: Iterable[EvidenceCard]) -> list[EvidenceCard]:
+    output: list[EvidenceCard] = []
+    for index, card in enumerate(cards, start=1):
+        if card.citation_id:
+            output.append(card)
+            continue
+        data = card.to_dict()
+        data["citation_id"] = f"E{index}"
+        output.append(EvidenceCard.from_any(data))
+    return output
+
+
+def _dedupe_evidence_cards(cards: Iterable[EvidenceCard]) -> list[EvidenceCard]:
+    output: list[EvidenceCard] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for card in cards:
+        key = (
+            card.claim_id,
+            card.source,
+            card.page,
+            _short_text(card.evidence or card.evidence_span, 180),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        output.append(card)
+    return output
+
+
+def _dedupe_gaps(gaps: Iterable[EvidenceGap]) -> list[EvidenceGap]:
+    output: list[EvidenceGap] = []
+    seen: set[str] = set()
+    for gap in gaps:
+        key = _normalize(gap.gap)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        output.append(gap)
+    return output
+
+
+def _infer_chain_segment(edges: Iterable[GraphEdge]) -> str:
+    for edge in edges:
+        if edge.relation in {"HAS_PRODUCT", "PART_OF_CHAIN", "ENABLES", "SUPPLIES"} and edge.target:
+            return edge.target
+    for edge in edges:
+        if edge.target:
+            return edge.target
+    return "当前证据不足"
+
+
+def _strongest_exposure(cards: Iterable[EvidenceCard]) -> str:
+    priority = {"core": 0, "direct": 1, "indirect": 2, "mentioned": 3, "": 9}
+    labels = {
+        "core": "核心敞口",
+        "direct": "直接敞口",
+        "indirect": "间接敞口",
+        "mentioned": "仅提及",
+        "": "未分级",
+    }
+    best = ""
+    for card in cards:
+        if priority.get(card.exposure_level, 9) < priority.get(best, 9):
+            best = card.exposure_level
+    return labels.get(best, best or "未分级")
+
+
+def _summarize_cards(cards: Iterable[EvidenceCard], claim_types: set[str], *, limit: int = 2) -> str:
+    lines: list[str] = []
+    for card in cards:
+        if card.claim_type not in claim_types:
+            continue
+        citation = f" [{card.citation_id}]" if card.citation_id else ""
+        lines.append(f"{_short_text(card.evidence, 80)}{citation}")
+        if len(lines) >= limit:
+            break
+    return "；".join(lines) if lines else "当前证据不足"
+
+
+def _card_citations(cards: Iterable[EvidenceCard]) -> list[str]:
+    output: list[str] = []
+    seen: set[str] = set()
+    for card in cards:
+        if card.citation_id and card.citation_id not in seen:
+            seen.add(card.citation_id)
+            output.append(card.citation_id)
+    return output
+
+
+def _card_support_text(card: EvidenceCard) -> str:
+    return " ".join([card.company, card.topic, card.title, card.evidence, card.evidence_span, card.source])
+
+
+def _core_judgment(cards: list[EvidenceCard], subject: str) -> str:
+    if not cards:
+        return f"{subject} 当前证据不足，无法形成可验证结论。"
+    card = cards[0]
+    citation = f" [{card.citation_id}]" if card.citation_id else ""
+    return f"{_short_text(card.evidence, 220)}{citation}"
+
+
+def _card_bullets(cards: Iterable[EvidenceCard], claim_types: set[str], *, limit: int) -> str:
+    lines: list[str] = []
+    for card in cards:
+        if card.claim_type not in claim_types:
+            continue
+        citation = f" [{card.citation_id}]" if card.citation_id else ""
+        lines.append(f"- {_short_text(card.evidence, 160)}{citation}")
+        if len(lines) >= limit:
+            break
+    return "\n".join(lines) if lines else "当前证据不足。"
+
+
+def _graph_bullets(edges: Iterable[GraphEdge], *, limit: int) -> str:
+    lines: list[str] = []
+    for edge in edges:
+        if not edge.source and not edge.target:
+            continue
+        evidence = f"：{_short_text(edge.evidence, 100)}" if edge.evidence else ""
+        lines.append(f"- {edge.source} - {edge.relation} - {edge.target}{evidence}")
+        if len(lines) >= limit:
+            break
+    return "\n".join(lines)
+
+
+def _gap_bullets(gaps: Iterable[EvidenceGap]) -> str:
+    lines = [f"- {gap.gap} 建议：{gap.suggested_source}" for gap in gaps]
+    return "\n".join(lines) if lines else "当前证据包未识别出关键缺口。"
+
+
+def _evidence_index(cards: Iterable[EvidenceCard], *, limit: int) -> str:
+    lines: list[str] = []
+    for card in list(cards)[:limit]:
+        citation = card.citation_id or "uncited"
+        source = card.source or card.title or "unknown source"
+        page = f", p.{card.page}" if card.page else ""
+        lines.append(f"- {citation}: {source}{page} - {_short_text(card.evidence, 120)}")
+    return "\n".join(lines) if lines else "当前证据不足。"
+
+
 def _dossier_content(dossier: dict[str, Any]) -> str:
     parts: list[str] = []
     for key in (
@@ -975,6 +1274,13 @@ def _floatish(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return 0.0
+
+
+def _short_text(value: str, limit: int) -> str:
+    text = " ".join(_text(value).split())
+    if len(text) <= limit:
+        return text
+    return text[: max(limit - 3, 0)] + "..."
 
 
 def _limit(value: Any) -> int:

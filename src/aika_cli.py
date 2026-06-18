@@ -68,6 +68,33 @@ def build_parser() -> argparse.ArgumentParser:
     claims_parser.add_argument("--claim-type", action="append", default=[], help="Filter by claim type.")
     claims_parser.set_defaults(func=run_search_claims)
 
+    mcp_parser = subparsers.add_parser("mcp", help="Start or configure the AIKA MCP server.")
+    mcp_parser.add_argument(
+        "--transport",
+        choices=["stdio", "sse", "streamable-http"],
+        default="stdio",
+        help="MCP transport; stdio is the default for desktop Agent hosts.",
+    )
+    mcp_parser.set_defaults(func=run_mcp)
+    mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
+
+    mcp_config_parser = mcp_subparsers.add_parser("config", help="Print host MCP server JSON.")
+    mcp_config_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_config_parser.set_defaults(func=run_mcp_config)
+
+    mcp_install_parser = mcp_subparsers.add_parser("install", help="Register AIKA with an MCP host.")
+    mcp_install_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_install_parser.add_argument("--scope", choices=["user", "project"], default="user", help="Host config scope.")
+    mcp_install_parser.add_argument("--force", action="store_true", help="Replace an existing AIKA MCP server config.")
+    mcp_install_parser.add_argument("--dry-run", action="store_true", help="Print config and commands without changing host config.")
+    mcp_install_parser.set_defaults(func=run_mcp_install)
+
+    mcp_doctor_parser = mcp_subparsers.add_parser("doctor", help="Diagnose AIKA MCP and host configuration.")
+    mcp_doctor_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_doctor_parser.add_argument("--home", default="", help="AIKA home directory; defaults to AIKA_HOME or ~/.aika.")
+    mcp_doctor_parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Knowledge profile name.")
+    mcp_doctor_parser.set_defaults(func=run_mcp_doctor)
+
     return parser
 
 
@@ -176,6 +203,50 @@ def run_search_claims(args: argparse.Namespace) -> int:
     rows = [claim.to_dict() for claim in backend.search_claims(args.query, top_k=args.top_k, **filters)]
     print_json(rows)
     return 0
+
+
+def run_mcp(args: argparse.Namespace) -> int:
+    from src.aika_mcp.server import run_server
+
+    run_server(transport=args.transport)
+    return 0
+
+
+def run_mcp_config(args: argparse.Namespace) -> int:
+    from src.aika_mcp.host_configs import AikaMcpConfigError, build_mcp_config
+
+    try:
+        print_json(build_mcp_config(host=args.host))
+    except AikaMcpConfigError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return 0
+
+
+def run_mcp_install(args: argparse.Namespace) -> int:
+    from src.aika_mcp.host_configs import AikaMcpConfigError
+    from src.aika_mcp.installer import AikaMcpInstallError, format_install_result, install_mcp_server
+
+    try:
+        result = install_mcp_server(
+            host=args.host,
+            scope=args.scope,
+            force=bool(args.force),
+            dry_run=bool(args.dry_run),
+        )
+    except (AikaMcpConfigError, AikaMcpInstallError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(format_install_result(result))
+    return result.exit_code
+
+
+def run_mcp_doctor(args: argparse.Namespace) -> int:
+    from src.aika_mcp.doctor import format_doctor_report, run_mcp_doctor as diagnose_mcp
+
+    report = diagnose_mcp(host=args.host, home=args.home or None, profile=args.profile)
+    print(format_doctor_report(report))
+    return report.exit_code
 
 
 def search_filters(args: argparse.Namespace) -> dict[str, Any]:

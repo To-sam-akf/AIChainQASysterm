@@ -525,6 +525,200 @@ UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_mcp_tools.py
 - 复杂任务可以通过 `run_research_task` 一次触发。
 - 简单任务也可以由宿主 Agent 组合调用多个细粒度 tools。
 
+## Phase 3.1：实现一键式配置
+
+### 需求
+
+Phase 3 已经让 AIKA 可以作为 MCP Server 被宿主 Agent 调用，但如果用户仍然需要手动编辑 `.mcp.json`、`~/.claude.json` 或记住 `uv --directory ... run aika mcp` 这类内部命令，公开版安装体验会很脆弱。Phase 3.1 的目标是把 MCP 配置变成 AIKA 自己的一键配置能力。
+
+用户视角需求：
+
+- 用户不需要手写 MCP JSON。
+- 用户不需要知道 `uv` 的绝对路径、AIKA 项目目录、`UV_CACHE_DIR` 等内部细节。
+- 用户可以一条命令把 AIKA 注册到 Claude Code 等宿主 Agent。
+- 用户可以用 doctor 命令检查 MCP Server、SQLite index 和宿主配置是否可用。
+- 高级用户仍然可以只打印配置 JSON，自行复制到目标宿主。
+
+开发视角需求：
+
+- 在 AIKA CLI 中新增 `aika mcp install`、`aika mcp doctor`、`aika mcp config` 子命令。
+- 第一版优先支持 `--host claude-code`，接口上预留 `claude-desktop`、`codex` 等后续宿主。
+- 支持 `--scope user` 和 `--scope project`。
+- 支持检测已有配置，并通过 `--force` 明确覆盖。
+- 配置生成逻辑要可测试，实际写入宿主配置的逻辑要和纯 JSON 生成逻辑分离。
+
+### 核心逻辑
+
+推荐 CLI 形态：
+
+```bash
+aika mcp install --host claude-code --scope user
+aika mcp install --host claude-code --scope project
+aika mcp install --host claude-code --scope user --force
+aika mcp doctor
+aika mcp config --host claude-code
+```
+
+通过源码运行时，README/HowToUse 可以只暴露这一条入口：
+
+```bash
+uv --directory /path/to/AIQASYS run aika mcp install --host claude-code --scope user
+```
+
+`config` 负责生成 MCP server 配置：
+
+```json
+{
+  "type": "stdio",
+  "command": "/abs/path/to/uv",
+  "args": ["--directory", "/abs/path/to/AIQASYS", "run", "aika", "mcp"],
+  "env": {
+    "UV_CACHE_DIR": "/tmp/uv-cache"
+  },
+  "timeout": 600000
+}
+```
+
+生成逻辑：
+
+```text
+aika mcp config
+  -> 解析 --host
+  -> 自动定位 uv 绝对路径
+  -> 自动定位 AIKA 项目根目录
+  -> 自动补齐 UV_CACHE_DIR
+  -> 输出宿主需要的 JSON
+```
+
+`install` 负责把配置写入宿主 Agent：
+
+```text
+aika mcp install --host claude-code --scope user
+  -> 调用 config 生成 JSON
+  -> 检查 claude 命令是否存在
+  -> 检查是否已有名为 aika 的 MCP server
+  -> 无冲突时调用 claude mcp add-json aika '{...}' --scope user
+  -> 有冲突且无 --force 时提示用户使用 --force
+  -> 有 --force 时覆盖或先删除再添加
+```
+
+第一版可以只适配 Claude Code CLI：
+
+```bash
+claude mcp add-json aika '{...}' --scope user
+```
+
+长期打包成熟后，配置可自动简化为：
+
+```json
+{
+  "mcpServers": {
+    "aika": {
+      "type": "stdio",
+      "command": "aika",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+`doctor` 负责诊断端到端可用性：
+
+```text
+aika mcp doctor
+  -> 检查 uv/aika 命令是否可用
+  -> 检查 aika mcp 是否能启动并列出 tools
+  -> 检查 SQLite index 是否存在且可查询
+  -> 检查 Claude Code 是否已配置 aika server
+  -> 输出 pass/warn/fail 和修复建议
+```
+
+建议新增实现模块：
+
+```text
+src/aika_mcp/
+  installer.py
+  doctor.py
+  host_configs.py
+```
+
+职责划分：
+
+- `host_configs.py`：生成不同宿主的配置 JSON。
+- `installer.py`：执行宿主 CLI 写入、冲突检测、`--force` 覆盖。
+- `doctor.py`：执行依赖、索引、MCP server、宿主配置诊断。
+- `src/aika_cli.py`：只负责参数解析和调用上述模块。
+
+### 验证方法
+
+配置生成验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host claude-code
+```
+
+断言输出包含：
+
+- `"type": "stdio"`
+- `command` 为 `uv` 的绝对路径，或打包安装后的 `aika`
+- `args` 包含 `mcp`
+- `env.UV_CACHE_DIR` 存在
+- `timeout` 存在
+
+doctor 验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp doctor
+```
+
+断言：
+
+- 能识别 `uv` 是否存在。
+- 能识别 `aika mcp` 是否可启动。
+- 能识别 SQLite index 是否已构建。
+- 未安装 Claude Code 或未配置 MCP 时返回 warn/fail，而不是异常退出。
+- 输出包含可执行的修复建议，例如 `aika mcp install --host claude-code --scope user`。
+
+安装 dry-run 或临时环境验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host claude-code --scope user --dry-run
+```
+
+如果实现中不提供 `--dry-run`，测试中应 mock `claude mcp add-json`，避免修改开发者真实配置。
+
+单元测试建议：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_mcp_install.py
+```
+
+测试断言：
+
+- `build_mcp_config(host="claude-code")` 输出稳定 JSON。
+- 找不到 `uv` 时返回明确错误。
+- 已有配置且无 `--force` 时拒绝覆盖。
+- `--force` 时生成覆盖流程。
+- `doctor` 对缺失 Claude Code、缺失 SQLite index、MCP 启动失败分别给出明确状态。
+
+手工验证：
+
+```bash
+uv --directory /path/to/AIQASYS run aika mcp install --host claude-code --scope user
+claude
+/mcp
+```
+
+在 Claude Code 的 MCP 列表中应能看到 `aika`，并能列出 Phase 3 提供的 tools。
+
+### 预期结果
+
+- 用户可以通过一条命令把 AIKA 注册到 Claude Code。
+- README/HowToUse 不再要求用户手动编辑 `.mcp.json` 或 `~/.claude.json`。
+- 新用户只需要执行安装命令、打开宿主 Agent、检查 `/mcp`。
+- 开发者可以用 `aika mcp config` 查看底层配置，用 `aika mcp doctor` 快速定位安装问题。
+- 后续打包为 `uv tool install aika` 或 `pipx install aika` 后，MCP 配置可以自然收敛为 `command: "aika"`、`args: ["mcp"]` 的最终形态。
+
 ## Phase 4：编写 AIKA Skill
 
 ### 需求
