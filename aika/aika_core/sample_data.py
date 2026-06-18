@@ -12,13 +12,15 @@ from aika.aika_core.data_paths import (
     CLAIMS_FILE,
     ENTITIES_FILE,
     EVIDENCE_SPANS_FILE,
+    EXAMPLES_FILE,
+    MANIFEST_FILE,
     RELATIONS_FILE,
     SEGMENT_DOSSIERS_FILE,
 )
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
-REPO_SAMPLE_DIR = ROOT_DIR / "data" / "curated"
+REPO_SAMPLE_DIR = ROOT_DIR / "data" / "knowledge_packs" / "sample"
 RESOURCE_PACKAGE = "aika.aika_core"
 RESOURCE_SAMPLE_DIR = "bundled_sample"
 SAMPLE_FILES = [
@@ -27,6 +29,8 @@ SAMPLE_FILES = [
     CLAIMS_FILE,
     EVIDENCE_SPANS_FILE,
     SEGMENT_DOSSIERS_FILE,
+    MANIFEST_FILE,
+    EXAMPLES_FILE,
 ]
 
 

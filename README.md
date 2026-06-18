@@ -94,6 +94,47 @@ UV_CACHE_DIR=/tmp/uv-cache uv run aika doctor
 
 `aika.aika_cli` 显式使用 SQLite backend；现有 Web/API/QAEngine 默认路径仍保持 CSV、Neo4j、PostgreSQL 的原有行为。
 
+### Knowledge Pack 与数据合规
+
+公开发行包使用独立 sample knowledge pack，不直接打包 `data/curated`、raw PDFs、parsed text、RAG 文档或向量文件。
+
+数据包分三档：
+
+- `sample`：随 wheel 内置，位于 `data/knowledge_packs/sample/`，只包含少量公开来源的结构化记录和短证据片段，用于安装后立即试用。
+- `public`：后续可发布的更大公开知识包，只使用可再分发或可合理引用的公开资料构建。
+- `private/full`：本地完整数据、PostgreSQL/Neo4j 专业部署、raw PDFs、parsed text、RAG 和 semantic index，不随公开包分发。
+
+sample pack 包含：
+
+```text
+entities.csv
+relations.csv
+claims.csv
+evidence_spans.csv
+segment_dossiers.jsonl
+manifest.csv
+examples.jsonl
+```
+
+`manifest.csv` 记录 `source_report_id`、`source_title`、`source_url`、`published_at`、`source_type`、`license_or_usage_note` 和 `included_fields`。sample 仅保留短摘录和结构化字段，完整上下文请回到 `source_url` 查看原始来源；它适合功能试用和开发 smoke test，不代表完整投研覆盖。
+
+重建和验证 sample pack：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/build_sample_pack.py --output data/knowledge_packs/sample
+du -sh data/curated data/knowledge_packs/sample
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli validate-data --path data/knowledge_packs/sample
+```
+
+安装后也可以验证本地副本：
+
+```bash
+aika init --sample
+aika validate-data --path ~/.aika/knowledge/sample
+aika build-index
+aika demo
+```
+
 ### 开发 CLI
 
 ```bash

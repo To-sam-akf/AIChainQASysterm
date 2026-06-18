@@ -21,6 +21,7 @@ from aika.aika_core.backends.sqlite_backend import (
     resolve_aika_home,
     sqlite_fts_status,
 )
+from aika.aika_core.knowledge_pack import format_validation_result, validate_knowledge_pack
 from aika.aika_core.sample_data import (
     SAMPLE_FILES,
     copy_sample_files,
@@ -30,7 +31,7 @@ from aika.aika_core.sample_data import (
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-SAMPLE_SOURCE_DIR = ROOT_DIR / "data" / "curated"
+SAMPLE_SOURCE_DIR = ROOT_DIR / "data" / "knowledge_packs" / "sample"
 DEFAULT_DEMO_QUERY = "液冷产业链"
 EXPECTED_MCP_TOOLS = [
     "search_evidence",
@@ -81,6 +82,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_search_args(claims_parser)
     claims_parser.add_argument("--claim-type", action="append", default=[], help="Filter by claim type.")
     claims_parser.set_defaults(func=run_search_claims)
+
+    validate_parser = subparsers.add_parser("validate-data", help="Validate a local AIKA knowledge pack.")
+    validate_parser.add_argument("--path", required=True, help="Knowledge pack directory to validate.")
+    validate_parser.add_argument("--sample-size", type=int, default=20, help="Evidence rows to include in sample counts.")
+    validate_parser.set_defaults(func=run_validate_data)
 
     mcp_parser = subparsers.add_parser("mcp", help="Start or configure the AIKA MCP server.")
     mcp_parser.add_argument(
@@ -224,6 +230,12 @@ def run_search_claims(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_validate_data(args: argparse.Namespace) -> int:
+    result = validate_knowledge_pack(args.path, sample_size=args.sample_size)
+    print(format_validation_result(result))
+    return result.exit_code
+
+
 def run_mcp(args: argparse.Namespace) -> int:
     from aika.aika_mcp.server import run_server
 
@@ -358,7 +370,7 @@ def _check_bundled_sample() -> CliDoctorCheck:
         "bundled_sample",
         STATUS_FAIL,
         f"Sample source is incomplete: {', '.join(status.missing)}",
-        "Reinstall aika-research-mcp or run from a source checkout that contains data/curated.",
+        "Reinstall aika-research-mcp or run from a source checkout that contains data/knowledge_packs/sample.",
     )
 
 

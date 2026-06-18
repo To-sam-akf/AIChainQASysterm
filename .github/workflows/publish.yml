@@ -35,6 +35,7 @@ jobs:
           UV_CACHE_DIR=/tmp/uv-cache uv pip install --python /tmp/aika-wheel-smoke/bin/python dist/*.whl
           AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika --help
           AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika init --sample
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika validate-data --path /tmp/aika-wheel-smoke-home/knowledge/sample
           AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika build-index
           AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika doctor
           AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika demo

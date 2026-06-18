@@ -1,0 +1,5 @@
+{"query": "液冷产业链有哪些关键环节？", "suggested_command": "aika search-evidence \"液冷产业链\" --top-k 5", "topics": ["液冷"]}
+{"query": "AI芯片的主要技术瓶颈是什么？", "suggested_command": "aika search-claims \"AI芯片 瓶颈\" --top-k 5", "topics": ["AI芯片"]}
+{"query": "算力网络和高速互联有什么关系？", "suggested_command": "aika search-evidence \"算力网络 高速互联\" --top-k 5", "topics": ["算力网络"]}
+{"query": "数据中心能耗和PUE可以看哪些证据？", "suggested_command": "aika search-claims \"数据中心 PUE\" --top-k 5", "topics": ["数据中心"]}
+{"query": "光模块在AI算力链条中的作用是什么？", "suggested_command": "aika search-evidence \"光模块 AI算力\" --top-k 5", "topics": ["光模块"]}

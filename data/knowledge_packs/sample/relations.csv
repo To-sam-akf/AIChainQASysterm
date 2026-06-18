@@ -1,0 +1,86 @@
+relation_id,head_type,head_name,relation,tail_type,tail_name,evidence,source_report_id,source_title,page,section,source_tier,confidence,review_status
+relation_3af7d495f4a5f658,Company,紫光股份,USES_TECHNOLOGY,Technology,800G以太网,与中国移动积极推动算力网络发展，共同完成业界首次800G以太网智算协同训练的现网技术试验。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.90,auto
+relation_96a1ddd3a7d6b93f,Company,紫光股份,HAS_PRODUCT,Product,交换机,主要产品及服务包括：1、网络设备：交换机、路由器、WLAN、SDN、PON、智能管理与运维服务等；,annual_000938_2025,2025年年度报告,12,管理层讨论与分析,1,1.00,auto
+relation_2705c6fa69d7f3b4,Company,紫光股份,HAS_PRODUCT,Product,以太网交换机,中国以太网交换机市场份额34.5%，排名第二,annual_000938_2025,2025年年度报告,14,优质的客户资源和丰富的数字化转型实践经验,1,0.90,auto
+relation_e7da39ed03657089,Company,紫光股份,HAS_PRODUCT,Product,网络交换机,公司在中国企业网交换机市场份额36.1%，排名第一,annual_000938_2025,2025年年度报告,14,优质的客户资源和丰富的数字化转型实践经验,1,0.90,auto
+relation_06993201b6c1f4d9,Company,紫光股份,HAS_PRODUCT,Product,800G国芯智算交换机,发布基于国产关键芯片与核心元器件的800G 国芯智算交换机,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_1214939d3c672a3b,Company,紫光股份,HAS_PRODUCT,Product,H3C UniPoD S80000超节点,H3C UniPoD S80000 超节点产品，大幅提升通信效率和模型算力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_1437ecc86ae23790,Company,紫光股份,USES_TECHNOLOGY,Technology,液冷散热,关键部件实现液冷散热,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_20bcff1e2b513d1a,Company,紫光股份,HAS_PRODUCT,Product,国芯超低时延交换机,公司发布了面向极速交易场景的新一代国芯超低时延交换机,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_21f55f1446dcfc5e,Company,紫光股份,HAS_PRODUCT,Product,DDC架构新一代无损网络解决方案,发布基于DDC（Diversity Dynamic-Connectivity，多元动态联接）架构的新一代无损网络解决方案,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_3dc1ae7d1a4f2485,Company,紫光股份,USES_TECHNOLOGY,Technology,Scale-up整机柜技术,公司重点推进CPO 技术与Scale-up 整机柜两大前沿技术方向研究,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_562e50b3cfacef26,Company,紫光股份,HAS_PRODUCT,Product,灵犀智算方案V5.0,公司灵犀智算方案迭代至V5.0 版本，全面支持私域训推、大规模训练、垂直行业类AI 应用开发三类智算中心的建设需求,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_6fec882f638cc461,Company,紫光股份,HAS_PRODUCT,Product,Cloudnet云管,2025 年Cloudnet 云管业务快速增长,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_8a59cefc73b08064,Company,紫光股份,HAS_PRODUCT,Product,H3C UniServer G7系列模块化服务器,公司H3C UniServer G7 系列模块化服务器以丰富的软硬件生态兼容性，适用于集群训练、训推一体、边缘推理等场景,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_c73c90cf4becdec2,Company,紫光股份,HAS_PRODUCT,Product,全光网络5.0解决方案,发布全光网络5.0 解决方案,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_cdc685e42600c4ea,Company,紫光股份,USES_TECHNOLOGY,Technology,CPO技术,公司重点推进CPO 技术与Scale-up 整机柜两大前沿技术方向研究,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_d013897dfdd8afcc,Company,紫光股份,HAS_PRODUCT,Product,51.2T CPO硅光数据中心交换机,51.2T CPO 硅光数据中心交换机产品融合核心技术优势,annual_000938_2025,2025年年度报告,17,力利用率，关键部件实现液冷散热，为万亿参数模型训练提供强大支持，兼具高效与绿色特性。,1,0.90,auto
+relation_7ad5ffc061c4c9de,Company,紫光股份,HAS_PRODUCT,Product,数据中心交换机,公司数据中心交换机和高端路由器成功通过欧洲高级网络测试中心（EANTC）2025 互通性测试,annual_000938_2025,2025年年度报告,18,核心竞争力,1,0.90,auto
+relation_e971536d58536739,Company,紫光股份,HAS_PRODUCT,Product,高端路由器,公司数据中心交换机和高端路由器成功通过欧洲高级网络测试中心（EANTC）2025 互通性测试,annual_000938_2025,2025年年度报告,18,核心竞争力,1,0.90,auto
+relation_29705dba71a77927,Company,紫光股份,HAS_PRODUCT,Product,云计算产品,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_4dc11edb7fd47ef7,Company,紫光股份,HAS_PRODUCT,Product,互联网信息技术产品,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_55bf1b6fd90be97f,Company,紫光股份,HAS_PRODUCT,Product,服务器,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_ac73847aaab59875,Company,紫光股份,HAS_PRODUCT,Product,存储产品,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_f332cd5305069942,Company,紫光股份,HAS_PRODUCT,Product,安全产品,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_fe39ec63a7faae33,Company,紫光股份,HAS_PRODUCT,Product,网络产品,新华三集团主要业务包括网络产品、服务器、存储产品、安全产品、云计算产品、互联网信息技术产品的研发、生产、销售等,annual_000938_2025,2025年年度报告,34,公司控制的结构化主体情况,1,0.90,auto
+relation_73468d47a24e6128,Company,紫光股份,BENEFITS_FROM,IndustryConcept,智算中心,基础层聚焦智算中心等核心算力设施,annual_000938_2025,2025年年度报告,12,管理层讨论与分析,1,0.70,auto
+relation_ad2e100a24484e4b,Policy,国务院《关于深入实施“人工智能+”行动的意见》,DRIVES,IndustryConcept,智算中心,国务院《关于深入实施“人工智能+”行动的意见》...明确算力基础设施建设、行业深度融合等发展方向,annual_000938_2025,2025年年度报告,12,管理层讨论与分析,1,0.90,auto
+relation_f0531eb6bb13b82a,IndustryConcept,智算中心,UPSTREAM_OF,IndustryConcept,人工智能,基础层聚焦智算中心等核心算力设施,annual_000938_2025,2025年年度报告,12,管理层讨论与分析,1,0.80,auto
+relation_7ad2973ab791145b,Company,紫光股份,USES_TECHNOLOGY,Technology,云计算,公司深度布局“云—网—安—算—存—端”全产业链，提供网络、计算、存储、安全、终端等全栈智能ICT基础设施产品、先进的云与智能平台和数字化解决方案,annual_000938_2025,2025年年度报告,13,核心竞争力分析,1,0.90,auto
+relation_1a279d508c6d23a2,Company,紫光股份,HAS_PRODUCT,Product,数据中心交换机,中国数据中心交换机市场份额33.1%，排名第二,annual_000938_2025,2025年年度报告,14,优质的客户资源和丰富的数字化转型实践经验,1,0.90,auto
+relation_8a0c595f7a13069a,Company,紫光股份,HAS_PRODUCT,Product,园区交换机,中国企业网园区交换机市场份额36.2%，排名第二,annual_000938_2025,2025年年度报告,14,优质的客户资源和丰富的数字化转型实践经验,1,0.90,auto
+relation_99b370f9de8e786d,Company,紫光股份,HAS_PRODUCT,Product,智算中心,联合运营商累计建设48个中大型智算中心,annual_000938_2025,2025年年度报告,14,优质的客户资源和丰富的数字化转型实践经验,1,0.80,auto
+relation_0724424e25df030d,Company,紫光股份,USES_TECHNOLOGY,Technology,CloudOS,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_0fa5f595902e5b8d,Company,紫光股份,HAS_PRODUCT,Product,矿用本安Wi-Fi 7 产品,率先发布第一款矿用本安Wi-Fi 7 产品,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_3ce7a13d913b2827,Company,紫光股份,USES_TECHNOLOGY,Technology,灵犀使能平台,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_4a38bace00bf97b2,Company,紫光股份,HAS_PRODUCT,Product,H3C UniPoD S80000 超节点产品,推出H3C UniPoD S80000 超节点产品,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_5b3041cc4d3d559a,Company,紫光股份,HAS_PRODUCT,Product,LinSeer ICT 智能体,发布了新一代数字基础设施智能化方案“LinSeer ICT 智能体”,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_6384460f05a8a9a0,Company,紫光股份,USES_TECHNOLOGY,Technology,U-Center,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_64a366b8e937e1f4,Company,紫光股份,USES_TECHNOLOGY,Technology,BMC,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_77ed23bf08d11bd0,Company,紫光股份,USES_TECHNOLOGY,Technology,Comware,公司在网络、服务器、存储、云计算、安全等重点领域掌握核心技术，包括Comware、AD-NET、U-Center、CloudOS、UltraStor、BMC、傲飞算力平台、灵犀使能平台等平台与核心底层软件以及相应的硬件产品IP,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_7845cbda72a60efb,Company,紫光股份,USES_TECHNOLOGY,Technology,AD-NET,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_880e3afad6978e7b,Company,紫光股份,HAS_PRODUCT,Product,液冷技术创新产品,2025年，公司又陆续推出多款液冷技术创新产品及配套解决方案,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_8dc93700e4f21c53,Company,紫光股份,USES_TECHNOLOGY,Technology,傲飞算力平台,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_ad658d0184980590,Company,紫光股份,USES_TECHNOLOGY,Technology,UltraStor,同上,annual_000938_2025,2025年年度报告,15,覆盖全球的销售网络,1,0.90,auto
+relation_6a695f8154e58148,Company,紫光股份,HAS_PRODUCT,Product,下一代存储,公司打造了以高速无损网络、人工智能服务器、下一代存储、算力调度管理平台为核心的全栈智算解决方案,annual_000938_2025,2025年年度报告,16,主营业务分析,1,0.90,auto
+relation_7702d15333216697,Company,紫光股份,HAS_PRODUCT,Product,算力调度管理平台,公司打造了以高速无损网络、人工智能服务器、下一代存储、算力调度管理平台为核心的全栈智算解决方案,annual_000938_2025,2025年年度报告,16,主营业务分析,1,0.90,auto
+relation_b6f9535719c86644,Company,紫光股份,HAS_PRODUCT,Product,人工智能服务器,公司打造了以高速无损网络、人工智能服务器、下一代存储、算力调度管理平台为核心的全栈智算解决方案,annual_000938_2025,2025年年度报告,16,主营业务分析,1,0.90,auto
+relation_f95d58542b871815,Company,紫光股份,HAS_PRODUCT,Product,高速无损网络,公司打造了以高速无损网络、人工智能服务器、下一代存储、算力调度管理平台为核心的全栈智算解决方案,annual_000938_2025,2025年年度报告,16,主营业务分析,1,0.90,auto
+relation_eb87b882d40f7f43,Company,紫光股份,HAS_PRODUCT,Product,智能制造无线网络解决方案,发布智能制造无线网络解决方案,annual_000938_2025,2025年年度报告,18,核心竞争力,1,0.90,auto
+relation_15a1c6a96ae4cfd6,Company,紫光股份,HAS_PRODUCT,Product,服务器,公司服务器、交换机、路由器、安全等产品中标包括中国移动、中国电信、中国联通、中国铁塔在内的多个集采项目。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.90,auto
+relation_2259fdd33b264307,Company,紫光股份,BENEFITS_FROM,Workload,大规模算力集群,与多家头部互联网客户持续推进大规模算力集群与超节点系统建设。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.80,auto
+relation_383087fb3dec307b,Company,紫光股份,HAS_EXPOSURE,ValueChainSegment,IP网络,提升IP网络市场份额；以业务感知与分析方案积极助力运营商IP网络流量经营分析能力建设。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.90,auto
+relation_464a9f05f8c3289c,Company,紫光股份,HAS_EXPOSURE,ValueChainSegment,智算市场,深挖智算市场商机；持续落地大中型智算中心建设项目，巩固智算市场优势地位。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.90,auto
+relation_e7f25594c72900cc,Company,紫光股份,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,公司深度参与多地智算中心、政务云、政务网项目建设；与多家头部互联网客户持续推进大规模算力集群与超节点系统建设；持续落地大中型智算中心建设项目。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.90,auto
+relation_ed86c9e9ba2df95a,Company,紫光股份,BENEFITS_FROM,Workload,超大规模模型,参与新一代AI Infra体系建设，从计算、存储、网络等多维度共同打造面向超大规模模型的基础架构。,annual_000938_2025,2025年年度报告,19,抢抓产业机遇，助力国内行业客户增强数智化水平,1,0.80,auto
+relation_1de82dff9c0cf231,Company,紫光股份,HAS_PRODUCT,Product,云计算,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_57d88c8816b1560c,Company,紫光股份,HAS_PRODUCT,Product,人工智能,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_7042a5c455ab03d1,Company,紫光股份,HAS_PRODUCT,Product,网络,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_9ec0778cabf6f492,Company,紫光股份,HAS_PRODUCT,Product,安全,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_a27fc70a243c0a8c,Company,紫光股份,HAS_PRODUCT,Product,存储,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_e7621d1577d73704,Company,紫光股份,USES_TECHNOLOGY,Technology,人工智能,公司深化“AI in ALL”、“AI for ALL”技术战略，持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_f3a26eba67b586b9,Company,紫光股份,USES_TECHNOLOGY,Technology,云计算,公司深化“AI in ALL”、“AI for ALL”技术战略，持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_fbad615e1c418233,Company,紫光股份,HAS_PRODUCT,Product,计算,持续在网络、安全、计算、存储、云计算、人工智能等重点领域的研发投入，夯实“云—网—安—算—存—端”全栈业务布局,annual_000938_2025,2025年年度报告,24,费用,1,0.90,auto
+relation_0c3281adac13b892,Company,紫光股份,HAS_PRODUCT,Product,自主可控大容量交换机项目,完成高密400GE框式和盒式交换机发布,annual_000938_2025,2025年年度报告,25,费用,1,1.00,auto
+relation_4c66d076a5ed3f64,Company,紫光股份,HAS_PRODUCT,Product,云集群智算数据中心交换机增强项目,推出新一代DDC2产品,annual_000938_2025,2025年年度报告,25,费用,1,1.00,auto
+relation_b359d0cbf60a0859,Company,紫光股份,HAS_PRODUCT,Product,全光以太网5.0方案,完成多通道汇聚主机和系列全光入室影终端产品发布,annual_000938_2025,2025年年度报告,25,费用,1,1.00,auto
+relation_e50f3bd0c149195c,Company,紫光股份,HAS_PRODUCT,Product,大模型一体机产品,发布基于DeepSeek大模型一体机全系列产品,annual_000938_2025,2025年年度报告,25,费用,1,1.00,auto
+relation_0af8f2b57ed44d2c,Company,紫光股份,HAS_PRODUCT,Product,数据中心控制器7.4版本,完成数据中心控制器 7.4 版本发布,annual_000938_2025,2025年年度报告,26,费用,1,1.00,auto
+relation_9ab4e64065289464,Company,紫光股份,USES_TECHNOLOGY,Technology,FPGA加速,通过新一代处理器及FPGA 加速卡升级，新建连接性能同比提升 160%,annual_000938_2025,2025年年度报告,26,费用,1,1.00,auto
+relation_54f52abe20956cb1,Company,紫光股份,USES_TECHNOLOGY,Technology,静态故障检测+秒级自愈,静态故障检测+秒级自愈，保障网络稳定可靠,annual_000938_2025,2025年年度报告,27,公司研发投入情况,1,0.90,auto
+relation_6f976181d216921a,Company,紫光股份,HAS_PRODUCT,Product,安全产品,为人工智能、云计算、大数据、物联网等新兴技术在行业应用提供技术领先的计算、网络、存储和安全等软硬件产品,annual_000938_2025,2025年年度报告,35,公司未来发展的展望,1,0.90,auto
+relation_7f97bcbe0cc30053,DemandDriver,人工智能+行动,DRIVES,IndustryConcept,人工智能,随着实体经济与数字经济的加速融合以及“人工智能+”行动的持续开展,annual_000938_2025,2025年年度报告,35,公司未来发展的展望,1,0.80,auto
+relation_ce24f118b16ea8cf,Company,紫光股份,HAS_PRODUCT,Product,计算产品,为人工智能、云计算、大数据、物联网等新兴技术在行业应用提供技术领先的计算、网络、存储和安全等软硬件产品,annual_000938_2025,2025年年度报告,35,公司未来发展的展望,1,0.90,auto
+relation_ddef4b51d60c80ee,Company,紫光股份,HAS_PRODUCT,Product,网络产品,为人工智能、云计算、大数据、物联网等新兴技术在行业应用提供技术领先的计算、网络、存储和安全等软硬件产品,annual_000938_2025,2025年年度报告,35,公司未来发展的展望,1,0.90,auto
+relation_f7b5345090203f53,Company,紫光股份,HAS_PRODUCT,Product,存储产品,为人工智能、云计算、大数据、物联网等新兴技术在行业应用提供技术领先的计算、网络、存储和安全等软硬件产品,annual_000938_2025,2025年年度报告,35,公司未来发展的展望,1,0.90,auto
+relation_1b05c0013d6ca7ab,Company,紫光股份,HAS_PRODUCT,Product,数字化转型及智能化升级解决方案,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_2be6447b77362279,Company,紫光股份,HAS_PRODUCT,Product,智能终端,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_40fa679c22ffd6fd,Company,紫光股份,HAS_PRODUCT,Product,存储,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_4ea3fb7ca67f9f1d,Company,紫光股份,HAS_PRODUCT,Product,安全,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_63b9af16cfaefdf0,Company,紫光股份,HAS_PRODUCT,Product,网络,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_6a27835449492bc1,Company,紫光股份,HAS_PRODUCT,Product,云与智能平台,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_7d5c0a6074b509c4,Company,紫光股份,HAS_PRODUCT,Product,计算,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_86711ad292e1f399,Company,紫光股份,BELONGS_TO_CHAIN,IndustryChain,AI算力产业链,作为数字化及AI解决方案提供者，为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,0.90,auto
+relation_88ba9dc68cabfef7,Company,紫光股份,HAS_PRODUCT,Product,云计算,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_c2dc56c3e24cb543,Company,紫光股份,HAS_PRODUCT,Product,ICT基础设施,为客户提供网络、计算、存储、云计算、安全和智能终端等全栈智能化信息通信（ICT）基础设施、云与智能平台，以及数字化转型及智能化升级的解决方案。,annual_000938_2025,2025年年度报告,113,基本情况,1,1.00,auto
+relation_35a653f37203241f,Product,数据中心建造服务,UPSTREAM_OF,ValueChainSegment,数据中心建造,数据中心建造服务是数据中心建造环节的具体服务形式,annual_000938_2025,2025年年度报告,136,重要会计政策及会计估计（续）,1,0.80,auto

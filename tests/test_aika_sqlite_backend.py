@@ -67,6 +67,29 @@ def write_sample_knowledge(data_dir: Path) -> None:
         + "\n",
         encoding="utf-8",
     )
+    (data_dir / "manifest.csv").write_text(
+        "\n".join(
+            [
+                "source_report_id,source_title,source_url,published_at,source_type,license_or_usage_note,included_fields",
+                "report_1,测试报告,https://example.com/report-1,2026,company_annual_report,Public disclosure short snippets only,claims;evidence_spans;relations",
+                "report_2,液冷报告,https://example.com/report-2,2026,authority_whitepaper,Public source short snippets only,claims;evidence_spans",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (data_dir / "examples.jsonl").write_text(
+        json.dumps(
+            {
+                "query": "液冷产业链",
+                "topics": ["液冷"],
+                "suggested_command": 'aika search-evidence "液冷产业链" --top-k 5',
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def test_build_index_and_search_evidence_returns_citation_ids(tmp_path: Path) -> None:
@@ -155,9 +178,12 @@ def test_aika_cli_init_build_index_and_doctor(tmp_path: Path, monkeypatch) -> No
 
     assert aika_cli.main(["init", "--sample", "--home", str(home), "--force"]) == 0
     assert aika_cli.main(["build-index", "--home", str(home)]) == 0
+    assert aika_cli.main(["validate-data", "--path", str(home / "knowledge" / "sample")]) == 0
     assert aika_cli.main(["doctor", "--home", str(home)]) == 0
     assert (home / "indexes" / "sample.sqlite").exists()
     assert (home / "logs").is_dir()
+    for name in aika_cli.SAMPLE_FILES:
+        assert (home / "knowledge" / "sample" / name).is_file()
 
 
 def test_aika_cli_demo_uses_sqlite_sample_path(tmp_path: Path, monkeypatch, capsys) -> None:  # noqa: ANN001

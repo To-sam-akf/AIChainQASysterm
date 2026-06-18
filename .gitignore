@@ -74,6 +74,11 @@ data/semantic_index/
 !data/curated/
 !data/curated/*.csv
 !data/curated/**/.gitkeep
+!data/knowledge_packs/
+!data/knowledge_packs/sample/
+!data/knowledge_packs/sample/*.csv
+!data/knowledge_packs/sample/*.jsonl
+!data/knowledge_packs/**/.gitkeep
 
 data/
 
@@ -83,5 +88,10 @@ data/*
 !data/eval/
 data/eval/*
 !data/eval/*.jsonl
+!data/knowledge_packs/
+data/knowledge_packs/*
+!data/knowledge_packs/sample/
+!data/knowledge_packs/sample/*.csv
+!data/knowledge_packs/sample/*.jsonl
 
 skillsDesign/
