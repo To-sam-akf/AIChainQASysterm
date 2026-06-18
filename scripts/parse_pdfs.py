@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.pdf_parser import (
+from aika.pdf_parser import (
     OCR_MODES,
     PARSED_TEXT_DIR,
     parse_pdf_pages,
@@ -20,8 +20,8 @@ from src.pdf_parser import (
     read_downloaded_manifest,
     write_parsed_report,
 )
-from src.extraction_schema import load_jsonl
-from src.text_cleaner import CHUNKS_DIR, build_chunks_file
+from aika.extraction_schema import load_jsonl
+from aika.text_cleaner import CHUNKS_DIR, build_chunks_file
 
 
 DEFAULT_MANIFEST = ROOT_DIR / "data" / "metadata" / "reports_manifest.csv"

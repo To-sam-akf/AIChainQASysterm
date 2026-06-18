@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from src.aika_mcp import doctor, host_configs, installer
-from src.aika_mcp.host_configs import AikaMcpConfigError, build_mcp_config
-from src.aika_mcp.tools import tool_names
+from aika.aika_mcp import doctor, host_configs, installer
+from aika.aika_mcp.host_configs import AikaMcpConfigError, build_mcp_config
+from aika.aika_mcp.tools import tool_names
 
 
 def completed(command: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
@@ -41,6 +41,38 @@ def stable_config(tmp_path: Path) -> dict[str, Any]:
         "env": {"UV_CACHE_DIR": "/tmp/uv-cache"},
         "timeout": 600000,
     }
+
+
+def test_build_mcp_config_prefers_installed_aika(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    aika_path = tmp_path / "bin" / "aika"
+    monkeypatch.setattr(host_configs.shutil, "which", lambda name: str(aika_path) if name == "aika" else None)
+
+    config = build_mcp_config(host="claude-code")
+
+    assert config == {
+        "type": "stdio",
+        "command": str(aika_path.resolve()),
+        "args": ["mcp"],
+        "env": {},
+        "timeout": 600000,
+    }
+
+
+def test_build_mcp_config_uses_current_aika_executable_when_not_on_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    aika_path = tmp_path / "bin" / "aika"
+    aika_path.parent.mkdir(parents=True)
+    aika_path.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(host_configs.shutil, "which", lambda name: None)
+    monkeypatch.setattr(host_configs.sys, "argv", [str(aika_path), "mcp", "config"])
+
+    config = build_mcp_config(host="claude-code")
+
+    assert config["command"] == str(aika_path.resolve())
+    assert config["args"] == ["mcp"]
+    assert config["env"] == {}
 
 
 def test_build_mcp_config_for_claude_code_is_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

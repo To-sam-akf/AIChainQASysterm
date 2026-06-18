@@ -1,9 +1,100 @@
 # AIKA
 
+基于 AI 算力产业链的投研 Agent 问答系统 —— 可嵌入第三方 Agent 的 MCP/Skill 投研插件
+
+项目简介：面向 AI 算力产业链投研场景，构建可追溯、有证据引用的 Agent 问答系统，并以 MCP Server + Skill 插件形态嵌入 Claude Code 等第三方 Agent 工作流。覆盖 AI 服务器、芯片、光模块、液冷、数据中心等核心主题，支持产业链分析、公司对比、风险识别、证据引用和研究报告生成。
+
+技术栈：Python + LangGraph + RAG + 知识图谱 + MCP
+
+项目亮点：
+• 投研知识库构建：整合 61 份 PDF 文档，构建 RAG 知识库、Claim / Evidence 证据体系、Segment Dossier 和实体关系图谱，形成结构化投研知识底座
+• 混合问答链路设计：设计"Agent + 知识图谱 + RAG"混合问答流程，实现任务规划、多路检索、证据重排、答案生成与支撑性校验
+• MCP/Skill 插件化：将投研能力封装为 MCP Server 与 Skill，支持一键安装至 Claude Code 等宿主 Agent，无需 Docker 或 Web 即可在 Agent 对话中直接调用投研工具
+• RAG 检索评测与系统验证：基于 50 条测试用例完成 BM25、语义搜索及 RRF 融合检索评测，并通过 LLM 自动标注增强降低 unjudged 率；同步完成 15 个投研问题 QA smoke test 与 15 个 Agent 任务样例测试，验证端到端可用性
+
+---
+
 AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agent 系统。系统以本地 CSV 知识图谱、Claim/Dossier、RAG 文档块和可选 Neo4j/LLM/embedding 为证据层，通过 FastAPI 提供后端接口，通过 React 工作台提供对话、证据、图谱和 Agent 任务视图。
 
 
-### CLI
+### Quick Start
+
+正式发布后，用户可以直接从 PyPI 安装并运行本地 sample 流程：
+
+```bash
+pip install aika-research-mcp
+aika init --sample
+aika build-index
+aika doctor
+aika demo
+```
+
+发布前或源码开发时，也可以先从本仓库构建并安装本地 wheel：
+
+```bash
+cd /home/sanmu/AIQASYS
+UV_CACHE_DIR=/tmp/uv-cache uv build
+UV_CACHE_DIR=/tmp/uv-cache uv tool install dist/aika_research_mcp-0.1.0-py3-none-any.whl --force
+```
+
+默认安装只依赖本地 SQLite + MCP，不需要 PostgreSQL、Neo4j、LLM 或 embedding 服务。生成后的目录形态：
+
+```text
+~/.aika/
+  config.toml
+  knowledge/sample/
+  indexes/sample.sqlite
+  logs/
+```
+
+### Local MCP Quick Start
+
+公开版 AIKA 可以作为本地 MCP Server 接入 Claude Code。用户不需要手写 `.mcp.json` 或 `~/.claude.json`：
+
+```bash
+aika mcp install --host claude-code --scope user
+claude
+/mcp
+```
+
+常用诊断和高级配置命令：
+
+```bash
+aika mcp config --host claude-code
+aika mcp doctor
+aika mcp install --host claude-code --scope user --dry-run
+aika mcp install --host claude-code --scope user --force
+```
+
+- `aika mcp config`：只打印 Claude Code 需要的 MCP server JSON，适合高级用户手动复制。
+- `aika mcp install`：通过 Claude Code CLI 注册名为 `aika` 的 MCP server；已有同名配置时需要显式 `--force`。
+- `aika doctor`：检查 Python、AIKA home、sample data、SQLite index、MCP server、tools 注册和 sample query。
+- `aika mcp doctor`：检查 MCP server 与 Claude Code 配置，并给出修复建议。
+
+### 轻量本地索引
+
+公开版可以不启动 PostgreSQL/ParadeDB，直接使用单文件 SQLite FTS5 索引检索 Claim、证据片段和 Dossier。默认本地目录为 `~/.aika`，也可以通过 `AIKA_HOME` 或 `--home` 指定。
+
+```bash
+aika init --sample
+aika build-index
+aika doctor
+aika demo
+aika search-evidence "液冷产业链" --top-k 5
+aika search-claims "光模块" --top-k 5
+```
+
+源码开发环境仍可用：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika init --sample
+UV_CACHE_DIR=/tmp/uv-cache uv run aika build-index
+UV_CACHE_DIR=/tmp/uv-cache uv run aika doctor
+```
+
+`aika.aika_cli` 显式使用 SQLite backend；现有 Web/API/QAEngine 默认路径仍保持 CSV、Neo4j、PostgreSQL 的原有行为。
+
+### 开发 CLI
 
 ```bash
 python main.py api --host 0.0.0.0 --port 8000 --reload
@@ -16,52 +107,6 @@ python main.py demo --offline --task-dir /tmp/aiqasys-demo-tasks
 ```
 
 默认离线评测会使用本地 CSV/Claim/Dossier 证据并禁用 LLM、embedding、Neo4j。需要真实模型时，先配置 `.env`，再加 `--use-llm`；需要语义索引时加 `--use-embedding`。
-
-### Local MCP Quick Start
-
-公开版 AIKA 可以作为本地 MCP Server 接入 Claude Code。用户不需要手写 `.mcp.json` 或 `~/.claude.json`，源码运行版只需要执行一条安装命令：
-
-```bash
-uv --directory /path/to/AIQASYS run aika mcp install --host claude-code --scope user
-claude
-/mcp
-```
-
-常用诊断和高级配置命令：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host claude-code
-UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp doctor
-UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host claude-code --scope user --dry-run
-UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host claude-code --scope user --force
-```
-
-- `aika mcp config`：只打印 Claude Code 需要的 MCP server JSON，适合高级用户手动复制。
-- `aika mcp install`：通过 Claude Code CLI 注册名为 `aika` 的 MCP server；已有同名配置时需要显式 `--force`。
-- `aika mcp doctor`：检查 `uv`、AIKA MCP tools、SQLite index 和 Claude Code 配置，并给出修复建议。
-
-### 轻量本地索引
-
-公开版可以不启动 PostgreSQL/ParadeDB，直接使用单文件 SQLite FTS5 索引检索 Claim、证据片段和 Dossier。默认本地目录为 `~/.aika`，也可以通过 `AIKA_HOME` 或 `--home` 指定。
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli init --sample
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli build-index
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli doctor
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-evidence "液冷产业链" --top-k 5
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-claims "中际旭创 光模块" --top-k 5
-```
-
-生成后的目录形态：
-
-```text
-~/.aika/
-  config.toml
-  knowledge/sample/
-  indexes/sample.sqlite
-```
-
-`src.aika_cli` 显式使用 SQLite backend；现有 Web/API/QAEngine 默认路径仍保持 CSV、Neo4j、PostgreSQL 的原有行为。
 
 ## 第一阶段：数据准备
 
@@ -330,7 +375,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 安装 Python 依赖后启动 API：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn src.api:app --reload --port 8000
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --port 8000
 ```
 
 安装并启动前端：
@@ -346,7 +391,7 @@ npm run dev
 如果 8000 端口已被占用，可以把 API 启动到其他端口，并在启动 Vite 时指定代理目标：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn src.api:app --reload --port 8001
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --port 8001
 cd web
 VITE_API_PROXY_TARGET=http://127.0.0.1:8001 npm run dev
 ```

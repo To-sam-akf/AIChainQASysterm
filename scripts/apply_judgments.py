@@ -31,8 +31,8 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.eval.auto_judge import AutoJudgment, load_judgments  # noqa: E402
-from src.eval.rag_dataset import (  # noqa: E402
+from aika.eval.auto_judge import AutoJudgment, load_judgments  # noqa: E402
+from aika.eval.rag_dataset import (  # noqa: E402
     DEFAULT_RAG_RETRIEVAL_BENCHMARK,
     RagRetrievalCase,
     load_rag_retrieval_cases,
@@ -405,7 +405,7 @@ def main() -> None:
 
     # Next steps
     print(f"\nNext: re-run evaluation with the augmented dataset:")
-    print(f"  python -m src.eval.rag_runner \\")
+    print(f"  python -m aika.eval.rag_runner \\")
     print(f"    --benchmark {write_path} \\")
     print(f"    --retrievers bm25 semantic rrf")
 

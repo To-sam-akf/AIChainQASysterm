@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src import aika_cli
-from src.aika_core.backends.sqlite_backend import SQLiteResearchBackend, build_sqlite_index
-from src.aika_core.models import ClaimRecord, EvidenceCard
+from aika import aika_cli
+from aika.aika_core.backends.sqlite_backend import SQLiteResearchBackend, build_sqlite_index
+from aika.aika_core.models import ClaimRecord, EvidenceCard
 
 
 def write_sample_knowledge(data_dir: Path) -> None:
@@ -139,8 +139,66 @@ def test_aika_cli_init_build_index_and_doctor(tmp_path: Path, monkeypatch) -> No
     home = tmp_path / "home"
     write_sample_knowledge(sample_source)
     monkeypatch.setattr(aika_cli, "SAMPLE_SOURCE_DIR", sample_source)
+    monkeypatch.setattr(
+        aika_cli,
+        "_check_mcp_server_and_tools",
+        lambda timeout_seconds: [
+            aika_cli.CliDoctorCheck("mcp_server", aika_cli.STATUS_PASS, "started"),
+            aika_cli.CliDoctorCheck("mcp_tools", aika_cli.STATUS_PASS, "registered"),
+        ],
+    )
+    monkeypatch.setattr(
+        aika_cli,
+        "_check_postgres_not_required",
+        lambda: aika_cli.CliDoctorCheck("postgres_not_required", aika_cli.STATUS_PASS, "psycopg was not imported."),
+    )
 
     assert aika_cli.main(["init", "--sample", "--home", str(home), "--force"]) == 0
     assert aika_cli.main(["build-index", "--home", str(home)]) == 0
     assert aika_cli.main(["doctor", "--home", str(home)]) == 0
     assert (home / "indexes" / "sample.sqlite").exists()
+    assert (home / "logs").is_dir()
+
+
+def test_aika_cli_demo_uses_sqlite_sample_path(tmp_path: Path, monkeypatch, capsys) -> None:  # noqa: ANN001
+    sample_source = tmp_path / "source"
+    home = tmp_path / "home"
+    write_sample_knowledge(sample_source)
+    monkeypatch.setattr(aika_cli, "SAMPLE_SOURCE_DIR", sample_source)
+
+    assert aika_cli.main(["init", "--sample", "--home", str(home), "--force"]) == 0
+    assert aika_cli.main(["build-index", "--home", str(home)]) == 0
+    assert aika_cli.main(["demo", "--home", str(home)]) == 0
+
+    output = capsys.readouterr().out
+    assert "AIKA local demo" in output
+    assert "Evidence cards:" in output
+    assert "Claims:" in output
+    assert "Brief title:" in output
+
+
+def test_aika_cli_doctor_reports_missing_home_as_failure(tmp_path: Path, monkeypatch) -> None:  # noqa: ANN001
+    sample_source = tmp_path / "source"
+    write_sample_knowledge(sample_source)
+    monkeypatch.setattr(aika_cli, "SAMPLE_SOURCE_DIR", sample_source)
+    monkeypatch.setattr(
+        aika_cli,
+        "_check_mcp_server_and_tools",
+        lambda timeout_seconds: [
+            aika_cli.CliDoctorCheck("mcp_server", aika_cli.STATUS_PASS, "started"),
+            aika_cli.CliDoctorCheck("mcp_tools", aika_cli.STATUS_PASS, "registered"),
+        ],
+    )
+
+    report = aika_cli.run_cli_doctor(home=tmp_path / "missing")
+
+    assert report.exit_code == 2
+    assert any(check.name == "home" and check.status == aika_cli.STATUS_FAIL for check in report.checks)
+    assert any(check.name == "sample_query" and check.status == aika_cli.STATUS_FAIL for check in report.checks)
+
+
+def test_sample_source_status_falls_back_to_repo_data() -> None:
+    status = aika_cli.sample_source_status(aika_cli.SAMPLE_SOURCE_DIR)
+
+    assert status.available is True
+    assert status.missing == []

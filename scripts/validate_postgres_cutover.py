@@ -12,12 +12,12 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.embedding_client import OpenAICompatibleEmbeddingClient
-from src.eval.rag_dataset import DEFAULT_RAG_RETRIEVAL_BENCHMARK
-from src.eval.rag_runner import run_rag_retrieval_benchmark
-from src.eval.store import EvalRunStore
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import (
+from aika.embedding_client import OpenAICompatibleEmbeddingClient
+from aika.eval.rag_dataset import DEFAULT_RAG_RETRIEVAL_BENCHMARK
+from aika.eval.rag_runner import run_rag_retrieval_benchmark
+from aika.eval.store import EvalRunStore
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import (
     EMBEDDING_DIMENSIONS,
     PostgresRagIndex,
     PostgresRetrievalStore,

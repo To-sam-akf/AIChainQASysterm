@@ -10,10 +10,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import PostgresRetrievalStore
-from src.rag_index import build_rag_documents
-from src.text_cleaner import CHUNKS_DIR
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import PostgresRetrievalStore
+from aika.rag_index import build_rag_documents
+from aika.text_cleaner import CHUNKS_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:

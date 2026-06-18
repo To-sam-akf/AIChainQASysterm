@@ -1,10 +1,10 @@
 import json
 
-from src.llm_client import OpenAICompatibleClient
+from aika.llm_client import OpenAICompatibleClient
 
 
 def test_deepseek_payload_enables_thinking_by_default(monkeypatch) -> None:
-    monkeypatch.setattr("src.llm_client.load_dotenv", lambda path=None: None)
+    monkeypatch.setattr("aika.llm_client.load_dotenv", lambda path=None: None)
     monkeypatch.delenv("LLM_THINKING_ENABLED", raising=False)
     monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
     monkeypatch.delenv("LLM_REASONING_EFFORT", raising=False)
@@ -37,7 +37,7 @@ def test_thinking_can_be_disabled(monkeypatch) -> None:
 
 
 def test_deepseek_chat_disables_thinking_by_default(monkeypatch) -> None:
-    monkeypatch.setattr("src.llm_client.load_dotenv", lambda path=None: None)
+    monkeypatch.setattr("aika.llm_client.load_dotenv", lambda path=None: None)
     monkeypatch.delenv("LLM_THINKING_ENABLED", raising=False)
     monkeypatch.delenv("LLM_ENABLE_THINKING", raising=False)
     client = OpenAICompatibleClient(
@@ -102,7 +102,7 @@ def test_stream_chat_messages_parses_content_and_reasoning(monkeypatch) -> None:
         assert stream is True
         return FakeResponse()
 
-    monkeypatch.setattr("src.llm_client.requests.post", fake_post)
+    monkeypatch.setattr("aika.llm_client.requests.post", fake_post)
     client = OpenAICompatibleClient(api_key="test-key", base_url="https://example.com/v1", model="test-model")
 
     chunks = list(client.stream_chat_messages(messages=[{"role": "user", "content": "hi"}]))

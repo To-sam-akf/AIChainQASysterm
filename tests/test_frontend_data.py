@@ -1,4 +1,4 @@
-from src.frontend_data import LocalKnowledgeGraph, infer_question, render_svg_graph, subgraph_edges
+from aika.frontend_data import LocalKnowledgeGraph, infer_question, render_svg_graph, subgraph_edges
 
 
 def sample_graph() -> LocalKnowledgeGraph:

@@ -1,0 +1,13 @@
+interface:
+  display_name: "AIKA Research"
+  short_description: "证据驱动的中文AI算力产业链投研助手"
+  default_prompt: "Use $aika-research to analyze 液冷产业链 with evidence citations."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "aika"
+      description: "Local AIKA MCP server for evidence-driven AI compute industry research"
+
+policy:
+  allow_implicit_invocation: true

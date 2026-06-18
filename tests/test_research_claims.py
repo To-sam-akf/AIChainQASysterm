@@ -2,10 +2,10 @@ import csv
 import json
 from pathlib import Path
 
-from src.frontend_data import LocalKnowledgeGraph
-from src.qa_engine import QAEngine
-from src.question_planner import heuristic_plan_question
-from src.research_claims import (
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.qa_engine import QAEngine
+from aika.question_planner import heuristic_plan_question
+from aika.research_claims import (
     CLAIM_CSV_FIELDS,
     ResearchMemory,
     build_research_artifacts,

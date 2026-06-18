@@ -13,8 +13,8 @@ from scripts.prepare_stage1_data import (
     validate_companies,
     validate_pdf,
 )
-from src.data_config import load_industry_sources, load_research_keywords, validate_industry_sources
-from src.domain_lexicon import TECHNICAL_SOURCE_TYPES
+from aika.data_config import load_industry_sources, load_research_keywords, validate_industry_sources
+from aika.domain_lexicon import TECHNICAL_SOURCE_TYPES
 
 
 def test_company_list_has_expected_thirty_targets() -> None:

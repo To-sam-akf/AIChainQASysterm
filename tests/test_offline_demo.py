@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
-from src import cli
-from src import qa_engine
-from src.qa_engine import QAEngine
+from aika import cli
+from aika import qa_engine
+from aika.qa_engine import QAEngine
 
 
 def write_minimal_graph(data_dir: Path) -> None:

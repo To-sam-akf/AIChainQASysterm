@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from src.api import (
+from aika.api import (
     app,
     get_agent_task_store,
     get_conversation_store,
@@ -13,12 +13,12 @@ from src.api import (
     get_knowledge_graph,
     get_qa_engine,
 )
-from src.agents.store import AgentTaskStore
-from src.conversation_store import ConversationStore
-from src.eval.feedback import FeedbackStore
-from src.eval.store import EvalRunStore
-from src.frontend_data import LocalKnowledgeGraph
-from src.research_claims import ResearchMemory
+from aika.agents.store import AgentTaskStore
+from aika.conversation_store import ConversationStore
+from aika.eval.feedback import FeedbackStore
+from aika.eval.store import EvalRunStore
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.research_claims import ResearchMemory
 
 
 @pytest.fixture

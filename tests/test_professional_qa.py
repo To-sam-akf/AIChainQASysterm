@@ -1,12 +1,12 @@
 import csv
 from pathlib import Path
 
-from src.curated_graph import build_curated_graph
-from src.frontend_data import LocalKnowledgeGraph
-from src.llm_client import ChatStreamChunk, ChatTextResult
-from src.qa_engine import QAEngine
-from src.question_planner import heuristic_plan_question
-from src.research_claims import ResearchMemory
+from aika.curated_graph import build_curated_graph
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.llm_client import ChatStreamChunk, ChatTextResult
+from aika.qa_engine import QAEngine
+from aika.question_planner import heuristic_plan_question
+from aika.research_claims import ResearchMemory
 
 
 ENTITY_FIELDS = [

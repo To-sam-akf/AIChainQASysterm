@@ -1,0 +1,91 @@
+name: Publish Python Package
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build distributions
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: python -m pip install uv
+
+      - name: Build wheel and sdist
+        run: UV_CACHE_DIR=/tmp/uv-cache uv build
+
+      - name: Check package metadata
+        run: UV_CACHE_DIR=/tmp/uv-cache uvx twine check dist/*
+
+      - name: Smoke test wheel install
+        run: |
+          UV_CACHE_DIR=/tmp/uv-cache uv venv /tmp/aika-wheel-smoke
+          UV_CACHE_DIR=/tmp/uv-cache uv pip install --python /tmp/aika-wheel-smoke/bin/python dist/*.whl
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika --help
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika init --sample
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika build-index
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika doctor
+          AIKA_HOME=/tmp/aika-wheel-smoke-home /tmp/aika-wheel-smoke/bin/aika demo
+
+      - name: Upload distributions
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/*
+          if-no-files-found: error
+
+  publish-testpypi:
+    name: Publish to TestPyPI
+    needs: build
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/p/aika-research-mcp
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Publish package distributions to TestPyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  publish-pypi:
+    name: Publish to PyPI
+    needs: build
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/aika-research-mcp
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

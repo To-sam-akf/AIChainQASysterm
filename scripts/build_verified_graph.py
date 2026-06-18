@@ -10,7 +10,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.graph_builder import build_verified_graph
+from aika.graph_builder import build_verified_graph
 
 
 DEFAULT_MANIFEST = ROOT_DIR / "data" / "metadata" / "reports_manifest.csv"

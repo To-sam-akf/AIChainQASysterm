@@ -1,6 +1,6 @@
-from src.aika_core import CSVResearchBackend, ClaimRecord, EvidenceCard, GraphEdge
-from src.aika_core.claims import load_claims
-from src.aika_core.data_paths import DEFAULT_CLAIMS_CSV
+from aika.aika_core import CSVResearchBackend, ClaimRecord, EvidenceCard, GraphEdge
+from aika.aika_core.claims import load_claims
+from aika.aika_core.data_paths import DEFAULT_CLAIMS_CSV
 
 
 def test_load_claims_from_curated_csv() -> None:

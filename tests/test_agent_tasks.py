@@ -2,10 +2,10 @@ from pathlib import Path
 
 import pytest
 
-from src.agents.models import AgentState
-from src.agents.research_agent import ResearchAgent
-from src.agents.store import AgentTaskNotFoundError, AgentTaskStore, InvalidAgentTaskError
-from src.agents.tools import default_tool_registry
+from aika.agents.models import AgentState
+from aika.agents.research_agent import ResearchAgent
+from aika.agents.store import AgentTaskNotFoundError, AgentTaskStore, InvalidAgentTaskError
+from aika.agents.tools import default_tool_registry
 
 
 class FakeResearchEngine:

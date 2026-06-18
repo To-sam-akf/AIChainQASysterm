@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from src.aika_mcp import tools
-from src.aika_mcp.schemas import request_schema_catalog
-from src.aika_mcp.server import create_server, registered_tool_names
+from aika.aika_mcp import tools
+from aika.aika_mcp.schemas import request_schema_catalog
+from aika.aika_mcp.server import create_server, registered_tool_names
 
 
 def test_request_schemas_are_json_serializable() -> None:

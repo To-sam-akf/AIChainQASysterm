@@ -12,11 +12,11 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.curated_graph import DEFAULT_CURATED_DIR
-from src.frontend_data import LocalKnowledgeGraph
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import PostgresRagIndex, PostgresResearchMemory, PostgresRetrievalStore
-from src.qa_engine import QAEngine
+from aika.curated_graph import DEFAULT_CURATED_DIR
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import PostgresRagIndex, PostgresResearchMemory, PostgresRetrievalStore
+from aika.qa_engine import QAEngine
 
 
 QUESTIONS = [

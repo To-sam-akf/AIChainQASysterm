@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from src.conversation_store import ConversationStore, conversation_messages_from_turns
+from aika.conversation_store import ConversationStore, conversation_messages_from_turns
 
 
 def write_json(path: Path, payload: dict) -> None:

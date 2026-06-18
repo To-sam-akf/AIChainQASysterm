@@ -10,11 +10,11 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.extraction_schema import load_jsonl, read_csv
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import PostgresRetrievalStore
-from src.rag_index import DEFAULT_RAG_DIR, LocalRagIndex
-from src.research_claims import (
+from aika.extraction_schema import load_jsonl, read_csv
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import PostgresRetrievalStore
+from aika.rag_index import DEFAULT_RAG_DIR, LocalRagIndex
+from aika.research_claims import (
     CLAIMS_FILE,
     DEFAULT_RESEARCH_DIR,
     SEGMENT_DOSSIERS_FILE,

@@ -89,7 +89,7 @@ CLI --offline
   - `research_memory=None`。
   - `semantic_index=None`。
   - status 中 `rag_enabled=false`、`research_enabled=false`、`embedding_enabled=false`。
-- `src/cli.py` 的 `build_engine(args)` 在 `effective_offline(args)` 为 true 时设置该变量。
+- `aika/cli.py` 的 `build_engine(args)` 在 `effective_offline(args)` 为 true 时设置该变量。
 - `run_demo` 中不要假设一定存在 RAG evidence；允许 CSV graph fallback 生成简短答案。
 
 ### 验证方法
@@ -157,7 +157,7 @@ CI smoke：
 建议新增目录：
 
 ```text
-src/aika_core/
+aika/aika_core/
   __init__.py
   models.py
   config.py
@@ -340,16 +340,16 @@ aika doctor
 构建验证：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli init --sample
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli build-index
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli doctor
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli init --sample
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli build-index
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli doctor
 ```
 
 检索验证：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-evidence "液冷产业链" --top-k 5
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli search-claims "中际旭创 光模块" --top-k 5
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli search-evidence "液冷产业链" --top-k 5
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli search-claims "中际旭创 光模块" --top-k 5
 ```
 
 单元测试：
@@ -398,7 +398,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_sqlite_backend.py
 MCP Server 入口：
 
 ```text
-src/aika_mcp/
+aika/aika_mcp/
   __init__.py
   server.py
   tools.py
@@ -636,7 +636,7 @@ aika mcp doctor
 建议新增实现模块：
 
 ```text
-src/aika_mcp/
+aika/aika_mcp/
   installer.py
   doctor.py
   host_configs.py
@@ -647,7 +647,7 @@ src/aika_mcp/
 - `host_configs.py`：生成不同宿主的配置 JSON。
 - `installer.py`：执行宿主 CLI 写入、冲突检测、`--force` 覆盖。
 - `doctor.py`：执行依赖、索引、MCP server、宿主配置诊断。
-- `src/aika_cli.py`：只负责参数解析和调用上述模块。
+- `aika/aika_cli.py`：只负责参数解析和调用上述模块。
 
 ### 验证方法
 
@@ -923,6 +923,186 @@ python -m venv /tmp/aika-smoke-venv
 - `aika demo` 能证明本地工具链可用。
 - 包可以发布到 PyPI 或先用 GitHub repo 安装。
 
+## Phase 5.1: PyPI发布
+
+### 需求
+
+公开版如果要让用户真正执行：
+
+```bash
+pip install aika-research-mcp
+```
+
+就必须把发行包发布到 PyPI。`uv build` 只能证明本地可以构建 wheel/sdist，不代表 PyPI 上已经存在该包；`pip` 默认会按发行包名去 PyPI 查找并安装。
+
+用户视角需求：
+
+- 用户无需 clone repo，也无需拿到本地 wheel，就能直接 `pip install aika-research-mcp`。
+- 测试用户可以先从 TestPyPI 安装预发布版本，验证 CLI、MCP server 和 sample 数据流程。
+- 正式用户从 PyPI 安装后能运行 `aika init --sample`、`aika build-index`、`aika doctor`、`aika demo`。
+
+开发视角需求：
+
+- `pyproject.toml` 中 `[project].name = "aika-research-mcp"` 与 PyPI 发行包名一致。
+- 发布前确认包名在 PyPI/TestPyPI 上唯一，避免与已有项目冲突。
+- 构建产物同时包含 wheel 和 sdist，且通过元数据检查。
+- 发布流程先 TestPyPI 后 PyPI，避免未验证包直接进入正式公共生态。
+- 长期发布不要依赖手工保存 PyPI token，改用 GitHub Actions + PyPI Trusted Publishing。
+
+### 核心逻辑
+
+发布渠道分三层：
+
+```text
+开发安装
+  -> uv build
+  -> uv tool install dist/*.whl --force
+
+预发布测试
+  -> 构建 wheel/sdist
+  -> twine check
+  -> 上传 TestPyPI
+  -> 测试用户从 TestPyPI 安装验证
+
+正式发布
+  -> 确认 TestPyPI 验证通过
+  -> 上传 PyPI
+  -> 用户直接 pip install aika-research-mcp
+```
+
+包名与元数据检查：
+
+- `pyproject.toml` 的 `[project].name` 是 PyPI 上的发行包名，不等同于顶层 import 包名。
+- 正式发布前检查：
+  - `name = "aika-research-mcp"` 是否确定。
+  - `version` 是否符合语义化版本，例如 `0.1.0`。
+  - `description`、`readme`、`license`、`authors`、`requires-python` 是否完整。
+  - `dependencies` 是否只包含公开版必须依赖，避免把 Web/数据库/专业版依赖强塞给普通用户。
+  - `[project.scripts]` 是否暴露 `aika` 命令。
+- 正式发布前最好把当前顶层 import 包名从 `aika` 迁移为更正常的 `aika` 或 `aika_research_mcp`，避免公共生态中出现顶层包名冲突和用户理解成本。
+
+手工首发流程：
+
+```bash
+rm -rf dist/
+UV_CACHE_DIR=/tmp/uv-cache uv build
+python -m twine check dist/*
+python -m twine upload --repository testpypi dist/*
+```
+
+TestPyPI 验证通过后，再发布正式 PyPI：
+
+```bash
+python -m twine upload dist/*
+```
+
+长期自动发布建议：
+
+```text
+push 到 main
+  -> GitHub Actions 构建 wheel/sdist
+  -> 上传构建 artifact
+  -> 发布到 TestPyPI
+
+push tag vX.Y.Z
+  -> GitHub Actions 构建 wheel/sdist
+  -> 上传构建 artifact
+  -> 通过 Trusted Publishing 发布到 PyPI
+```
+
+GitHub Actions 设计要点：
+
+- 在 PyPI 和 TestPyPI 项目页面配置 Trusted Publisher。
+- workflow 使用 GitHub OIDC 短期凭证发布，不在仓库里保存长期 PyPI token。
+- release job 只允许 tag 触发正式 PyPI 发布。
+- main 分支只发布到 TestPyPI 或只上传 artifact，避免误发正式版本。
+- 每次发布前执行 `twine check` 和最小 smoke test。
+
+### 验证方法
+
+本地构建验证：
+
+```bash
+rm -rf dist/
+UV_CACHE_DIR=/tmp/uv-cache uv build
+python -m twine check dist/*
+```
+
+本地 wheel 安装验证：
+
+```bash
+python -m venv /tmp/aika-wheel-smoke
+/tmp/aika-wheel-smoke/bin/pip install dist/*.whl
+/tmp/aika-wheel-smoke/bin/aika --help
+/tmp/aika-wheel-smoke/bin/aika init --sample
+/tmp/aika-wheel-smoke/bin/aika build-index
+/tmp/aika-wheel-smoke/bin/aika doctor
+/tmp/aika-wheel-smoke/bin/aika demo
+```
+
+TestPyPI 发布验证：
+
+```bash
+python -m twine upload --repository testpypi dist/*
+```
+
+TestPyPI 安装 smoke：
+
+```bash
+python -m venv /tmp/aika-testpypi-smoke
+/tmp/aika-testpypi-smoke/bin/pip install \
+  -i https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ \
+  aika-research-mcp
+/tmp/aika-testpypi-smoke/bin/aika init --sample
+/tmp/aika-testpypi-smoke/bin/aika build-index
+/tmp/aika-testpypi-smoke/bin/aika doctor
+/tmp/aika-testpypi-smoke/bin/aika demo
+```
+
+正式 PyPI 发布验证：
+
+```bash
+python -m twine upload dist/*
+python -m venv /tmp/aika-pypi-smoke
+/tmp/aika-pypi-smoke/bin/pip install aika-research-mcp
+/tmp/aika-pypi-smoke/bin/aika init --sample
+/tmp/aika-pypi-smoke/bin/aika build-index
+/tmp/aika-pypi-smoke/bin/aika doctor
+/tmp/aika-pypi-smoke/bin/aika demo
+```
+
+GitHub Actions 验证：
+
+- push 到 `main` 后检查 TestPyPI workflow 成功。
+- push `v0.1.0` 这类 tag 后检查 PyPI workflow 成功。
+- 检查 workflow artifact 中包含 `.whl` 和 `.tar.gz`。
+- 检查 PyPI/TestPyPI 项目页版本号、README、license、Python 版本、入口命令展示正确。
+
+### 预期结果
+
+- TestPyPI 上存在可安装的 `aika-research-mcp` 预发布包。
+- 测试用户可以通过 TestPyPI 完整跑通：
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ aika-research-mcp
+aika init --sample
+aika build-index
+aika doctor
+aika demo
+```
+
+- 正式 PyPI 发布后，用户可以直接运行：
+
+```bash
+pip install aika-research-mcp
+```
+
+- 安装后 `aika` CLI 可用，公开版本地 sample 流程可运行。
+- 发布产物元数据完整，wheel 是 pip 优先安装的格式，sdist 可用于源码构建。
+- 长期发布路径由 GitHub Actions + Trusted Publishing 承担，降低手工 token 泄露风险。
+- 该阶段完成后，AIKA 从“本地可构建项目”变成“公共 Python 生态可安装工具”。
+
 ## Phase 6：准备 Knowledge Pack 与数据合规
 
 ### 需求
@@ -987,7 +1167,7 @@ du -sh path/to/aika_sample_pack
 字段完整性检查：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run python -m src.aika_cli validate-data --path path/to/aika_sample_pack
+UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli validate-data --path path/to/aika_sample_pack
 ```
 
 抽样检查：

@@ -10,8 +10,8 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.curated_graph import CURATED_ENTITIES_CSV, CURATED_RELATIONS_CSV
-from src.kg_loader import Neo4jGraphLoader, validate_graph_csvs
+from aika.curated_graph import CURATED_ENTITIES_CSV, CURATED_RELATIONS_CSV
+from aika.kg_loader import Neo4jGraphLoader, validate_graph_csvs
 
 
 DEFAULT_ENTITIES = CURATED_ENTITIES_CSV if CURATED_ENTITIES_CSV.exists() else ROOT_DIR / "data" / "verified" / "entities.csv"

@@ -12,9 +12,9 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from src.embedding_client import OpenAICompatibleEmbeddingClient
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import EMBEDDING_DIMENSIONS, PostgresRetrievalStore
+from aika.embedding_client import OpenAICompatibleEmbeddingClient
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import EMBEDDING_DIMENSIONS, PostgresRetrievalStore
 
 
 def parse_args() -> argparse.Namespace:

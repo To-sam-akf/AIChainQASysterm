@@ -12,9 +12,9 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.agents.research_agent import ResearchAgent
-from src.agents.store import AgentTaskStore
-from src.qa_engine import QAEngine
+from aika.agents.research_agent import ResearchAgent
+from aika.agents.store import AgentTaskStore
+from aika.qa_engine import QAEngine
 
 
 AGENT_EVAL_CASES = [

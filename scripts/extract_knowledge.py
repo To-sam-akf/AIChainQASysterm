@@ -12,10 +12,10 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.extraction_schema import append_jsonl, load_jsonl
-from src.llm_client import MockLLMClient, OpenAICompatibleClient
-from src.llm_extractor import extract_from_chunk
-from src.text_cleaner import CHUNKS_DIR
+from aika.extraction_schema import append_jsonl, load_jsonl
+from aika.llm_client import MockLLMClient, OpenAICompatibleClient
+from aika.llm_extractor import extract_from_chunk
+from aika.text_cleaner import CHUNKS_DIR
 
 
 DEFAULT_OUTPUT = ROOT_DIR / "data" / "extracted" / "extractions.jsonl"

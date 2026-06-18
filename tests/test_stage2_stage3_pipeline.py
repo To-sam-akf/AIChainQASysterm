@@ -5,12 +5,12 @@ from pathlib import Path
 import fitz
 import pytest
 
-from src.extraction_schema import SchemaError, sanitize_extraction_payload, validate_extraction_payload
-from src.graph_builder import build_verified_graph
-from src.kg_loader import CONSTRAINT_QUERIES, assert_label, assert_relation_type, validate_graph_csvs
-from src.llm_extractor import build_user_prompt
-from src.pdf_parser import clean_page_text, normalize_table_data, parse_pdf_pages
-from src.text_cleaner import build_chunks_from_pages, split_table_rows
+from aika.extraction_schema import SchemaError, sanitize_extraction_payload, validate_extraction_payload
+from aika.graph_builder import build_verified_graph
+from aika.kg_loader import CONSTRAINT_QUERIES, assert_label, assert_relation_type, validate_graph_csvs
+from aika.llm_extractor import build_user_prompt
+from aika.pdf_parser import clean_page_text, normalize_table_data, parse_pdf_pages
+from aika.text_cleaner import build_chunks_from_pages, split_table_rows
 
 
 def make_text_pdf(path: Path, text: str) -> None:

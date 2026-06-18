@@ -3,9 +3,9 @@ from pathlib import Path
 
 import pytest
 
-from src.cypher_guard import CypherSafetyError, ensure_limit, validate_read_only_cypher
-from src.qa_engine import NO_EVIDENCE_ANSWER, QAEngine
-from src.rag_index import LocalRagIndex, RagHit, build_rag_index
+from aika.cypher_guard import CypherSafetyError, ensure_limit, validate_read_only_cypher
+from aika.qa_engine import NO_EVIDENCE_ANSWER, QAEngine
+from aika.rag_index import LocalRagIndex, RagHit, build_rag_index
 
 
 def write_chunk(path: Path, **overrides: str) -> None:

@@ -10,12 +10,12 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.curated_graph import DEFAULT_CURATED_DIR, build_curated_graph
-from src.frontend_data import DEFAULT_ENTITIES_CSV, DEFAULT_RELATIONS_CSV
-from src.llm_client import load_dotenv
-from src.postgres_retrieval import PostgresRetrievalStore
-from src.research_claims import build_research_artifacts
-from src.text_cleaner import CHUNKS_DIR
+from aika.curated_graph import DEFAULT_CURATED_DIR, build_curated_graph
+from aika.frontend_data import DEFAULT_ENTITIES_CSV, DEFAULT_RELATIONS_CSV
+from aika.llm_client import load_dotenv
+from aika.postgres_retrieval import PostgresRetrievalStore
+from aika.research_claims import build_research_artifacts
+from aika.text_cleaner import CHUNKS_DIR
 
 
 def build_parser() -> argparse.ArgumentParser:

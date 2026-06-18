@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from src.embedding_client import OpenAICompatibleEmbeddingClient, embedding_configured
-from src.extraction_schema import load_jsonl, write_jsonl
-from src.semantic_index import (
+from aika.embedding_client import OpenAICompatibleEmbeddingClient, embedding_configured
+from aika.extraction_schema import load_jsonl, write_jsonl
+from aika.semantic_index import (
     SEMANTIC_DOCUMENTS_FILE,
     SEMANTIC_METADATA_FILE,
     SEMANTIC_VECTORS_FILE,
@@ -48,7 +48,7 @@ def test_embedding_client_batches_openai_compatible_requests(monkeypatch) -> Non
     monkeypatch.setenv("EMBEDDING_API_KEY", "embedding-key")
     monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-test")
     monkeypatch.setenv("EMBEDDING_DIMENSIONS", "")
-    monkeypatch.setattr("src.embedding_client.requests.post", fake_post)
+    monkeypatch.setattr("aika.embedding_client.requests.post", fake_post)
 
     client = OpenAICompatibleEmbeddingClient(batch_size=2)
     vectors = client.embed_texts(["a", "b", "c"])
@@ -74,7 +74,7 @@ def test_embedding_client_sends_optional_dimensions(monkeypatch) -> None:
     monkeypatch.setenv("EMBEDDING_API_KEY", "embedding-key")
     monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-test")
     monkeypatch.setenv("EMBEDDING_DIMENSIONS", "1024")
-    monkeypatch.setattr("src.embedding_client.requests.post", fake_post)
+    monkeypatch.setattr("aika.embedding_client.requests.post", fake_post)
 
     client = OpenAICompatibleEmbeddingClient()
     client.embed_texts(["a"])
@@ -103,7 +103,7 @@ def test_embedding_client_reports_request_errors(monkeypatch) -> None:
     monkeypatch.setenv("EMBEDDING_BASE_URL", "https://embedding.example/v1")
     monkeypatch.setenv("EMBEDDING_API_KEY", "embedding-key")
     monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-test")
-    monkeypatch.setattr("src.embedding_client.requests.post", fake_post)
+    monkeypatch.setattr("aika.embedding_client.requests.post", fake_post)
 
     client = OpenAICompatibleEmbeddingClient(max_retries=1)
     with pytest.raises(RuntimeError, match="Embedding request failed"):

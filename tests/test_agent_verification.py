@@ -1,6 +1,6 @@
-from src.agents.verification import build_evidence_limited_answer, detect_conflict_groups, verify_answer_support
-from src.professional_qa import EvidenceCard
-from src.question_planner import heuristic_plan_question
+from aika.agents.verification import build_evidence_limited_answer, detect_conflict_groups, verify_answer_support
+from aika.professional_qa import EvidenceCard
+from aika.question_planner import heuristic_plan_question
 
 
 def card(

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.postgres_retrieval import (
+from aika.postgres_retrieval import (
     EMBEDDING_DIMENSIONS,
     PostgresRagIndex,
     PostgresResearchMemory,
@@ -14,8 +14,8 @@ from src.postgres_retrieval import (
     migrate_database,
     stable_content_hash,
 )
-from src.rag_index import RagDocument
-from src.semantic_index import SemanticIndexMetadata
+from aika.rag_index import RagDocument
+from aika.semantic_index import SemanticIndexMetadata
 
 
 def test_stable_content_hash_ignores_mapping_order() -> None:

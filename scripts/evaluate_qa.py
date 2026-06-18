@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.qa_engine import QAEngine
+from aika.qa_engine import QAEngine
 
 
 EVAL_CASES = [

@@ -1,11 +1,11 @@
-from src.agent_runner import AgentRetrievalState
-from src.agents.coverage import EvidenceCoverageChecker
-from src.agents.executor import ToolBudget, ToolExecutor
-from src.agents.planner import TaskPlanner
-from src.frontend_data import LocalKnowledgeGraph
-from src.qa_engine import QAEngine
-from src.question_planner import heuristic_plan_question
-from src.research_claims import ResearchHit
+from aika.agent_runner import AgentRetrievalState
+from aika.agents.coverage import EvidenceCoverageChecker
+from aika.agents.executor import ToolBudget, ToolExecutor
+from aika.agents.planner import TaskPlanner
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.qa_engine import QAEngine
+from aika.question_planner import heuristic_plan_question
+from aika.research_claims import ResearchHit
 
 
 def research_hit(company: str, claim_type: str, text: str) -> ResearchHit:

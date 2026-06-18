@@ -1,6 +1,6 @@
-from src.professional_qa import EvidenceCard
-from src.question_planner import heuristic_plan_question
-from src.research_agent import build_research_outputs
+from aika.professional_qa import EvidenceCard
+from aika.question_planner import heuristic_plan_question
+from aika.research_agent import build_research_outputs
 
 
 def test_research_outputs_include_report_table_risks_and_gaps() -> None:

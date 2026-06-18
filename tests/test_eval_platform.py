@@ -4,11 +4,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.eval.dataset import EvalDatasetError, EvalCase, load_eval_cases
-from src.eval.feedback import FeedbackStore, InvalidFeedbackError
-from src.eval.metrics import score_case
-from src.eval.runner import run_qa_benchmark
-from src.eval.store import EvalRunStore
+from aika.eval.dataset import EvalDatasetError, EvalCase, load_eval_cases
+from aika.eval.feedback import FeedbackStore, InvalidFeedbackError
+from aika.eval.metrics import score_case
+from aika.eval.runner import run_qa_benchmark
+from aika.eval.store import EvalRunStore
 
 
 def test_default_benchmark_loads_50_cases() -> None:

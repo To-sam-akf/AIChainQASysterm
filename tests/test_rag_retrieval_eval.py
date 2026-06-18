@@ -4,25 +4,25 @@ from pathlib import Path
 
 import pytest
 
-from src.cli import parse_positive_ints, parse_rag_retrievers
-from src.eval.rag_dataset import (
+from aika.cli import parse_positive_ints, parse_rag_retrievers
+from aika.eval.rag_dataset import (
     RagRetrievalCase,
     RagRetrievalDatasetError,
     load_rag_retrieval_cases,
 )
-from src.eval.rag_metrics import RetrievedChunk, score_retrieval
-from src.eval.rag_runner import (
+from aika.eval.rag_metrics import RetrievedChunk, score_retrieval
+from aika.eval.rag_runner import (
     RagRetrievalEvalError,
     reciprocal_rank_fusion,
     retrieve_semantic,
     run_rag_retrieval_benchmark,
     validate_semantic_corpus,
 )
-from src.eval.store import EvalRunStore
-from src.extraction_schema import write_jsonl
-from src.question_planner import heuristic_plan_question
-from src.rag_index import LocalRagIndex, document_from_chunk
-from src.semantic_index import SemanticDocument, SemanticIndex, SemanticIndexMetadata
+from aika.eval.store import EvalRunStore
+from aika.extraction_schema import write_jsonl
+from aika.question_planner import heuristic_plan_question
+from aika.rag_index import LocalRagIndex, document_from_chunk
+from aika.semantic_index import SemanticDocument, SemanticIndex, SemanticIndexMetadata
 
 
 def case_payload(**overrides):

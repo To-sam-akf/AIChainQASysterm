@@ -1,10 +1,10 @@
-from src.graphrag import DriftPlanner, QueryRouter, run_graphrag
-from src.frontend_data import LocalKnowledgeGraph
-from src.professional_qa import EvidenceCard
-from src.qa_engine import QAEngine
-from src.question_planner import heuristic_plan_question
-from src.reranker import EvidenceReranker
-from src.research_claims import ResearchMemory
+from aika.graphrag import DriftPlanner, QueryRouter, run_graphrag
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.professional_qa import EvidenceCard
+from aika.qa_engine import QAEngine
+from aika.question_planner import heuristic_plan_question
+from aika.reranker import EvidenceReranker
+from aika.research_claims import ResearchMemory
 
 
 def claim(

@@ -30,7 +30,7 @@ from pypdf import PdfReader
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.data_config import (
+from aika.data_config import (
     COMPANIES_EXTENDED_CSV,
     INDUSTRY_SOURCES_CSV,
     RESEARCH_KEYWORDS_CSV,

@@ -2,11 +2,11 @@ import json
 import threading
 import time
 
-from src.frontend_data import LocalKnowledgeGraph
-from src.llm_client import ChatTextResult
-from src.qa_engine import QAEngine
-from src.rag_index import RagHit
-from src.research_claims import ResearchHit
+from aika.frontend_data import LocalKnowledgeGraph
+from aika.llm_client import ChatTextResult
+from aika.qa_engine import QAEngine
+from aika.rag_index import RagHit
+from aika.research_claims import ResearchHit
 
 
 class ConcurrencyProbe:

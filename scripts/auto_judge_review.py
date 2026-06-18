@@ -26,7 +26,7 @@ from typing import Any
 ROOT_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT_DIR))
 
-from src.eval.auto_judge import (  # noqa: E402
+from aika.eval.auto_judge import (  # noqa: E402
     AutoJudgeConfig,
     auto_judge_review_queue,
     dedupe_review_rows,
@@ -35,11 +35,11 @@ from src.eval.auto_judge import (  # noqa: E402
     referenced_chunk_ids_from_cases,
     save_judgments,
 )
-from src.eval.rag_dataset import (  # noqa: E402
+from aika.eval.rag_dataset import (  # noqa: E402
     DEFAULT_RAG_RETRIEVAL_BENCHMARK,
     load_rag_retrieval_cases,
 )
-from src.llm_client import OpenAICompatibleClient, load_dotenv  # noqa: E402
+from aika.llm_client import OpenAICompatibleClient, load_dotenv  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
