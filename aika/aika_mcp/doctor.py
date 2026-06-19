@@ -54,6 +54,7 @@ class DoctorReport:
 def run_mcp_doctor(
     *,
     host: str = DEFAULT_HOST,
+    scope: str = "user",
     home: str | Path | None = None,
     profile: str = DEFAULT_PROFILE,
     server_name: str = DEFAULT_SERVER_NAME,
@@ -88,7 +89,8 @@ def run_mcp_doctor(
         )
 
     checks.append(_check_sqlite_index(home=home, profile=profile))
-    checks.append(_check_claude_code(host=host, server_name=server_name, timeout_seconds=timeout_seconds))
+    checks.append(_check_host_config(host=host, server_name=server_name, timeout_seconds=timeout_seconds))
+    checks.extend(_check_skill_install(host=host, scope=scope, server_name=server_name, timeout_seconds=timeout_seconds))
     return DoctorReport(checks)
 
 
@@ -134,14 +136,14 @@ def _check_mcp_server(config: dict[str, Any], *, timeout_seconds: float) -> Doct
             "mcp_server",
             STATUS_FAIL,
             f"Command not found: {exc.filename or command[0]}",
-            "Run aika mcp config --host claude-code and verify the command path exists.",
+            "Run aika mcp config --host claude-code or aika mcp config --host codex and verify the command path exists.",
         )
     except subprocess.TimeoutExpired:
         return DoctorCheck(
             "mcp_server",
             STATUS_FAIL,
             f"Timed out after {timeout_seconds:g}s while listing MCP tools.",
-            "Run aika mcp config --host claude-code, then try the generated command manually.",
+            "Run aika mcp config for your host, then try the generated command manually.",
         )
 
     if result.returncode != 0:
@@ -150,7 +152,7 @@ def _check_mcp_server(config: dict[str, Any], *, timeout_seconds: float) -> Doct
             "mcp_server",
             STATUS_FAIL,
             f"Could not start AIKA MCP server: {detail}",
-            "Run UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host claude-code, then retry aika mcp doctor.",
+            "Run UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host claude-code or --host codex, then retry aika mcp doctor.",
         )
 
     response = _jsonrpc_response(result.stdout, request_id=2)
@@ -207,15 +209,21 @@ def _check_sqlite_index(*, home: str | Path | None, profile: str) -> DoctorCheck
     return DoctorCheck("sqlite_index", STATUS_PASS, str(index_path))
 
 
-def _check_claude_code(*, host: str, server_name: str, timeout_seconds: float) -> DoctorCheck:
-    if str(host or DEFAULT_HOST).strip().lower() != "claude-code":
-        return DoctorCheck(
-            "host_config",
-            STATUS_WARN,
-            f"Host '{host}' is not implemented for automatic diagnostics.",
-            "Use --host claude-code for Phase 3.1 automatic installation checks.",
-        )
+def _check_host_config(*, host: str, server_name: str, timeout_seconds: float) -> DoctorCheck:
+    normalized = str(host or DEFAULT_HOST).strip().lower()
+    if normalized == "claude-code":
+        return _check_claude_code(server_name=server_name, timeout_seconds=timeout_seconds)
+    if normalized == "codex":
+        return _check_codex(server_name=server_name, timeout_seconds=timeout_seconds)
+    return DoctorCheck(
+        "host_config",
+        STATUS_WARN,
+        f"Host '{host}' is not implemented for automatic diagnostics.",
+        "Use --host claude-code or --host codex for automatic installation checks.",
+    )
 
+
+def _check_claude_code(*, server_name: str, timeout_seconds: float) -> DoctorCheck:
     claude = shutil.which("claude")
     if not claude:
         return DoctorCheck(
@@ -248,6 +256,64 @@ def _check_claude_code(*, host: str, server_name: str, timeout_seconds: float) -
         f"Claude Code does not have MCP server '{server_name}' configured.",
         "Run aika mcp install --host claude-code --scope user.",
     )
+
+
+def _check_codex(*, server_name: str, timeout_seconds: float) -> DoctorCheck:
+    codex = shutil.which("codex")
+    if not codex:
+        return DoctorCheck(
+            "codex",
+            STATUS_WARN,
+            "Codex CLI not found on PATH.",
+            "Install Codex, or copy the output of aika mcp config --host codex into ~/.codex/config.toml.",
+        )
+
+    try:
+        result = subprocess.run(
+            [codex, "mcp", "get", server_name, "--json"],
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        return DoctorCheck(
+            "codex",
+            STATUS_WARN,
+            f"Codex MCP lookup timed out after {timeout_seconds:g}s.",
+            "Run codex mcp get aika --json manually, or re-run aika mcp install --host codex --scope user.",
+        )
+    if result.returncode == 0:
+        return DoctorCheck("codex", STATUS_PASS, f"Codex has MCP server '{server_name}' configured.")
+    return DoctorCheck(
+        "codex",
+        STATUS_WARN,
+        f"Codex does not have MCP server '{server_name}' configured.",
+        "Run aika mcp install --host codex --scope user. For project scope, run it from the project and trust the project in Codex.",
+    )
+
+
+def _check_skill_install(*, host: str, scope: str, server_name: str, timeout_seconds: float) -> list[DoctorCheck]:
+    from aika.aika_skills import AikaSkillError, run_skill_doctor
+
+    try:
+        report = run_skill_doctor(host=host, scope=scope, server_name=server_name, timeout_seconds=timeout_seconds)
+    except AikaSkillError as exc:
+        return [
+            DoctorCheck(
+                "skill",
+                STATUS_FAIL,
+                str(exc),
+                f"Run aika skill install --host {host} --scope {scope}.",
+            )
+        ]
+    checks: list[DoctorCheck] = []
+    for check in report.checks:
+        status = check.status
+        if status == STATUS_FAIL and check.name != "bundled_skill":
+            status = STATUS_WARN
+        checks.append(DoctorCheck(f"skill_{check.name}", status, check.detail, check.fix))
+    return checks
 
 
 def _jsonrpc_response(stdout: str, *, request_id: int) -> dict[str, Any] | None:

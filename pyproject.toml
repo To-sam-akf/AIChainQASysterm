@@ -101,10 +101,12 @@ packages = ["aika"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "data/knowledge_packs/sample" = "aika/aika_core/bundled_sample"
+"skills/aika-research" = "aika/bundled_skills/aika-research"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "/aika",
+    "/skills/aika-research",
     "/data/knowledge_packs/sample",
     "/scripts/build_sample_pack.py",
     "/README.md",

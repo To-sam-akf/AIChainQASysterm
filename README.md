@@ -14,12 +14,12 @@
 
 ---
 
-AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agent 系统。系统以本地 CSV 知识图谱、Claim/Dossier、RAG 文档块和可选 Neo4j/LLM/embedding 为证据层，通过 FastAPI 提供后端接口，通过 React 工作台提供对话、证据、图谱和 Agent 任务视图。
+AIKA 是一个面向 AI 算力产业链的证据驱动智能问答与投研 Agent 系统。公开版主路径是本地 SQLite + MCP/Skill：用户不需要启动 Docker、PostgreSQL、Neo4j 或 Web，就可以在宿主 Agent 中调用投研工具。FastAPI + React Web 版保留为本地开发测试台，用于调试对话、证据卡、图谱、反馈和 Agent 任务视图，不作为公网多用户产品入口。
 
 
 ### Quick Start
 
-正式发布后，用户可以直接从 PyPI 安装并运行本地 sample 流程：
+用户可以直接从 PyPI 安装并运行本地 sample 流程：
 
 ```bash
 pip install aika-research-mcp
@@ -29,47 +29,95 @@ aika doctor
 aika demo
 ```
 
-发布前或源码开发时，也可以先从本仓库构建并安装本地 wheel：
+源码开发环境可以使用 `uv run` 执行同一套公开版 CLI：
 
 ```bash
-cd /home/sanmu/AIQASYS
-UV_CACHE_DIR=/tmp/uv-cache uv build
-UV_CACHE_DIR=/tmp/uv-cache uv tool install dist/aika_research_mcp-0.1.0-py3-none-any.whl --force
-```
-
-默认安装只依赖本地 SQLite + MCP，不需要 PostgreSQL、Neo4j、LLM 或 embedding 服务。生成后的目录形态：
-
-```text
-~/.aika/
-  config.toml
-  knowledge/sample/
-  indexes/sample.sqlite
-  logs/
+UV_CACHE_DIR=/tmp/uv-cache uv run aika init --sample
+UV_CACHE_DIR=/tmp/uv-cache uv run aika build-index
+UV_CACHE_DIR=/tmp/uv-cache uv run aika doctor
+UV_CACHE_DIR=/tmp/uv-cache uv run aika demo
 ```
 
 ### Local MCP Quick Start
 
-公开版 AIKA 可以作为本地 MCP Server 接入 Claude Code。用户不需要手写 `.mcp.json` 或 `~/.claude.json`：
+公开版 AIKA 可以作为本地 MCP Server + Skill 接入 Claude Code 或 Codex。用户不需要手写 `.mcp.json`、`~/.claude.json`、`~/.codex/config.toml`，也不需要手动复制 `skills/aika-research/SKILL.md`。
+
+Claude Code 用户级安装：
 
 ```bash
-aika mcp install --host claude-code --scope user
+aika mcp install --host claude-code --scope user --with-skill
 claude
 /mcp
 ```
+
+Codex CLI 和 Codex IDE extension 共享 MCP 配置，用户级安装一次即可复用：
+
+```bash
+aika mcp install --host codex --scope user --with-skill
+codex
+/mcp
+```
+
+也可以把配置和 Skill 写入当前项目。Codex 会在该项目被信任后加载项目级 `.codex/config.toml` 和 `.codex/skills/aika-research/`：
+
+```bash
+aika mcp install --host codex --scope project --with-skill
+```
+
+安装完成后，可以在宿主 Agent 中显式使用 AIKA Skill：
+
+```text
+使用 $aika-research 分析液冷产业链，要求保留 citation id。
+```
+
+### Skill 管理
+
+AIKA wheel/sdist 会打包 `aika-research` Skill。wheel 内部路径为 `aika/bundled_skills/aika-research/`，源码目录为 `skills/aika-research/`。
+
+常用命令：
+
+```bash
+aika skill list
+aika skill install --host codex --scope user
+aika skill install --host codex --scope project
+aika skill install --host claude-code --scope user
+aika skill doctor --host codex --scope user
+aika skill doctor --host codex --scope project
+aika skill doctor --host claude-code --scope user
+```
+
+目录约定：
+
+- Codex user scope：`${CODEX_HOME:-~/.codex}/skills/aika-research/`
+- Codex project scope：当前项目 `.codex/skills/aika-research/`
+- Claude Code user scope：`${CLAUDE_HOME:-~/.claude}/skills/aika-research/`
+
+Claude Code 的 project-scope Skill 安装当前不支持；请使用 `--scope user`。Skill 安装是幂等的：内容相同时返回 up-to-date；内容不同时默认拒绝覆盖，传入 `--force` 只覆盖 `aika-research` 目录内 AIKA 管理的文件，不影响其他 skills。
+
+### MCP 诊断与高级配置
 
 常用诊断和高级配置命令：
 
 ```bash
 aika mcp config --host claude-code
-aika mcp doctor
+aika mcp config --host codex
+aika mcp doctor --host claude-code --scope user
+aika mcp doctor --host codex --scope user
+aika mcp doctor --host codex --scope project
 aika mcp install --host claude-code --scope user --dry-run
 aika mcp install --host claude-code --scope user --force
+aika mcp install --host codex --scope user --dry-run
+aika mcp install --host codex --scope user --force
+aika mcp install --host codex --scope project --with-skill --dry-run
 ```
 
-- `aika mcp config`：只打印 Claude Code 需要的 MCP server JSON，适合高级用户手动复制。
-- `aika mcp install`：通过 Claude Code CLI 注册名为 `aika` 的 MCP server；已有同名配置时需要显式 `--force`。
-- `aika doctor`：检查 Python、AIKA home、sample data、SQLite index、MCP server、tools 注册和 sample query。
-- `aika mcp doctor`：检查 MCP server 与 Claude Code 配置，并给出修复建议。
+- `aika mcp config`：打印目标宿主需要的 MCP 配置；Claude Code 输出 JSON，Codex 输出 TOML，适合高级用户手动复制。
+- `aika mcp install`：注册名为 `aika` 的 MCP server；Claude Code 通过 `claude mcp` 写入，Codex user scope 通过 `codex mcp` 写入，Codex project scope 只更新当前项目 `.codex/config.toml` 的 `[mcp_servers.aika]`。
+- `--with-skill`：在 MCP 注册成功后，同时安装 `aika-research` Skill。
+- `--force`：只覆盖名为 `aika` 的 MCP server，不改动用户其他宿主配置。
+- `aika doctor`：检查 Python、AIKA home、sample data、bundled skill、SQLite index、MCP server、tools 注册和 sample query。
+- `aika mcp doctor`：检查 MCP server、SQLite index、指定宿主 MCP 配置和 Skill 安装状态，并给出修复建议。
+- `aika skill doctor`：只检查 bundled skill、目标 Skill 目录、`SKILL.md` frontmatter、`agents/openai.yaml` 的 `mcp:aika` 依赖和宿主 MCP 配置。
 
 ### 轻量本地索引
 
@@ -84,14 +132,6 @@ aika search-evidence "液冷产业链" --top-k 5
 aika search-claims "光模块" --top-k 5
 ```
 
-源码开发环境仍可用：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run aika init --sample
-UV_CACHE_DIR=/tmp/uv-cache uv run aika build-index
-UV_CACHE_DIR=/tmp/uv-cache uv run aika doctor
-```
-
 `aika.aika_cli` 显式使用 SQLite backend；现有 Web/API/QAEngine 默认路径仍保持 CSV、Neo4j、PostgreSQL 的原有行为。
 
 ### Knowledge Pack 与数据合规
@@ -100,7 +140,7 @@ UV_CACHE_DIR=/tmp/uv-cache uv run aika doctor
 
 数据包分三档：
 
-- `sample`：随 wheel 内置，位于 `data/knowledge_packs/sample/`，只包含少量公开来源的结构化记录和短证据片段，用于安装后立即试用。
+- `sample`：随 wheel 内置；源码位于 `data/knowledge_packs/sample/`，wheel 内映射到 `aika/aika_core/bundled_sample/`。它只包含少量公开来源的结构化记录和短证据片段，用于安装后立即试用。
 - `public`：后续可发布的更大公开知识包，只使用可再分发或可合理引用的公开资料构建。
 - `private/full`：本地完整数据、PostgreSQL/Neo4j 专业部署、raw PDFs、parsed text、RAG 和 semantic index，不随公开包分发。
 
@@ -138,8 +178,8 @@ aika demo
 ### 开发 CLI
 
 ```bash
-python main.py api --host 0.0.0.0 --port 8000 --reload
-python main.py web --host 0.0.0.0 --port 5173 --api http://127.0.0.1:8000
+python main.py api --host 127.0.0.1 --port 8000 --reload
+python main.py web --host 127.0.0.1 --port 5173 --api http://127.0.0.1:8000
 python main.py agent --type research_brief "液冷产业链" --offline --json
 python main.py eval --suite qa --offline --benchmark data/eval/qa_benchmark_v1.jsonl --report-dir data/eval_runs --k 6 --json
 python main.py eval --suite rag --retrievers bm25 --benchmark data/eval/rag_retrieval_v1.jsonl --report-dir data/eval_runs
@@ -409,14 +449,18 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python scripts/evaluate_qa.py --use-llm
 - `DeepSeek-V3 对训练算力瓶颈有什么启示？`
 - `UCIe/Chiplet 对国产算力产业链的传导是什么？`
 
-## 第五阶段：React + FastAPI 前端展示
+## 第五阶段：本地 Web 开发版
 
-推荐使用新的 React 工作台。后端 API 复用现有 `QAEngine`、CSV/Neo4j 图谱和 PostgreSQL 检索后端，并把问答历史自动保存到 `data/conversations/`，前端可以直接点击历史会话恢复并继续追问。
+Web 版只用于本机功能测试、调试、演示和开发联调，不作为公开版第一入口，也不作为公网多用户服务。普通用户优先使用上文的 Local MCP 流程；开发者需要检查 UI、证据卡、claim review、feedback 或 Agent 任务时再启动 Web。
 
-安装 Python 依赖后启动 API：
+本地无 Docker/数据库的开发启动方式：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --port 8000
+QA_DISABLE_POSTGRES=true \
+QA_GRAPH_BACKEND=csv \
+EMBEDDING_MODEL= \
+LLM_API_KEY= \
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --host 127.0.0.1 --port 8000
 ```
 
 安装并启动前端：
@@ -432,20 +476,45 @@ npm run dev
 如果 8000 端口已被占用，可以把 API 启动到其他端口，并在启动 Vite 时指定代理目标：
 
 ```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --port 8001
+QA_DISABLE_POSTGRES=true \
+QA_GRAPH_BACKEND=csv \
+EMBEDDING_MODEL= \
+LLM_API_KEY= \
+UV_CACHE_DIR=/tmp/uv-cache uv run uvicorn aika.api:app --reload --host 127.0.0.1 --port 8001
 cd web
 VITE_API_PROXY_TARGET=http://127.0.0.1:8001 npm run dev
 ```
 
-React 工作台包括：
+本地 Web 开发版包括：
 
 - 智能问答：主流 chatbot 式对话流，支持连续追问、发送中状态、错误提示和证据详情抽屉。
 - 自动会话库：每轮问答自动落盘，侧栏可新建、恢复、重命名、删除、导出 Markdown。
 - 数据概览：实体、关系、报告数量、图谱/RAG/LLM 状态和分布。
 - 产业链图谱：按公司、技术、关系类型筛选子图和明细。
+- Claim review：在证据卡中修正 claim 文本、类型、状态和备注，便于本地人工校验。
+- Feedback：对单轮回答提交本地反馈，默认写入 `data/feedback/feedback.jsonl`。
+- Agent 任务：创建研究简报、公司画像、对比分析、证据缺口和风险审查任务。
 - 输入框模型控制：可在对话框底部切换 DeepSeek 思考模式，并循环选择 `low`、`medium`、`high` 思考强度。
 
-生产构建：
+本地 API smoke：
+
+```bash
+curl http://127.0.0.1:8000/api/status
+curl -X POST http://127.0.0.1:8000/api/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"液冷产业链有哪些上市公司？","helpful":true,"note":"local web smoke"}'
+```
+
+浏览器 smoke：
+
+- 打开 `http://localhost:5173` 后完成一次 query。
+- 打开证据详情，确认可以查看 evidence cards。
+- 如果证据卡包含 claim id，可以展开并提交一次 claim review。
+- 在回答下方提交一次本地 feedback。
+
+本地 Web 开发版当前不实现登录、API token、会话隔离、权限控制、rate limit、生产环境 CORS 和日志脱敏。不要把该开发版直接暴露到公网；如果未来作为企业私有部署或公网服务，需要单独补齐认证、授权、CORS allowlist、限流、日志脱敏和审计策略。
+
+前端构建检查：
 
 ```bash
 cd web

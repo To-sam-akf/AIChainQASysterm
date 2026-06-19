@@ -719,6 +719,222 @@ claude
 - 开发者可以用 `aika mcp config` 查看底层配置，用 `aika mcp doctor` 快速定位安装问题。
 - 后续打包为 `uv tool install aika` 或 `pipx install aika` 后，MCP 配置可以自然收敛为 `command: "aika"`、`args: ["mcp"]` 的最终形态。
 
+## Phase 3.2：快速接入 Codex
+
+### 需求
+
+Phase 3.1 已经完成 Claude Code 的一键注册，但公开版 AIKA 不应该只服务单一宿主。Codex CLI 和 Codex IDE extension 都支持 MCP，并共享 `config.toml` 配置，因此下一步要补齐：
+
+```bash
+aika mcp install --host codex --scope user
+```
+
+用户视角需求：
+
+- 用户可以一条命令把 AIKA MCP Server 注册到 Codex。
+- 用户不需要手写 `~/.codex/config.toml` 或项目 `.codex/config.toml`。
+- 用户不需要理解 `uv --directory ... run aika mcp`、`UV_CACHE_DIR`、Codex TOML 配置表等细节。
+- 用户可以在 Codex TUI 中通过 `/mcp` 看到 `aika` server。
+- 用户安装一次后，Codex CLI 和 Codex IDE extension 都能复用同一份 MCP 配置。
+
+开发视角需求：
+
+- `aika mcp install` 的 host 分发从 Claude Code 单实现扩展为多宿主实现。
+- `--host codex` 支持 `--scope user` 和 `--scope project`。
+- `--scope user` 优先调用 Codex CLI：`codex mcp add`、`codex mcp get`、`codex mcp remove`。
+- `--scope project` 写入项目 `.codex/config.toml`，并提示该配置只会在 Codex 信任项目后加载。
+- `--force` 只覆盖名为 `aika` 的 MCP server，不改动用户其他 Codex 配置。
+- `aika mcp doctor --host codex` 能检查 Codex CLI、配置项和 AIKA MCP Server 是否可用。
+
+### 核心逻辑
+
+推荐 CLI 形态：
+
+```bash
+aika mcp install --host codex --scope user
+aika mcp install --host codex --scope project
+aika mcp install --host codex --scope user --force
+aika mcp install --host codex --scope user --dry-run
+aika mcp config --host codex
+aika mcp doctor --host codex
+```
+
+Codex 的 stdio MCP 配置可以收敛为 TOML：
+
+```toml
+[mcp_servers.aika]
+command = "/abs/path/to/uv"
+args = ["--directory", "/abs/path/to/AIQASYS", "run", "aika", "mcp"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+
+[mcp_servers.aika.env]
+UV_CACHE_DIR = "/tmp/uv-cache"
+```
+
+打包安装成熟后可以简化为：
+
+```toml
+[mcp_servers.aika]
+command = "aika"
+args = ["mcp"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+```
+
+`host_configs.py` 扩展：
+
+```text
+SUPPORTED_HOSTS = {"claude-code", "codex"}
+
+build_mcp_config(host="codex")
+  -> 解析 aika 或 uv 启动方式
+  -> 输出 Codex 可消费的 stdio 配置字段
+  -> 字段包括 command、args、env、startup_timeout_sec、tool_timeout_sec
+```
+
+`installer.py` 扩展为宿主分发：
+
+```text
+install_mcp_server(host="codex", scope="user")
+  -> 调用 build_mcp_config(host="codex")
+  -> 检查 codex 命令是否存在
+  -> 执行 codex mcp get aika 或 codex mcp list --json 检查冲突
+  -> 无冲突时执行 codex mcp add aika --env KEY=VALUE -- <command> <args...>
+  -> 有冲突且无 --force 时提示用户使用 --force
+  -> 有 --force 时执行 codex mcp remove aika，再重新 add
+```
+
+示例命令：
+
+```bash
+codex mcp add aika --env UV_CACHE_DIR=/tmp/uv-cache -- \
+  /abs/path/to/uv --directory /abs/path/to/AIQASYS run aika mcp
+```
+
+项目级配置逻辑：
+
+```text
+install_mcp_server(host="codex", scope="project")
+  -> 定位当前项目根目录
+  -> 创建或读取 .codex/config.toml
+  -> 只新增或替换 [mcp_servers.aika] 表
+  -> 保留文件中其他 Codex 配置
+  -> 输出提示：Codex 只会在 trusted project 中加载项目配置
+```
+
+`doctor.py` 扩展：
+
+```text
+aika mcp doctor --host codex
+  -> 检查 codex 命令是否在 PATH
+  -> 检查 codex mcp get aika 或 codex mcp list --json
+  -> 检查生成的 command/args 是否能启动 AIKA MCP Server
+  -> 检查 tools/list 是否能返回 AIKA tools
+  -> project scope 下提醒用户确认 Codex 已信任该项目
+  -> 输出 pass/warn/fail 和修复建议
+```
+
+实现注意：
+
+- 不要把 Claude Code 的 JSON 配置直接复用给 Codex；Codex 原生配置是 TOML 表。
+- 不要覆盖整个 `~/.codex/config.toml` 或 `.codex/config.toml`。
+- dry-run 必须打印将要执行的 `codex mcp add` 命令或将要写入的 TOML 片段。
+- 如果 Codex CLI 不存在，提示用户安装 Codex，或手动复制 `aika mcp config --host codex` 输出到 Codex 配置。
+
+### 验证方法
+
+配置生成验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp config --host codex
+```
+
+断言输出包含：
+
+- `[mcp_servers.aika]`
+- `command` 为 `uv` 的绝对路径，或打包安装后的 `aika`
+- `args` 包含 `mcp`
+- `startup_timeout_sec` 和 `tool_timeout_sec`
+- 源码运行时包含 `UV_CACHE_DIR`
+
+安装 dry-run 验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host codex --scope user --dry-run
+```
+
+断言：
+
+- 不修改真实 `~/.codex/config.toml`。
+- 输出包含 `codex mcp add aika`。
+- 输出中的命令能定位到 `uv` 或 `aika`。
+- 输出包含 `--env UV_CACHE_DIR=/tmp/uv-cache`，或说明打包安装模式无需该 env。
+
+用户级安装验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host codex --scope user --force
+codex mcp list --json
+codex
+/mcp
+```
+
+断言：
+
+- `codex mcp list --json` 中存在名为 `aika` 的 server。
+- Codex TUI 的 `/mcp` 页面能看到 `aika`。
+- `aika` server 可以完成初始化并列出 AIKA MCP tools。
+
+项目级安装验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp install --host codex --scope project --force
+sed -n '1,160p' .codex/config.toml
+```
+
+断言：
+
+- `.codex/config.toml` 中存在 `[mcp_servers.aika]`。
+- 文件中原有非 AIKA 配置没有被删除。
+- 在 Codex 信任该项目后，Codex CLI/IDE 能加载 `aika` server。
+
+doctor 验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run aika mcp doctor --host codex
+```
+
+断言：
+
+- 未安装 Codex CLI 时返回 warn/fail 和安装建议，而不是异常退出。
+- 未配置 `aika` 时给出 `aika mcp install --host codex --scope user` 修复建议。
+- 已配置但 MCP 启动失败时，输出可执行的 command/args 排查建议。
+
+单元测试建议：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_mcp_install.py
+```
+
+新增测试断言：
+
+- `build_mcp_config(host="codex")` 输出 Codex TOML 所需字段。
+- `install_mcp_server(host="codex", scope="user", dry_run=True)` 不调用真实 Codex CLI。
+- 已有 `aika` 且无 `--force` 时拒绝覆盖。
+- `--force` 时按 `get -> remove -> add` 顺序执行。
+- project scope 只替换 `[mcp_servers.aika]`，保留其他 TOML 配置。
+- `doctor` 对缺失 Codex CLI、缺失配置、MCP 启动失败分别给出明确状态。
+
+### 预期结果
+
+- 用户可以通过 `aika mcp install --host codex --scope user` 快速把 AIKA 接入 Codex。
+- AIKA 不再只提供 Claude Code 的一键接入路径。
+- Codex CLI 和 Codex IDE extension 可以复用同一份 `aika` MCP 配置。
+- 高级用户仍可以通过 `aika mcp config --host codex` 查看并手动复制 Codex TOML 配置。
+- 开发者可以用统一的 `aika mcp doctor --host ...` 诊断 Claude Code 和 Codex 两类宿主。
+- 未来继续新增其他宿主时，只需要扩展 host config、installer adapter 和 doctor adapter，不需要改 MCP Server 核心工具。
+
 ## Phase 4：编写 AIKA Skill
 
 ### 需求
@@ -825,6 +1041,227 @@ Skill 静态检查：
 - 证据引用不会被丢掉。
 - 合规边界明确。
 - Skill 可以和 MCP Server 独立迭代。
+
+## Phase 4.1：skills 打包与导入使用
+
+### 需求
+
+当前项目已经实现 Python 包构建、sample knowledge pack 打包，以及 Claude Code / Codex 的 MCP 一键配置；但 `skills/aika-research/` 仍停留在仓库源码目录中，没有随 wheel/sdist 进入发行包，也没有在安装 MCP 时自动导入到宿主 Agent 的 skills 搜索路径。因此用户即使完成：
+
+```bash
+pip install aika-research-mcp
+aika mcp install --host claude-code --scope user
+aika mcp install --host codex --scope user
+```
+
+宿主 Agent 也只能看到 AIKA MCP tools，不一定会加载 `aika-research` Skill，更不会自动获得工具路由、证据引用和合规边界这些使用规则。
+
+用户视角需求：
+
+- 用户安装 PyPI 包后，不需要手动复制 `skills/aika-research/SKILL.md`。
+- 一条命令可以同时完成 MCP Server 注册和 Skill 导入。
+- Claude Code、Codex 等宿主 Agent 能发现并使用 `aika-research` Skill。
+- 用户可以显式调用 `$aika-research`，也可以在 AI 算力产业链投研问题中触发隐式使用。
+
+开发视角需求：
+
+- `skills/aika-research/` 必须进入 wheel 和 sdist。
+- CLI 需要能定位包内 Skill 模板，并复制到目标宿主的用户级或项目级 skills 目录。
+- `aika doctor` / `aika mcp doctor` 需要检查 Skill 是否已安装、版本是否匹配、MCP 依赖是否已配置。
+- Skill 安装必须幂等；默认不覆盖用户改过的 Skill，除非传入 `--force`。
+
+### 核心逻辑
+
+打包层：
+
+- 在 `pyproject.toml` 中把 `skills/aika-research` 纳入构建产物。
+- 推荐将源码目录保持为：
+
+```text
+skills/aika-research/
+  SKILL.md
+  agents/
+    openai.yaml
+```
+
+- wheel 内可以映射到包内资源目录，例如：
+
+```toml
+[tool.hatch.build.targets.wheel.force-include]
+"data/knowledge_packs/sample" = "aika/aika_core/bundled_sample"
+"skills/aika-research" = "aika/bundled_skills/aika-research"
+```
+
+- sdist 也需要包含：
+
+```toml
+[tool.hatch.build.targets.sdist]
+include = [
+    "/aika",
+    "/skills/aika-research",
+    "/data/knowledge_packs/sample",
+    "/scripts/build_sample_pack.py",
+    "/README.md",
+    "/pyproject.toml",
+]
+```
+
+资源定位层：
+
+- 新增包内 Skill resolver，例如：
+
+```text
+aika/aika_cli/skills.py
+```
+
+- 使用 `importlib.resources.files("aika").joinpath("bundled_skills/aika-research")` 定位 wheel 内 Skill。
+- 本地源码开发模式下也允许 fallback 到仓库根目录 `skills/aika-research`。
+
+CLI 层：
+
+建议新增命令：
+
+```bash
+aika skill list
+aika skill install --host codex --scope user
+aika skill install --host codex --scope project
+aika skill install --host claude-code --scope user
+aika skill doctor --host codex
+aika skill doctor --host claude-code
+```
+
+并扩展现有 MCP 安装命令：
+
+```bash
+aika mcp install --host codex --scope user --with-skill
+aika mcp install --host claude-code --scope user --with-skill
+```
+
+安装行为：
+
+```text
+aika skill install
+  -> 定位包内 aika-research Skill
+  -> 解析目标 host 和 scope
+  -> 计算宿主 Agent 的 skills 目录
+  -> 检查目标目录是否已有 aika-research
+  -> 无冲突时复制 SKILL.md 与 agents/openai.yaml
+  -> 写入 AIKA 管理标记或 manifest
+  -> doctor 校验 Skill 文件、MCP server 名称和依赖声明
+```
+
+目录策略：
+
+- Codex user scope：安装到 Codex 用户级 skills 目录，具体路径由 Codex 配置或 `CODEX_HOME` 推导。
+- Codex project scope：安装到当前项目的 `.codex/skills/aika-research/`。
+- Claude Code user scope：安装到 Claude Code 用户级 skills 目录，具体路径由 Claude Code 配置或官方约定目录推导。
+- 如果宿主没有标准 Skill 目录或当前版本不支持 Skill 导入，`doctor` 输出明确 warning，并保留手动复制路径。
+
+覆盖策略：
+
+- 默认：如果目标 `SKILL.md` 已存在且内容不同，停止并提示使用 `--force`。
+- `--dry-run`：只打印将复制的源路径、目标路径和文件列表。
+- `--force`：只覆盖 AIKA 自己管理的 `aika-research` Skill，不删除用户其他 Skill。
+
+Skill 与 MCP 绑定：
+
+- `agents/openai.yaml` 中继续声明依赖 `mcp:aika`。
+- `aika skill doctor` 检查宿主 MCP 配置里是否存在名为 `aika` 的 server。
+- 如果 Skill 已安装但 MCP 未配置，提示用户运行：
+
+```bash
+aika mcp install --host <host> --scope <scope>
+```
+
+### 验证方法
+
+源码包内容验证：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv build
+python -m zipfile -l dist/*.whl | grep 'aika/bundled_skills/aika-research/SKILL.md'
+tar -tf dist/*.tar.gz | grep 'skills/aika-research/SKILL.md'
+```
+
+本地 wheel 安装验证：
+
+```bash
+python -m venv /tmp/aika-skill-smoke
+/tmp/aika-skill-smoke/bin/pip install dist/*.whl
+/tmp/aika-skill-smoke/bin/aika skill list
+/tmp/aika-skill-smoke/bin/aika skill install --host codex --scope project --dry-run
+/tmp/aika-skill-smoke/bin/aika skill doctor --host codex
+```
+
+Codex 项目级验证：
+
+```bash
+aika mcp install --host codex --scope project --with-skill
+test -f .codex/skills/aika-research/SKILL.md
+test -f .codex/skills/aika-research/agents/openai.yaml
+codex
+```
+
+在 Codex 中验证：
+
+```text
+使用 $aika-research 分析液冷产业链，要求保留 citation id。
+```
+
+预期行为：
+
+- Codex 能识别 `aika-research` Skill。
+- Codex 会调用名为 `aika` 的 MCP server。
+- 输出包含 Skill 约定的章节和 citation id。
+
+Claude Code 验证：
+
+```bash
+aika mcp install --host claude-code --scope user --with-skill --dry-run
+aika skill install --host claude-code --scope user
+aika skill doctor --host claude-code
+claude
+```
+
+在 Claude Code 中验证：
+
+```text
+用 AIKA 比较中际旭创和新易盛在光模块上的差异，必须说明证据缺口。
+```
+
+预期行为：
+
+- Claude Code 能加载 AIKA Skill，或 doctor 能明确说明当前宿主版本不支持自动导入 Skill。
+- 若 Skill 可用，宿主 Agent 优先调用 `compare_companies`，并保留证据引用。
+
+自动化测试建议：
+
+```bash
+UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_skill_packaging.py
+```
+
+测试断言：
+
+- wheel 内存在 `aika/bundled_skills/aika-research/SKILL.md`。
+- `aika skill list` 能列出 `aika-research`。
+- `--dry-run` 不写文件。
+- project scope 会生成 `.codex/skills/aika-research/SKILL.md`。
+- 已存在不同内容时不覆盖，并返回可读错误。
+- `--force` 只覆盖 `aika-research`，不影响其他 skills。
+
+### 预期结果
+
+- `pip install aika-research-mcp` 后，AIKA 的 MCP Server、sample knowledge pack 和 `aika-research` Skill 都随发行包可用。
+- 用户可以用一条命令完成宿主接入：
+
+```bash
+aika mcp install --host codex --scope user --with-skill
+aika mcp install --host claude-code --scope user --with-skill
+```
+
+- 宿主 Agent 不仅能调用 MCP tools，还能按 Skill 规则主动选择工具、保留 citation id、输出证据缺口，并拒绝买卖建议、目标价和收益预测。
+- `aika doctor` 能同时报告 sample data、SQLite index、MCP server 和 Skill 安装状态。
+- 后续新增其他宿主时，只需要新增 Skill 安装 adapter，不需要改 `aika-research/SKILL.md` 的核心内容。
 
 ## Phase 5：打包、命令行与安装体验
 
@@ -1185,22 +1622,22 @@ UV_CACHE_DIR=/tmp/uv-cache uv run python -m aika.aika_cli validate-data --path p
 - 数据来源和限制清晰。
 - 后续可以发布更大的 public pack。
 
-## Phase 7：保留 Full Stack Web 专业版
+## Phase 7：保留本地 Web 开发版
 
 ### 需求
 
-Web 版不作为第一公开入口，但现有 FastAPI + React + PostgreSQL + Neo4j 能力仍有价值，适合自用、演示、企业私有部署。
+Web 版不作为第一公开入口，也不作为公网多用户产品。现有 FastAPI + React 能力主要用于本地功能测试、调试、演示和开发联调；企业私有部署可以作为后续 Full Stack 专业版方向单独规划。
 
 用户视角需求：
 
 - 普通插件用户不被要求启动 Web/Docker。
-- 专业部署用户仍有完整工作台。
+- 开发者可以在本地启动 Web，快速验证检索、证据卡、反馈、claim review 等功能。
 
 开发视角需求：
 
 - README 明确区分 Local MCP 版和 Full Stack 版。
-- Web 版补齐基础安全。
-- Docker Compose 只服务专业版路径。
+- Web 版默认只面向本机开发测试。
+- Docker Compose 只作为可选开发/专业部署路径。
 
 ### 核心逻辑
 
@@ -1212,14 +1649,19 @@ Quick Start: Local MCP
   -> aika init --sample
   -> aika mcp
 
-Full Stack Deployment
+Local Web Development
+  -> start FastAPI on 127.0.0.1
+  -> start Vite dev server
+  -> query / evidence cards / claim review / feedback smoke
+
+Optional Full Stack / Professional Deployment
   -> docker compose up
   -> migrate postgres
   -> bootstrap retrieval
-  -> web/API
+  -> web/API with separate production hardening
 ```
 
-Web 专业版必须补：
+本地 Web 开发版当前不要求实现：
 
 - 登录或 API token。
 - 会话隔离。
@@ -1228,308 +1670,42 @@ Web 专业版必须补：
 - 生产环境 CORS 配置。
 - 日志脱敏。
 
+原因：
+
+- Web 版仅用于本地测试功能，不作为公开版主入口。
+- 单机本地调试场景下，上述能力会显著增加实现和维护成本，但对当前验证 MCP/Skill 核心能力帮助有限。
+- 公开版安全边界主要依赖本地优先、默认不上传、显式脱敏导出。
+
+如果未来要把 Web 版作为企业私有部署或公网服务，再新增 Production Web Hardening 阶段，补齐：
+
+- 登录或 API token。
+- 多用户会话隔离。
+- feedback/claim review 权限控制。
+- rate limit。
+- 生产环境 CORS allowlist。
+- 日志脱敏和审计日志策略。
+
 ### 验证方法
 
 文档验证：
 
 - README 首页优先展示 Local MCP。
-- Full Stack 被明确标注为专业部署。
+- Web 被明确标注为本地开发/功能测试入口。
 - 用户不会误以为必须启动 Docker 才能试用。
 
-安全 smoke：
+本地 Web smoke：
 
-- 未认证用户不能 delete conversation。
-- 未认证用户不能 review claim。
-- guest 用户只能读 demo 数据或创建自己的临时会话。
+- 本地启动 API 和前端后，可以完成一次 query。
+- 可以查看证据卡、claim review 页面或对应调试信息。
+- 可以提交一条本地 feedback。
+- README 明确提醒：不要把本地 Web 开发版直接暴露到公网。
 
 ### 预期结果
 
-- 项目同时保留插件化和完整 Web 两条路径。
+- 项目同时保留插件化和本地 Web 调试两条路径。
 - 公开传播主路径更轻。
-- 专业部署能力不被丢弃。
+- 生产化 Web 安全需求被推迟到真正需要部署时处理。
 
-## Phase 8：反馈与测评闭环
-
-### 需求
-
-MCP/Skill 安装后，用户的使用发生在自己的 Agent 软件和本地知识库中。AIKA 不能默认收集用户对话，也不能假设有公网服务接收反馈。因此反馈与测评系统要采用“本地优先、显式授权、可脱敏导出”的设计。
-
-用户视角需求：
-
-- 用户可以在 Agent 中直接提交一次回答的反馈。
-- 用户可以本地运行 smoke/eval，判断 AIKA 是否安装正确、检索是否有效、证据引用是否可靠。
-- 用户可以选择导出脱敏反馈包，用于 GitHub issue、邮件或后续远程上传。
-- 默认不上传完整对话、不上传 API key、不上传本地私有路径、不上传完整研报原文。
-
-开发视角需求：
-
-- 反馈数据要结构化，便于后续分析。
-- 评测结果要可复现，包含版本、知识包、工具调用摘要和指标。
-- 出错时能快速定位是安装问题、索引问题、MCP 问题、知识包问题还是 Agent 调用问题。
-- 反馈闭环要能同时服务公开版 MCP 和未来 Full Stack 专业版。
-
-### 核心逻辑
-
-反馈闭环分三层：
-
-```text
-本地反馈 JSONL
-  -> 本地评测 eval_runs
-  -> 脱敏导出 feedback bundle
-```
-
-#### 8.1 本地反馈
-
-新增本地反馈存储：
-
-```text
-~/.aika/
-  feedback/
-    feedback.jsonl
-  eval_runs/
-    eval_*.json
-  exports/
-    aika_feedback_bundle_*.zip
-```
-
-MCP tool：
-
-```text
-submit_feedback
-list_feedback
-export_feedback_bundle
-```
-
-CLI：
-
-```bash
-aika feedback submit
-aika feedback list
-aika feedback export --redact
-```
-
-反馈字段建议：
-
-```json
-{
-  "feedback_id": "fb_xxx",
-  "created_at": "2026-06-17T17:30:00",
-  "task_id": "task_xxx",
-  "tool_name": "run_research_task",
-  "question": "液冷产业链有哪些上市公司？",
-  "answer_hash": "sha256_xxx",
-  "rating": 3,
-  "helpful": true,
-  "evidence_supported": false,
-  "wrong_citation": false,
-  "missing_evidence": "缺少英维克液冷订单证据",
-  "note": "结论可用，但证据不够强",
-  "citation_ids": ["E1", "E2"],
-  "aika_version": "0.1.0",
-  "knowledge_pack": "sample-2026-06",
-  "consent_to_export": false
-}
-```
-
-默认策略：
-
-- 默认只写本地。
-- 默认不上传。
-- 默认不保存完整 answer，只保存 `answer_hash`、citation ids 和用户主动输入的 note。
-- 如果用户选择保存完整对话，需要显式参数：`--include-conversation`。
-
-#### 8.2 本地测评
-
-新增 CLI：
-
-```bash
-aika eval --suite smoke
-aika eval --suite retrieval
-aika eval --suite agent
-```
-
-MCP tool：
-
-```text
-run_eval
-aika_status
-aika_doctor
-```
-
-评测 suite 设计：
-
-- `smoke`：检查 MCP tools 是否可启动、sample query 是否返回结果。
-- `retrieval`：检查 `search_evidence`、`search_claims` 是否能命中 benchmark 的 citation/claim。
-- `agent`：检查 `run_research_task` 是否能生成结构化结果、证据卡、缺口提示。
-
-核心指标：
-
-- `tool_success_rate`
-- `retrieval_hit_rate`
-- `citation_validity`
-- `unsupported_claim_rate`
-- `missing_evidence_rate`
-- `empty_result_rate`
-- `latency_ms_p50`
-- `latency_ms_p95`
-- `agent_task_completion_rate`
-
-评测输出：
-
-```json
-{
-  "run_id": "eval_20260617_xxx",
-  "created_at": "2026-06-17T17:30:00",
-  "suite": "smoke",
-  "aika_version": "0.1.0",
-  "knowledge_pack": "sample-2026-06",
-  "summary": {
-    "cases": 5,
-    "tool_success_rate": 1.0,
-    "retrieval_hit_rate": 0.8,
-    "citation_validity": 1.0,
-    "empty_result_rate": 0.0
-  },
-  "failures": []
-}
-```
-
-#### 8.3 脱敏导出
-
-新增命令：
-
-```bash
-aika feedback export --redact --since 7d --output aika_feedback_bundle.zip
-aika issue-template --from aika_feedback_bundle.zip
-```
-
-脱敏包包含：
-
-- AIKA 版本。
-- Python 版本。
-- OS 信息。
-- knowledge pack 名称和 hash。
-- MCP tool 列表。
-- `aika doctor` 结果。
-- eval summary。
-- feedback note。
-- 错误栈。
-- citation ids。
-
-脱敏包默认不包含：
-
-- API key。
-- 完整用户对话。
-- 完整模型回答。
-- 本地绝对路径。
-- 原始 PDF。
-- 长篇 evidence 原文。
-
-如未来增加远程反馈服务，必须显式确认：
-
-```bash
-aika feedback upload --redact --confirm
-```
-
-#### 8.4 GitHub issue 模板
-
-生成 issue 内容：
-
-```bash
-aika issue-template --latest
-```
-
-模板结构：
-
-- 问题类型：安装 / MCP 启动 / 检索为空 / 引用错误 / 回答不稳定 / 数据缺失。
-- 复现步骤。
-- 期望结果。
-- 实际结果。
-- `aika doctor` 摘要。
-- eval run id。
-- feedback bundle 是否已附加。
-
-### 验证方法
-
-命令验证：
-
-```bash
-aika doctor
-aika eval --suite smoke
-aika feedback submit --rating 3 --note "引用不够强" --citation-ids E1,E2
-aika feedback list
-aika feedback export --redact --output /tmp/aika_feedback_bundle.zip
-aika issue-template --from /tmp/aika_feedback_bundle.zip
-```
-
-MCP 验证：
-
-- 宿主 Agent 能调用 `aika_status`。
-- 宿主 Agent 能调用 `aika_doctor`。
-- 宿主 Agent 能调用 `run_eval`。
-- 宿主 Agent 能调用 `submit_feedback`。
-- 宿主 Agent 能调用 `export_feedback_bundle`。
-
-单元测试建议：
-
-```bash
-UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q tests/test_aika_feedback.py tests/test_aika_eval_cli.py
-```
-
-测试断言：
-
-- `submit_feedback` 会追加 JSONL。
-- feedback id 唯一。
-- 空 note、非法 rating、非法 citation ids 会返回明确错误。
-- `aika eval --suite smoke` 生成 eval run 文件。
-- `export --redact` 不包含 API key、本地绝对路径、完整 answer。
-- issue template 能从 eval/feedback 生成 Markdown。
-
-人工验收场景：
-
-场景 1：用户觉得回答证据不足。
-
-```text
-这次 AIKA 回答证据不充分，帮我提交反馈：缺少英维克液冷订单证据。
-```
-
-预期：
-
-- Agent 调用 `submit_feedback`。
-- 本地 `feedback.jsonl` 增加一条记录。
-- 不发生远程上传。
-
-场景 2：用户说 AIKA 检索不到结果。
-
-```text
-帮我检查 AIKA 为什么检索不到结果。
-```
-
-预期：
-
-- Agent 调用 `aika_doctor` 和 `run_eval`。
-- 返回是索引缺失、数据包缺失、MCP 未启动还是 query 无命中。
-
-场景 3：用户要向项目维护者反馈 bug。
-
-```text
-帮我导出一个脱敏反馈包。
-```
-
-预期：
-
-- Agent 调用 `export_feedback_bundle`。
-- 生成 zip。
-- 明确提示用户自行检查后再提交。
-
-### 预期结果
-
-- 用户可以在不离开 Agent 的情况下提交反馈。
-- 所有反馈默认保存在本地，保护用户隐私。
-- 开发者可以通过脱敏反馈包复现问题。
-- 本地评测可以快速判断 MCP/Skill/知识包是否正常。
-- 公开版具备最小质量闭环，不依赖公网遥测。
-- 未来如接入远程反馈服务，也可以沿用同一套本地 JSONL/eval/export 格式。
 
 ## MVP 验收清单
 

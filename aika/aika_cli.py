@@ -88,6 +88,24 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--sample-size", type=int, default=20, help="Evidence rows to include in sample counts.")
     validate_parser.set_defaults(func=run_validate_data)
 
+    skill_parser = subparsers.add_parser("skill", help="List, install, or diagnose bundled AIKA skills.")
+    skill_subparsers = skill_parser.add_subparsers(dest="skill_command", required=True)
+
+    skill_list_parser = skill_subparsers.add_parser("list", help="List bundled AIKA skills.")
+    skill_list_parser.set_defaults(func=run_skill_list)
+
+    skill_install_parser = skill_subparsers.add_parser("install", help="Install AIKA skill into a host skill directory.")
+    skill_install_parser.add_argument("--host", default="codex", help="Skill host; supports codex and claude-code.")
+    skill_install_parser.add_argument("--scope", choices=["user", "project"], default="user", help="Host skill scope.")
+    skill_install_parser.add_argument("--force", action="store_true", help="Overwrite AIKA-managed files for this skill.")
+    skill_install_parser.add_argument("--dry-run", action="store_true", help="Print planned skill install without writing files.")
+    skill_install_parser.set_defaults(func=run_skill_install)
+
+    skill_doctor_parser = skill_subparsers.add_parser("doctor", help="Diagnose AIKA skill installation.")
+    skill_doctor_parser.add_argument("--host", default="codex", help="Skill host; supports codex and claude-code.")
+    skill_doctor_parser.add_argument("--scope", choices=["user", "project"], default="user", help="Host skill scope.")
+    skill_doctor_parser.set_defaults(func=run_skill_doctor)
+
     mcp_parser = subparsers.add_parser("mcp", help="Start or configure the AIKA MCP server.")
     mcp_parser.add_argument(
         "--transport",
@@ -98,19 +116,21 @@ def build_parser() -> argparse.ArgumentParser:
     mcp_parser.set_defaults(func=run_mcp)
     mcp_subparsers = mcp_parser.add_subparsers(dest="mcp_command")
 
-    mcp_config_parser = mcp_subparsers.add_parser("config", help="Print host MCP server JSON.")
-    mcp_config_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_config_parser = mcp_subparsers.add_parser("config", help="Print host MCP server config.")
+    mcp_config_parser.add_argument("--host", default="claude-code", help="MCP host; supports claude-code and codex.")
     mcp_config_parser.set_defaults(func=run_mcp_config)
 
     mcp_install_parser = mcp_subparsers.add_parser("install", help="Register AIKA with an MCP host.")
-    mcp_install_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_install_parser.add_argument("--host", default="claude-code", help="MCP host; supports claude-code and codex.")
     mcp_install_parser.add_argument("--scope", choices=["user", "project"], default="user", help="Host config scope.")
     mcp_install_parser.add_argument("--force", action="store_true", help="Replace an existing AIKA MCP server config.")
     mcp_install_parser.add_argument("--dry-run", action="store_true", help="Print config and commands without changing host config.")
+    mcp_install_parser.add_argument("--with-skill", action="store_true", help="Also install the bundled AIKA skill for this host.")
     mcp_install_parser.set_defaults(func=run_mcp_install)
 
     mcp_doctor_parser = mcp_subparsers.add_parser("doctor", help="Diagnose AIKA MCP and host configuration.")
-    mcp_doctor_parser.add_argument("--host", default="claude-code", help="MCP host; Phase 3.1 supports claude-code.")
+    mcp_doctor_parser.add_argument("--host", default="claude-code", help="MCP host; supports claude-code and codex.")
+    mcp_doctor_parser.add_argument("--scope", choices=["user", "project"], default="user", help="Host config and skill scope.")
     mcp_doctor_parser.add_argument("--home", default="", help="AIKA home directory; defaults to AIKA_HOME or ~/.aika.")
     mcp_doctor_parser.add_argument("--profile", default=DEFAULT_PROFILE, help="Knowledge profile name.")
     mcp_doctor_parser.set_defaults(func=run_mcp_doctor)
@@ -236,6 +256,48 @@ def run_validate_data(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def run_skill_list(args: argparse.Namespace) -> int:
+    from aika.aika_skills import list_bundled_skills
+
+    skills = list_bundled_skills()
+    if not skills:
+        print("No bundled AIKA skills found.")
+        return 1
+    for skill in skills:
+        description = f" - {skill.description}" if skill.description else ""
+        print(f"{skill.name}: {skill.source_path}{description}")
+    return 0
+
+
+def run_skill_install(args: argparse.Namespace) -> int:
+    from aika.aika_skills import AikaSkillError, format_skill_install_result, install_skill
+
+    try:
+        result = install_skill(
+            host=args.host,
+            scope=args.scope,
+            force=bool(args.force),
+            dry_run=bool(args.dry_run),
+        )
+    except AikaSkillError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(format_skill_install_result(result))
+    return result.exit_code
+
+
+def run_skill_doctor(args: argparse.Namespace) -> int:
+    from aika.aika_skills import AikaSkillError, format_skill_doctor_report, run_skill_doctor as diagnose_skill
+
+    try:
+        report = diagnose_skill(host=args.host, scope=args.scope)
+    except AikaSkillError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(format_skill_doctor_report(report))
+    return report.exit_code
+
+
 def run_mcp(args: argparse.Namespace) -> int:
     from aika.aika_mcp.server import run_server
 
@@ -244,10 +306,10 @@ def run_mcp(args: argparse.Namespace) -> int:
 
 
 def run_mcp_config(args: argparse.Namespace) -> int:
-    from aika.aika_mcp.host_configs import AikaMcpConfigError, build_mcp_config
+    from aika.aika_mcp.host_configs import AikaMcpConfigError, format_mcp_config
 
     try:
-        print_json(build_mcp_config(host=args.host))
+        print(format_mcp_config(host=args.host), end="")
     except AikaMcpConfigError as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -257,6 +319,7 @@ def run_mcp_config(args: argparse.Namespace) -> int:
 def run_mcp_install(args: argparse.Namespace) -> int:
     from aika.aika_mcp.host_configs import AikaMcpConfigError
     from aika.aika_mcp.installer import AikaMcpInstallError, format_install_result, install_mcp_server
+    from aika.aika_skills import AikaSkillError, format_skill_install_result, install_skill
 
     try:
         result = install_mcp_server(
@@ -269,13 +332,29 @@ def run_mcp_install(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     print(format_install_result(result))
-    return result.exit_code
+    if result.exit_code != 0 or not args.with_skill:
+        return result.exit_code
+
+    try:
+        skill_result = install_skill(
+            host=args.host,
+            scope=args.scope,
+            force=bool(args.force),
+            dry_run=bool(args.dry_run),
+        )
+    except AikaSkillError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print("")
+    print("AIKA skill install:")
+    print(format_skill_install_result(skill_result))
+    return skill_result.exit_code
 
 
 def run_mcp_doctor(args: argparse.Namespace) -> int:
     from aika.aika_mcp.doctor import format_doctor_report, run_mcp_doctor as diagnose_mcp
 
-    report = diagnose_mcp(host=args.host, home=args.home or None, profile=args.profile)
+    report = diagnose_mcp(host=args.host, scope=args.scope, home=args.home or None, profile=args.profile)
     print(format_doctor_report(report))
     return report.exit_code
 
@@ -319,6 +398,7 @@ def run_cli_doctor(
         _check_directory("index_dir", resolved_home / "indexes", "Run aika init."),
         _check_directory("logs_dir", resolved_home / "logs", "Run aika init."),
         _check_bundled_sample(),
+        _check_bundled_skill(),
         _check_sample_files(knowledge_dir),
         _check_sqlite_fts(),
         _check_sqlite_index(index_path),
@@ -372,6 +452,21 @@ def _check_bundled_sample() -> CliDoctorCheck:
         f"Sample source is incomplete: {', '.join(status.missing)}",
         "Reinstall aika-research-mcp or run from a source checkout that contains data/knowledge_packs/sample.",
     )
+
+
+def _check_bundled_skill() -> CliDoctorCheck:
+    from aika.aika_skills import AikaSkillError, resolve_bundled_skill
+
+    try:
+        source = resolve_bundled_skill()
+    except AikaSkillError as exc:
+        return CliDoctorCheck(
+            "bundled_skill",
+            STATUS_FAIL,
+            str(exc),
+            "Reinstall aika-research-mcp or rebuild the package with skills/aika-research included.",
+        )
+    return CliDoctorCheck("bundled_skill", STATUS_PASS, str(source))
 
 
 def _check_sample_files(knowledge_dir: Path) -> CliDoctorCheck:
