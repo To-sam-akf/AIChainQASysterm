@@ -77,13 +77,16 @@ def research_report(
     title_subject = subject_label(plan) or question[:36] or "AI 算力产业链"
     title = f"{title_subject}投研简报"
     sections = [
+        {"title": "一页结论", "content": markdown_executive_page(question, plan, cards, gaps)},
+        {"title": "证据覆盖审计", "content": markdown_coverage_audit(cards, gaps)},
         {"title": "核心判断", "content": core_judgment(cards, plan)},
+        {"title": "证据缺口", "content": markdown_gaps(gaps)},
         {"title": "技术机理", "content": bullet_lines(cards_by_type(cards, {"mechanism", "bottleneck", "trend"}), 4)},
         {"title": "产业传导", "content": industry_transmission(cards, graph_records)},
         {"title": "公司对比", "content": markdown_compare_table(company_compare_table(plan, cards, graph_records))},
         {"title": "风险清单", "content": markdown_risks(risk_checklist(plan, cards, graph_records))},
-        {"title": "证据缺口", "content": markdown_gaps(gaps)},
-        {"title": "证据索引", "content": markdown_evidence(cards, 8)},
+        {"title": "证据摘要", "content": markdown_evidence_summary(cards, 8)},
+        {"title": "证据附录", "content": markdown_evidence_appendix(cards, 8)},
     ]
     markdown = "\n\n".join(f"## {section['title']}\n{section['content']}" for section in sections)
     return {"title": title, "markdown": markdown, "sections": sections}
@@ -306,13 +309,106 @@ def markdown_gaps(rows: list[dict[str, str]]) -> str:
     return "\n".join(f"- {row['gap']} 建议：{row['suggested_source']}" for row in rows[:8])
 
 
-def markdown_evidence(cards: list[Any], limit: int) -> str:
+def markdown_executive_page(question: str, plan: Any, cards: list[Any], gaps: list[dict[str, str]]) -> str:
+    can_answer = executive_answerable_items(cards, plan)
+    cannot_answer = [str(row.get("gap") or "").strip() for row in gaps if str(row.get("gap") or "").strip()]
+    lines = ["### 本次报告能回答什么"]
+    if can_answer:
+        lines.extend(f"- {item}" for item in can_answer[:4])
+    else:
+        lines.append("- 当前证据不足，无法形成可验证结论。")
+    lines.append("")
+    lines.append("### 本次报告不能回答什么")
+    if cannot_answer:
+        lines.extend(f"- {short_text(item, 180)}" for item in cannot_answer[:5])
+    else:
+        lines.append("- 当前未识别出明确证据缺口；仍需回到证据附录核验来源和适用边界。")
+    lines.append("")
+    lines.append("### 当前报告适合的使用方式")
+    lines.append(f"- 研究问题：{short_text(question, 120)}")
+    lines.append("- 适合作为证据覆盖审计和初步研究简报使用；需要完整投研结论时，应补充缺口证据后再升级报告类型。")
+    return "\n".join(lines)
+
+
+def markdown_coverage_audit(cards: list[Any], gaps: list[dict[str, str]]) -> str:
+    coverage = agent_coverage_score(cards, gaps)
+    direct_cards = [card for card in cards if card_text_attr(card, "claim_type") == "company_exposure" and card_text_attr(card, "exposure_level") in {"core", "direct"}]
+    counter_cards = [card for card in cards if card_text_attr(card, "claim_type") in {"risk", "bottleneck"}]
+    return "\n".join(
+        [
+            f"- Coverage: {coverage:.0%}",
+            f"- Evidence Cards: {len(cards)}",
+            f"- Direct/Core Exposure Evidence: {len(direct_cards)}",
+            f"- Risk/Bottleneck Evidence: {len(counter_cards)}",
+            f"- Evidence Gaps: {len(gaps)}",
+            f"- Conclusion Usability: {agent_usability_label(coverage)}",
+        ]
+    )
+
+
+def executive_answerable_items(cards: list[Any], plan: Any) -> list[str]:
+    items: list[str] = []
+    core = core_judgment(cards, plan)
+    if core and "需要以证据包" not in core:
+        items.append(core)
+    for card in cards:
+        text = with_citation(short_text(card_text_attr(card, "evidence"), 150), card)
+        if text and text not in items:
+            items.append(text)
+        if len(items) >= 4:
+            break
+    return items
+
+
+def agent_coverage_score(cards: list[Any], gaps: list[dict[str, str]]) -> float:
+    if not cards:
+        return 0.0
+    denominator = max(len(cards) + len(gaps), 1)
+    return max(0.0, min(1.0, len(cards) / denominator))
+
+
+def agent_usability_label(score: float) -> str:
+    if score < 0.3:
+        return "Limited"
+    if score < 0.6:
+        return "Preliminary"
+    if score < 0.8:
+        return "Usable with caveats"
+    return "High"
+
+
+def markdown_evidence_summary(cards: list[Any], limit: int) -> str:
     if not cards:
         return "当前证据不足。"
     return "\n".join(
-        f"- {card_text_attr(card, 'citation_id') or 'E?'}：{format_source(card)}，{short_text(card_text_attr(card, 'evidence'), 140)}"
+        "- "
+        f"[{card_text_attr(card, 'citation_id') or 'E?'}] "
+        f"来源：{format_source(card) or '未标注'}；"
+        f"claim 类型：{CLAIM_TYPE_LABELS.get(card_text_attr(card, 'claim_type'), card_text_attr(card, 'claim_type') or 'unknown')}；"
+        f"敞口：{EXPOSURE_LABELS.get(card_text_attr(card, 'exposure_level'), card_text_attr(card, 'exposure_level') or '未分级')}；"
+        f"证据：{short_text(card_text_attr(card, 'evidence'), 120)}"
         for card in cards[:limit]
     )
+
+
+def markdown_evidence_appendix(cards: list[Any], limit: int) -> str:
+    if not cards:
+        return "当前证据不足。"
+    lines: list[str] = []
+    for card in cards[:limit]:
+        citation = card_text_attr(card, "citation_id") or "E?"
+        source = format_source(card) or "未标注"
+        lines.extend(
+            [
+                f"### [{citation}] {source}",
+                f"- 来源：{source}",
+                f"- Claim 类型：{CLAIM_TYPE_LABELS.get(card_text_attr(card, 'claim_type'), card_text_attr(card, 'claim_type') or 'unknown')}",
+                f"- 敞口级别：{EXPOSURE_LABELS.get(card_text_attr(card, 'exposure_level'), card_text_attr(card, 'exposure_level') or '未分级')}",
+                f"- 证据原文：{short_text(card_text_attr(card, 'evidence'), 360) or '未提供。'}",
+                "",
+            ]
+        )
+    return "\n".join(lines).strip()
 
 
 def ordered_companies(plan: Any, cards: list[Any], graph_records: list[dict[str, Any]]) -> list[str]:

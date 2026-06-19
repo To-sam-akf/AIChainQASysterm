@@ -29,8 +29,12 @@ Default routes:
 
 ## Evidence Rules
 
+- Evidence cards are the core UX, not appendix-style citations. Put the relevant evidence card summary next to each core conclusion.
+- When MCP returns `conclusions` and `evidence_links`, organize the answer from those structures first; use `evidence_cards` to fill source details.
 - Preserve every returned `citation_id` exactly in the answer, such as `[E1]`; never renumber or drop it.
 - Base every core factual conclusion on returned evidence cards, claims, graph edges, or brief sections.
+- Do not put all citation ids only at the end. Each conclusion needs adjacent evidence cards when available.
+- For each evidence card, keep source title, date or `freshness_status`/时效, page or section, claim type, confidence, and counter-evidence status.
 - If retrieval returns no usable support, write "当前证据不足" and list the missing evidence; do not turn absent evidence into a confirmed fact.
 - Treat `citation_status: uncited` or missing `citation_id` as weak support. Label it as "未编号证据" or place it in evidence gaps.
 - Keep source titles/pages when returned and useful, but do not quote long passages.
@@ -40,13 +44,18 @@ Default routes:
 Answer in Chinese with these stable sections:
 
 1. 核心判断
-2. 证据
+2. 证据卡片
 3. 产业链传导
 4. 公司差异
 5. 风险与反证
 6. 证据缺口
 
 If a section has no support, keep the section and state "当前证据不足". For concise user requests, keep each section short.
+
+Conclusion format:
+
+- 结论 Cx：one concise finding.
+- 证据卡片：`[E1]` source/date/page or section/claim type/confidence/freshness_status/counter_evidence_status.
 
 ## Compliance Boundary
 

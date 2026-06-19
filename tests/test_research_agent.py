@@ -52,6 +52,13 @@ def test_research_outputs_include_report_table_risks_and_gaps() -> None:
     )
 
     assert "投研简报" in outputs["report"]["title"]
+    section_titles = [section["title"] for section in outputs["report"]["sections"]]
+    assert section_titles[:4] == ["一页结论", "证据覆盖审计", "核心判断", "证据缺口"]
+    assert section_titles[-2:] == ["证据摘要", "证据附录"]
+    assert "证据索引" not in section_titles
+    assert "## 一页结论" in outputs["report"]["markdown"]
+    assert "## 证据覆盖审计" in outputs["report"]["markdown"]
+    assert "## 证据附录" in outputs["report"]["markdown"]
     assert outputs["verification"]["status"] == "pass"
     assert len(outputs["company_compare_table"]["rows"]) == 2
     assert outputs["risk_checklist"][0]["priority"] == "高"

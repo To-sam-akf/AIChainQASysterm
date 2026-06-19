@@ -42,6 +42,10 @@ def test_aika_skill_preserves_citations_and_handles_missing_evidence() -> None:
     text = _skill_text()
 
     assert "citation_id" in text
+    assert "证据卡片" in text
+    assert "conclusions" in text
+    assert "evidence_links" in text
+    assert "freshness_status" in text or "时效" in text
     assert "Preserve" in text or "保留" in text
     assert "当前证据不足" in text
     assert "do not turn absent evidence into a confirmed fact" in text

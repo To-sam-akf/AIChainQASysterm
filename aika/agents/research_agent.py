@@ -177,7 +177,7 @@ def normalize_research_brief_question(goal: str) -> str:
         return goal
     return (
         f"请围绕“{goal}”生成投研简报，覆盖核心判断、技术机理、产业传导、"
-        "公司排序、领先指标、风险反证、证据索引和证据缺口。"
+        "公司排序、领先指标、风险反证、证据摘要、证据附录和证据缺口。"
     )
 
 
@@ -187,7 +187,7 @@ def normalize_company_compare_question(goal: str) -> str:
         return ""
     return (
         f"请围绕“{goal}”生成公司对比任务，覆盖业务卡位、共同驱动、"
-        "差异点、领先指标、风险差异、证据索引和证据缺口。"
+        "差异点、领先指标、风险差异、证据摘要、证据附录和证据缺口。"
     )
 
 
@@ -207,7 +207,7 @@ def normalize_risk_review_question(goal: str) -> str:
         return ""
     return (
         f"请围绕“{goal}”生成风险审查任务，覆盖主要风险、反证、不确定性、"
-        "影响范围、跟踪指标、证据索引和证据缺口。"
+        "影响范围、跟踪指标、证据摘要、证据附录和证据缺口。"
     )
 
 
