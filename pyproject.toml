@@ -1,6 +1,6 @@
 [project]
 name = "aika-research-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Evidence-driven AI compute industry-chain research MCP server and local SQLite CLI."
 readme = "README.md"
 requires-python = ">=3.11"
