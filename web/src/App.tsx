@@ -66,6 +66,11 @@ import type {
   GraphSubgraph,
   GraphSummary,
   ClaimReviewRequest,
+  CompanyCoverageHeatmapChart,
+  EvidenceStrengthBarChart,
+  FlowMapChart,
+  FreshnessTimelineChart,
+  ReportCharts,
   ResearchOutputs,
   VerificationResult
 } from "./types";
@@ -2240,12 +2245,14 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
   const outputs = props.outputs;
   if (!outputs) return <div className="empty-table">当前回答没有生成投研产物</div>;
   const report = outputs.report;
+  const charts = report?.spec?.charts;
   const table = outputs.company_compare_table;
   const risks = outputs.risk_checklist ?? [];
   const gaps = outputs.evidence_gaps ?? [];
   return (
     <div className="research-output">
       <TaskOutputsView outputs={outputs.task_outputs} />
+      <ReportChartsView charts={charts} />
       <section className="research-section">
         <div className="research-section-title">
           <FileText size={16} />
@@ -2287,6 +2294,221 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
       </section>
     </div>
   );
+}
+
+function ReportChartsView(props: { charts?: ReportCharts }) {
+  const charts = props.charts;
+  if (!charts) return null;
+  const hasChartData =
+    Boolean(charts.company_coverage_heatmap?.cells?.length) ||
+    Boolean(charts.evidence_strength_bar?.counts && Object.values(charts.evidence_strength_bar.counts).some(Boolean)) ||
+    Boolean(charts.flow_map?.links?.length) ||
+    Boolean(charts.source_freshness_timeline?.items?.length);
+  if (!hasChartData) return null;
+  return (
+    <section className="research-section report-chart-section">
+      <div className="research-section-title">
+        <BarChart3 size={16} />
+        <span>证据覆盖图表</span>
+      </div>
+      <div className="report-chart-grid">
+        <EvidenceStrengthChart chart={charts.evidence_strength_bar} />
+        <FreshnessTimelineChartView chart={charts.source_freshness_timeline} />
+        <CompanyHeatmapChart chart={charts.company_coverage_heatmap} />
+        <FlowMapChartView chart={charts.flow_map} />
+      </div>
+    </section>
+  );
+}
+
+function EvidenceStrengthChart(props: { chart?: EvidenceStrengthBarChart }) {
+  const counts = props.chart?.counts ?? {};
+  const entries = Object.entries(counts).filter(([, value]) => Number(value) > 0);
+  if (!entries.length) return <ChartEmpty title={props.chart?.title ?? "证据强度柱状图"} message={props.chart?.empty_message} />;
+  const max = Math.max(...entries.map(([, value]) => Number(value)), 1);
+  const labels: Record<string, string> = {
+    direct: "直接证据",
+    indirect: "间接证据",
+    mentioned: "仅提及",
+    unsupported: "未支撑",
+    no_evidence: "无证据"
+  };
+  return (
+    <article className="report-chart-card">
+      <div className="report-chart-head">
+        <strong>{props.chart?.title ?? "证据强度柱状图"}</strong>
+        <span>Evidence quality</span>
+      </div>
+      <div className="evidence-bar-chart">
+        {entries.map(([key, value]) => (
+          <div className="evidence-bar-row" key={key}>
+            <span>{labels[key] ?? key}</span>
+            <div>
+              <i style={{ width: `${Math.max((Number(value) / max) * 100, 7)}%` }} />
+            </div>
+            <b>{value}</b>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function FreshnessTimelineChartView(props: { chart?: FreshnessTimelineChart }) {
+  const items = props.chart?.items ?? [];
+  if (!items.length) return <ChartEmpty title={props.chart?.title ?? "Source freshness timeline"} message={props.chart?.empty_message} />;
+  const max = Math.max(...items.map((item) => Number(item.count)), 1);
+  return (
+    <article className="report-chart-card">
+      <div className="report-chart-head">
+        <strong>{props.chart?.title ?? "Source freshness timeline"}</strong>
+        <span>Source age</span>
+      </div>
+      <div className="freshness-timeline-chart">
+        {items.map((item) => (
+          <div className={`freshness-year ${item.freshness || "unknown"}`} key={item.year}>
+            <span>{item.year}</span>
+            <div>
+              <i style={{ height: `${Math.max((Number(item.count) / max) * 100, 12)}%` }} />
+            </div>
+            <b>{item.count}</b>
+            <em>{freshnessLabel(item.freshness)}</em>
+          </div>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function CompanyHeatmapChart(props: { chart?: CompanyCoverageHeatmapChart }) {
+  const chart = props.chart;
+  const rows = chart?.rows ?? [];
+  const columns = chart?.columns ?? [];
+  const cells = chart?.cells ?? [];
+  if (!rows.length || !columns.length || !cells.length) return <ChartEmpty title={chart?.title ?? "公司覆盖热力图"} message={chart?.empty_message} />;
+  const cellMap = new Map(cells.map((cell) => [`${cell.company}\u0000${cell.segment}`, cell]));
+  return (
+    <article className="report-chart-card wide">
+      <div className="report-chart-head">
+        <strong>{chart?.title ?? "公司覆盖热力图"}</strong>
+        <span>0 无证据 · 5 高覆盖</span>
+      </div>
+      <div className="heatmap-wrap">
+        <table className="coverage-heatmap">
+          <thead>
+            <tr>
+              <th>公司</th>
+              {columns.map((column) => <th key={column}>{column}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row}>
+                <th>{row}</th>
+                {columns.map((column) => {
+                  const cell = cellMap.get(`${row}\u0000${column}`);
+                  const score = clampNumber(Number(cell?.score ?? 0), 0, 5);
+                  return (
+                    <td key={column}>
+                      <span className={`heatmap-score score-${score}`} title={`${cell?.reason || "无证据"} ${cell?.evidence_ids?.join("、") || ""}`}>
+                        {score}
+                      </span>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  );
+}
+
+function FlowMapChartView(props: { chart?: FlowMapChart }) {
+  const chart = props.chart;
+  const links = (chart?.links ?? []).slice(0, 8);
+  if (!links.length) return <ChartEmpty title={chart?.title ?? "Evidence-weighted supply chain map"} message={chart?.empty_message} />;
+  const max = Math.max(...links.map((link) => Number(link.value)), 1);
+  const nodes = flowNodes(links);
+  return (
+    <article className="report-chart-card wide">
+      <div className="report-chart-head">
+        <strong>{chart?.title ?? "Evidence-weighted supply chain map"}</strong>
+        <span>Evidence weighted</span>
+      </div>
+      <div className="flow-map-chart">
+        <svg viewBox="0 0 760 260" role="img" aria-label={chart?.title ?? "Evidence-weighted supply chain map"}>
+          {links.map((link, index) => {
+            const source = nodes.get(link.source) ?? { x: 40, y: 40 };
+            const target = nodes.get(link.target) ?? { x: 720, y: 220 };
+            const width = 2 + (Number(link.value) / max) * 8;
+            return (
+              <path
+                d={`M ${source.x + 112} ${source.y} C ${source.x + 230} ${source.y}, ${target.x - 150} ${target.y}, ${target.x - 14} ${target.y}`}
+                key={`${link.source}-${link.target}-${index}`}
+                strokeWidth={width}
+              />
+            );
+          })}
+          {Array.from(nodes.entries()).map(([id, point]) => (
+            <g className="flow-node" key={id}>
+              <rect x={point.x} y={point.y - 18} width="132" height="36" rx="8" />
+              <text x={point.x + 10} y={point.y + 4}>{shortSvgLabel(id)}</text>
+            </g>
+          ))}
+        </svg>
+        <div className="flow-link-list">
+          {links.slice(0, 5).map((link) => (
+            <span key={`${link.source}-${link.target}`}>
+              {`${link.source} -> ${link.target} · ${link.value}`}
+            </span>
+          ))}
+        </div>
+        <p>{chart?.caption ?? "线条粗细代表 AIKA 本地证据数量/强度，不代表市场规模或收入占比。"}</p>
+      </div>
+    </article>
+  );
+}
+
+function ChartEmpty(props: { title: string; message?: string }) {
+  return (
+    <article className="report-chart-card empty">
+      <div className="report-chart-head">
+        <strong>{props.title}</strong>
+        <span>No chart data</span>
+      </div>
+      <div className="empty-table">{props.message || "当前证据不足"}</div>
+    </article>
+  );
+}
+
+function freshnessLabel(value: string) {
+  return { fresh: "新鲜", aging: "较旧", stale: "过期", unknown: "未知" }[value] ?? value;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  if (!Number.isFinite(value)) return min;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function flowNodes(links: Array<{ source: string; target: string }>) {
+  const sources = Array.from(new Set(links.map((link) => link.source)));
+  const targets = Array.from(new Set(links.map((link) => link.target).filter((target) => !sources.includes(target))));
+  const nodes = new Map<string, { x: number; y: number }>();
+  const sourceStep = 200 / Math.max(sources.length, 1);
+  sources.forEach((source, index) => nodes.set(source, { x: 26, y: 40 + sourceStep * index }));
+  const targetStep = 200 / Math.max(targets.length, 1);
+  targets.forEach((target, index) => nodes.set(target, { x: 596, y: 40 + targetStep * index }));
+  if (!targets.length && sources.length) {
+    Array.from(new Set(links.map((link) => link.target))).forEach((target, index) => nodes.set(target, { x: 596, y: 40 + targetStep * index }));
+  }
+  return nodes;
+}
+
+function shortSvgLabel(value: string) {
+  const text = String(value || "");
+  return text.length > 12 ? `${text.slice(0, 11)}…` : text;
 }
 
 const CONFLICT_TYPE_LABELS: Record<string, string> = {

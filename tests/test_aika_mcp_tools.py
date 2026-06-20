@@ -7,6 +7,37 @@ import aika.llm_client as llm_client
 from aika.aika_mcp import tools
 from aika.aika_mcp.schemas import request_schema_catalog
 from aika.aika_mcp.server import create_server, registered_tool_names
+from aika.report import PdfRenderError
+from aika.report.spec import AppendixSpec, ChartsSpec, CoverageSpec, ExecutiveSummarySpec, ReportSpec
+
+
+def sample_report_spec() -> dict:
+    return ReportSpec(
+        report_type="evidence_coverage_audit",
+        topic="液冷产业链",
+        title="液冷产业链证据覆盖审计报告",
+        report_type_label="证据覆盖审计报告",
+        usability="Limited",
+        coverage=CoverageSpec(
+            coverage_score=0.15,
+            direct_claims=0,
+            indirect_claims=1,
+            mentioned_claims=1,
+            unsupported_claims=3,
+            covered_companies=1,
+            target_companies=9,
+            direct_claim_ratio=0.0,
+            company_coverage=1 / 9,
+            freshness_status="aging",
+        ),
+        executive_summary=ExecutiveSummarySpec(
+            can_answer=["当前证据只能支持以下有限判断：液冷存在成本不确定性 [E1]"],
+            cannot_answer=["不能回答完整公司排序。"],
+            key_findings=["当前证据只能支持以下有限判断：液冷存在成本不确定性 [E1]"],
+        ),
+        charts=ChartsSpec(),
+        appendix=AppendixSpec(evidence_cards=[]),
+    ).model_dump()
 
 
 def test_request_schemas_are_json_serializable() -> None:
@@ -16,6 +47,7 @@ def test_request_schemas_are_json_serializable() -> None:
 
     assert "search_evidence" in catalog
     assert "run_research_task" in catalog
+    assert "render_report_pdf" in catalog
     assert "query" in encoded
 
 
@@ -106,6 +138,71 @@ def test_build_research_brief_returns_report_type_and_coverage(tmp_path: Path) -
     assert "direct_claim_ratio" in result["coverage"]
 
 
+def test_render_report_pdf_from_topic_returns_report_paths(tmp_path: Path, monkeypatch) -> None:
+    def fake_export(spec, *, output_dir, html=None):
+        html_path = Path(output_dir) / "report.html"
+        pdf_path = Path(output_dir) / "report.pdf"
+        html_path.write_text(html or "<html></html>", encoding="utf-8")
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        return {"html_path": str(html_path), "pdf_path": str(pdf_path)}
+
+    monkeypatch.setattr(tools, "export_report_pdf", fake_export)
+
+    result = tools.render_report_pdf({"topic": "液冷产业链", "home": str(tmp_path / "missing"), "output_dir": str(tmp_path)})
+
+    assert result["status"] == "completed"
+    assert result["tool"] == "render_report_pdf"
+    assert result["pdf_path"].endswith(".pdf")
+    assert result["html_path"].endswith(".html")
+    assert Path(result["pdf_path"]).exists()
+    assert "coverage_score" in result["coverage"]
+    assert set(result["charts_present"]) == {
+        "evidence_strength_bar",
+        "source_freshness_timeline",
+        "company_coverage_heatmap",
+        "flow_map",
+    }
+
+
+def test_render_report_pdf_from_report_spec_does_not_require_retrieval(tmp_path: Path, monkeypatch) -> None:
+    def fake_export(spec, *, output_dir, html=None):
+        html_path = Path(output_dir) / "from-spec.html"
+        pdf_path = Path(output_dir) / "from-spec.pdf"
+        html_path.write_text(html or "<html></html>", encoding="utf-8")
+        pdf_path.write_bytes(b"%PDF-1.4\n")
+        return {"html_path": str(html_path), "pdf_path": str(pdf_path)}
+
+    monkeypatch.setattr(tools, "export_report_pdf", fake_export)
+
+    result = tools.render_report_pdf({"report_spec": sample_report_spec(), "home": str(tmp_path / "missing"), "output_dir": str(tmp_path)})
+
+    assert result["status"] == "completed"
+    assert result["title"] == "液冷产业链证据覆盖审计报告"
+    assert Path(result["pdf_path"]).exists()
+
+
+def test_render_report_pdf_requires_subject_or_spec() -> None:
+    result = tools.render_report_pdf({})
+
+    assert result["status"] == "error"
+    assert result["error"]["type"] == "validation_error"
+    assert "report_spec, query, or topic is required" in json.dumps(result["error"], ensure_ascii=False)
+
+
+def test_render_report_pdf_reports_playwright_unavailable(tmp_path: Path, monkeypatch) -> None:
+    def fail_export(spec, *, output_dir, html=None):
+        raise PdfRenderError("Playwright is not installed.")
+
+    monkeypatch.setattr(tools, "export_report_pdf", fail_export)
+
+    result = tools.render_report_pdf({"report_spec": sample_report_spec(), "home": str(tmp_path / "missing"), "output_dir": str(tmp_path)})
+
+    assert result["status"] == "error"
+    assert result["tool"] == "render_report_pdf"
+    assert result["error"]["type"] == "pdf_render_error"
+    assert "playwright install chromium" in result["error"]["details"]["fix"]
+
+
 def test_llm_counter_audit_uses_configured_client(monkeypatch) -> None:
     class FakeClient:
         def chat_json(self, **kwargs):
@@ -153,3 +250,4 @@ def test_mcp_server_registers_required_tools() -> None:
     assert "search_evidence" in names
     assert "search_claims" in names
     assert "run_research_task" in names
+    assert "render_report_pdf" in names

@@ -28,10 +28,12 @@ from aika.aika_mcp.schemas import (
     CompanyProfileRequest,
     FilteredSearchRequest,
     QueryIndustryGraphRequest,
+    RenderReportPdfRequest,
     RunResearchTaskRequest,
     SearchClaimsRequest,
     SearchEvidenceRequest,
 )
+from aika.report import PdfRenderError, ReportSpec, render_html, render_report_pdf as export_report_pdf
 from aika.report_type import (
     CoverageMetrics,
     aggregate_freshness_status,
@@ -113,6 +115,13 @@ def run_research_task(
     return _run_tool("run_research_task", RunResearchTaskRequest, payload, kwargs, _run_research_task)
 
 
+def render_report_pdf(
+    payload: Mapping[str, Any] | RenderReportPdfRequest | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    return _run_tool("render_report_pdf", RenderReportPdfRequest, payload, kwargs, _render_report_pdf)
+
+
 def resolve_backend(request: AikaMcpRequest) -> BackendContext:
     warnings: list[str] = []
     mode = request.backend or "auto"
@@ -162,6 +171,7 @@ def tool_names() -> list[str]:
         "build_research_brief",
         "audit_evidence_gaps",
         "run_research_task",
+        "render_report_pdf",
     ]
 
 
@@ -442,6 +452,56 @@ def _run_research_task(request: RunResearchTaskRequest, context: BackendContext)
         counter_evidence=ux["counter_evidence"],
         evidence_ux_meta=ux["evidence_ux_meta"],
     )
+
+
+def _render_report_pdf(request: RenderReportPdfRequest, context: BackendContext) -> dict[str, Any]:
+    try:
+        spec = _report_spec_for_pdf(request, context)
+        html = render_html(spec)
+        output_dir = Path(request.output_dir).expanduser() if request.output_dir else resolve_aika_home(request.home) / "reports"
+        paths = export_report_pdf(spec, output_dir=output_dir, html=html)
+    except PdfRenderError as exc:
+        return _error_envelope(
+            "render_report_pdf",
+            meta=_meta(context),
+            error_type="pdf_render_error",
+            message=str(exc),
+            details={"fix": exc.fix},
+        )
+    return _success_envelope(
+        "render_report_pdf",
+        context,
+        title=spec.title,
+        report_type=spec.report_type,
+        report_type_label=spec.report_type_label,
+        coverage=spec.coverage.model_dump(),
+        charts_present=_charts_present(spec),
+        html_path=paths["html_path"],
+        pdf_path=paths["pdf_path"],
+    )
+
+
+def _report_spec_for_pdf(request: RenderReportPdfRequest, context: BackendContext) -> ReportSpec:
+    if request.report_spec:
+        return ReportSpec.model_validate(request.report_spec)
+    query = request.query or f"{request.topic}投研简报"
+    brief = _require_backend_method(context.backend, "build_research_brief")(query, topic=request.topic)
+    payload = _to_dict(brief)
+    report = (payload.get("research_outputs") or {}).get("report") if isinstance(payload.get("research_outputs"), dict) else {}
+    spec_data = report.get("spec") if isinstance(report, dict) else None
+    if not spec_data:
+        raise ValueError("Backend research brief did not include report.spec.")
+    return ReportSpec.model_validate(spec_data)
+
+
+def _charts_present(spec: ReportSpec) -> dict[str, bool]:
+    charts = spec.charts
+    return {
+        "evidence_strength_bar": any(charts.evidence_strength_bar.counts.values()),
+        "source_freshness_timeline": bool(charts.source_freshness_timeline.items),
+        "company_coverage_heatmap": bool(charts.company_coverage_heatmap.cells),
+        "flow_map": bool(charts.flow_map.links),
+    }
 
 
 def _collect_graph_edges(

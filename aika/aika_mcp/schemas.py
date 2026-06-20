@@ -181,6 +181,24 @@ class RunResearchTaskRequest(AikaMcpRequest):
         return _string_list(value)
 
 
+class RenderReportPdfRequest(AikaMcpRequest):
+    report_spec: dict[str, Any] = Field(default_factory=dict, description="Optional structured ReportSpec to render.")
+    query: str = Field(default="", description="Research question used when report_spec is not provided.")
+    topic: str = Field(default="", description="Research topic used when report_spec is not provided.")
+    output_dir: str = Field(default="", description="Optional directory for generated HTML and PDF files.")
+
+    @field_validator("query", "topic", "output_dir", mode="before")
+    @classmethod
+    def normalize_text(cls, value: Any) -> str:
+        return _clean_text(value)
+
+    @model_validator(mode="after")
+    def require_report_or_subject(self) -> "RenderReportPdfRequest":
+        if not self.report_spec and not self.query and not self.topic:
+            raise ValueError("report_spec, query, or topic is required")
+        return self
+
+
 REQUEST_MODELS: dict[str, type[AikaMcpRequest]] = {
     "search_evidence": SearchEvidenceRequest,
     "search_claims": SearchClaimsRequest,
@@ -190,9 +208,9 @@ REQUEST_MODELS: dict[str, type[AikaMcpRequest]] = {
     "build_research_brief": BuildResearchBriefRequest,
     "audit_evidence_gaps": AuditEvidenceGapsRequest,
     "run_research_task": RunResearchTaskRequest,
+    "render_report_pdf": RenderReportPdfRequest,
 }
 
 
 def request_schema_catalog() -> dict[str, dict[str, Any]]:
     return {name: model.model_json_schema() for name, model in REQUEST_MODELS.items()}
-

@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #172033;
+      --muted: #5c667a;
+      --line: #d9dee8;
+      --panel: #f7f9fc;
+      --accent: #1f6feb;
+      --accent-soft: #dbeafe;
+      --warn: #b45309;
+      --risk: #b91c1c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: var(--ink);
+      font: 14px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    }
+    main { max-width: 1040px; margin: 0 auto; padding: 36px 32px 56px; }
+    h1 { margin: 0 0 8px; font-size: 28px; line-height: 1.25; }
+    h2 { margin: 30px 0 12px; padding-bottom: 6px; border-bottom: 1px solid var(--line); font-size: 20px; }
+    h3 { margin: 18px 0 8px; font-size: 15px; }
+    p, ul { margin: 8px 0; }
+    ul { padding-left: 20px; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0 14px; table-layout: fixed; }
+    th, td { border: 1px solid var(--line); padding: 7px 8px; vertical-align: top; word-break: break-word; }
+    th { background: var(--panel); text-align: left; }
+    .meta { color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+    .badge { display: inline-block; border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; background: var(--panel); }
+    .notice { border-left: 4px solid var(--warn); background: #fff7ed; padding: 8px 10px; color: #7c2d12; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .metric { border: 1px solid var(--line); background: var(--panel); padding: 10px; border-radius: 8px; }
+    .metric strong { display: block; font-size: 20px; }
+    .chart-card { break-inside: avoid; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 12px 0; }
+    .bar-row { display: grid; grid-template-columns: 128px 1fr 42px; gap: 8px; align-items: center; margin: 7px 0; }
+    .bar-track { height: 12px; background: #eef2f7; border-radius: 999px; overflow: hidden; }
+    .bar-fill { height: 100%; background: var(--accent); border-radius: 999px; min-width: 2px; }
+    .timeline { display: flex; align-items: end; gap: 10px; min-height: 116px; border-left: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px 8px 0; }
+    .timeline-item { flex: 1; text-align: center; color: var(--muted); }
+    .timeline-bar { width: 100%; min-height: 8px; background: var(--accent-soft); border: 1px solid #bfdbfe; border-radius: 5px 5px 0 0; }
+    .fresh { background: #dcfce7; border-color: #86efac; }
+    .aging { background: #fef3c7; border-color: #fcd34d; }
+    .stale { background: #fee2e2; border-color: #fca5a5; }
+    .score-0 { background: #f8fafc; color: #64748b; }
+    .score-1 { background: #eff6ff; }
+    .score-2 { background: #dbeafe; }
+    .score-3 { background: #bfdbfe; }
+    .score-4 { background: #93c5fd; }
+    .score-5 { background: #60a5fa; color: #082f49; font-weight: 700; }
+    .flow-link { display: flex; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 7px; padding: 8px; margin: 7px 0; }
+    .small { color: var(--muted); font-size: 12px; }
+    @media print {
+      main { padding: 0; }
+      h2, .chart-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>{{ report.title }}</h1>
+      <div class="meta">
+        <span class="badge">Report Type: {{ report.report_type }}（{{ report.report_type_label }}）</span>
+        <span class="badge">Coverage: {{ "%.0f"|format(report.coverage.coverage_score * 100) }}%</span>
+        <span class="badge">Direct Claim Ratio: {{ "%.0f"|format(report.coverage.direct_claim_ratio * 100) }}%</span>
+        <span class="badge">Source Freshness: {{ report.coverage.freshness_status }}</span>
+      </div>
+    </header>
+
+    <section>
+      <h2>一页结论</h2>
+      <h3>本次报告能回答什么</h3>
+      <ul>{% for item in report.executive_summary.can_answer %}<li>{{ item }}</li>{% else %}<li>当前证据不足，无法形成可验证结论。</li>{% endfor %}</ul>
+      <h3>本次报告不能回答什么</h3>
+      <ul>{% for item in report.executive_summary.cannot_answer %}<li>{{ item }}</li>{% else %}<li>当前证据不足。</li>{% endfor %}</ul>
+      {% if report.report_type == "evidence_coverage_audit" %}
+      <p class="notice">覆盖审计提醒：当前证据覆盖不足，本报告只适合识别证据边界和补数方向，不应当作为完整深度结论使用。</p>
+      {% endif %}
+    </section>
+
+    <section>
+      <h2>证据覆盖审计</h2>
+      <div class="grid">
+        <div class="metric"><span>Coverage</span><strong>{{ "%.0f"|format(report.coverage.coverage_score * 100) }}%</strong></div>
+        <div class="metric"><span>Company Coverage</span><strong>{{ "%.0f"|format(report.coverage.company_coverage * 100) }}%</strong></div>
+        <div class="metric"><span>Direct / Indirect / Mentioned</span><strong>{{ report.coverage.direct_claims }} / {{ report.coverage.indirect_claims }} / {{ report.coverage.mentioned_claims }}</strong></div>
+        <div class="metric"><span>Covered Companies</span><strong>{{ report.coverage.covered_companies }}/{{ report.coverage.target_companies or report.coverage.covered_companies }}</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>核心判断</h2>
+      <ul>{% for item in report.executive_summary.key_findings %}<li>{{ item }}</li>{% else %}<li>当前证据不足。</li>{% endfor %}</ul>
+    </section>
+
+    <section>
+      <h2>证据缺口</h2>
+      {% if report.appendix.evidence_gaps %}
+      <ul>{% for gap in report.appendix.evidence_gaps %}<li>{{ gap.gap }}{% if gap.suggested_source %}；建议：{{ gap.suggested_source }}{% endif %}</li>{% endfor %}</ul>
+      {% else %}<p>当前证据包未识别出关键缺口。</p>{% endif %}
+    </section>
+
+    <section>
+      <h2>图表</h2>
+      {% include "partials_charts.html.j2" %}
+    </section>
+
+    <section>
+      <h2>公司对比</h2>
+      {% set rows = report.appendix.company_compare_table.rows if report.appendix.company_compare_table else [] %}
+      {% if rows %}
+      <table>
+        <thead><tr><th>公司</th><th>环节</th><th>敞口</th><th>业务证据</th><th>指标</th><th>风险</th><th>证据</th></tr></thead>
+        <tbody>{% for row in rows %}<tr><td>{{ row.company }}</td><td>{{ row.chain_segment }}</td><td>{{ row.exposure_level }}</td><td>{{ row.business_evidence }}</td><td>{{ row.leading_indicators }}</td><td>{{ row.risks }}</td><td>{{ row.citations }}</td></tr>{% endfor %}</tbody>
+      </table>
+      {% else %}<p>当前证据不足以生成公司对比表。</p>{% endif %}
+    </section>
+
+    <section>
+      <h2>风险清单</h2>
+      {% if report.appendix.risk_checklist %}
+      <ul>{% for row in report.appendix.risk_checklist %}<li>{{ row.scope or "主题" }}：{{ row.risk }}（优先级：{{ row.priority }}；跟踪：{{ row.follow_up }}）{% if row.citation_id %} [{{ row.citation_id }}]{% endif %}</li>{% endfor %}</ul>
+      {% else %}<p>当前证据不足以生成风险清单。</p>{% endif %}
+    </section>
+
+    <section>
+      <h2>Evidence Review</h2>
+      {% if report.appendix.evidence_cards %}
+      <ul>
+      {% for card in report.appendix.evidence_cards[:8] %}
+        <li>[{{ card.citation_id or card.evidence_id or "E?" }}] 来源：{{ card.source or card.source_title or "未标注" }}；claim 类型：{{ card.claim_type or "unknown" }}；敞口：{{ card.exposure_level or "未分级" }}</li>
+      {% endfor %}
+      </ul>
+      {% else %}<p>当前证据不足。</p>{% endif %}
+    </section>
+
+    <section>
+      <h2>证据附录</h2>
+      {% if report.appendix.evidence_cards %}
+      {% for card in report.appendix.evidence_cards[:12] %}
+      <article class="chart-card">
+        <h3>[{{ card.citation_id or card.evidence_id or "E?" }}] {{ card.source or card.source_title or "未标注" }}</h3>
+        <p class="small">Claim 类型：{{ card.claim_type or "unknown" }}；敞口级别：{{ card.exposure_level or "未分级" }}；日期：{{ card.published_at or card.as_of_date or "unknown" }}</p>
+        <p>{{ card.evidence or card.text or card.evidence_span or "未提供。" }}</p>
+      </article>
+      {% endfor %}
+      {% else %}<p>当前证据不足。</p>{% endif %}
+    </section>
+  </main>
+</body>
+</html>

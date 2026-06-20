@@ -161,6 +161,26 @@ def create_server() -> FastMCP:
             profile=profile,
         )
 
+    @server.tool(name="render_report_pdf", description="Render an AIKA ReportSpec or research topic into HTML and PDF report files.")
+    def render_report_pdf_tool(
+        report_spec: dict[str, Any] | None = None,
+        query: str = "",
+        topic: str = "",
+        output_dir: str = "",
+        backend: str = "auto",
+        home: str | None = None,
+        profile: str = DEFAULT_PROFILE,
+    ) -> dict[str, Any]:
+        return tools.render_report_pdf(
+            report_spec=report_spec or {},
+            query=query,
+            topic=topic,
+            output_dir=output_dir,
+            backend=backend,
+            home=home,
+            profile=profile,
+        )
+
     return server
 
 

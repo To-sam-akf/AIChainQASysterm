@@ -1,4 +1,4 @@
-<article>
+<article class="chart-card">
   <h3>公司覆盖热力图</h3>
   {% if report.charts.company_coverage_heatmap.cells %}
   <table>
@@ -7,29 +7,49 @@
     {% for row in report.charts.company_coverage_heatmap.rows %}
       <tr><th>{{ row }}</th>{% for col in report.charts.company_coverage_heatmap.columns %}
         {% set cell = (report.charts.company_coverage_heatmap.cells | selectattr("company", "equalto", row) | selectattr("segment", "equalto", col) | list | first) %}
-        <td>{{ cell.score if cell else 0 }}</td>
+        <td class="score-{{ cell.score if cell else 0 }}">{{ cell.score if cell else 0 }}{% if cell and cell.evidence_ids %}<div class="small">{{ cell.evidence_ids | join("、") }}</div>{% endif %}</td>
       {% endfor %}</tr>
     {% endfor %}
     </tbody>
   </table>
   {% else %}<p>当前证据不足</p>{% endif %}
 </article>
-<article>
+<article class="chart-card">
   <h3>证据强度柱状图</h3>
   {% if report.charts.evidence_strength_bar.counts.values() | sum %}
-  <ul>{% for key, value in report.charts.evidence_strength_bar.counts.items() %}<li>{{ key }}: {{ value }}</li>{% endfor %}</ul>
+  {% for key, value in report.charts.evidence_strength_bar.counts.items() %}
+  <div class="bar-row">
+    <span>{{ key }}</span>
+    <div class="bar-track"><div class="bar-fill" style="width: {{ value * 12 if value < 8 else 100 }}%"></div></div>
+    <strong>{{ value }}</strong>
+  </div>
+  {% endfor %}
   {% else %}<p>当前证据不足</p>{% endif %}
 </article>
-<article>
+<article class="chart-card">
   <h3>Evidence-weighted supply chain map</h3>
   {% if report.charts.flow_map.links %}
-  <ul>{% for link in report.charts.flow_map.links %}<li>{{ link.source }} -> {{ link.target }}: {{ link.value }}（{{ link.evidence_ids | join("、") }}）</li>{% endfor %}</ul>
-  <p>{{ report.charts.flow_map.caption }}</p>
+  {% for link in report.charts.flow_map.links %}
+  <div class="flow-link">
+    <span>{{ link.source }} → {{ link.target }}</span>
+    <span><strong>{{ link.value }}</strong>{% if link.evidence_ids %} <span class="small">{{ link.evidence_ids | join("、") }}</span>{% endif %}</span>
+  </div>
+  {% endfor %}
+  <p class="small">图注：{{ report.charts.flow_map.caption }}</p>
   {% else %}<p>当前证据不足</p>{% endif %}
 </article>
-<article>
+<article class="chart-card">
   <h3>Source freshness timeline</h3>
   {% if report.charts.source_freshness_timeline["items"] %}
-  <ul>{% for item in report.charts.source_freshness_timeline["items"] %}<li>{{ item.year }}: {{ item.count }}（{{ item.freshness }}）</li>{% endfor %}</ul>
+  <div class="timeline">
+  {% for item in report.charts.source_freshness_timeline["items"] %}
+    <div class="timeline-item">
+      <div class="timeline-bar {{ item.freshness }}" style="height: {{ 12 + item.count * 14 }}px"></div>
+      <div>{{ item.year }}</div>
+      <strong>{{ item.count }}</strong>
+      <div class="small">{{ item.freshness }}</div>
+    </div>
+  {% endfor %}
+  </div>
   {% else %}<p>当前证据不足</p>{% endif %}
 </article>

@@ -2060,6 +2060,234 @@ pre {
   gap: 10px;
 }
 
+.report-chart-section {
+  margin-bottom: 2px;
+}
+
+.report-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.report-chart-card {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  border: 1px solid rgba(29, 34, 39, 0.12);
+  border-radius: 8px;
+  padding: 14px;
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.78), rgba(247, 250, 248, 0.5)),
+    radial-gradient(circle at 100% 0%, rgba(31, 117, 117, 0.08), transparent 38%);
+  box-shadow: 0 14px 42px rgba(34, 29, 22, 0.06);
+}
+
+.report-chart-card.wide {
+  grid-column: 1 / -1;
+}
+
+.report-chart-card.empty {
+  align-content: start;
+}
+
+.report-chart-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.report-chart-head strong {
+  color: #26313b;
+  font-size: 14px;
+}
+
+.report-chart-head span {
+  color: #68717a;
+  font-size: 12px;
+}
+
+.evidence-bar-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.evidence-bar-row {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 34px;
+  gap: 9px;
+  align-items: center;
+  font-size: 12px;
+}
+
+.evidence-bar-row span {
+  color: #3d454d;
+}
+
+.evidence-bar-row div {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(22, 29, 36, 0.08);
+}
+
+.evidence-bar-row i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1f7575, #7ea35f);
+}
+
+.evidence-bar-row b {
+  text-align: right;
+}
+
+.freshness-timeline-chart {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 10px;
+  min-height: 176px;
+  align-items: end;
+}
+
+.freshness-year {
+  display: grid;
+  grid-template-rows: auto 120px auto auto;
+  gap: 6px;
+  justify-items: center;
+  color: #3d454d;
+  font-size: 12px;
+}
+
+.freshness-year div {
+  display: flex;
+  width: 24px;
+  height: 120px;
+  align-items: end;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(22, 29, 36, 0.08);
+}
+
+.freshness-year i {
+  display: block;
+  width: 100%;
+  border-radius: inherit;
+  background: #7ea35f;
+}
+
+.freshness-year.aging i {
+  background: #d59d3d;
+}
+
+.freshness-year.stale i {
+  background: #c45d4b;
+}
+
+.freshness-year.unknown i {
+  background: #94a3b8;
+}
+
+.freshness-year em {
+  color: #68717a;
+  font-style: normal;
+}
+
+.heatmap-wrap {
+  overflow: auto;
+}
+
+.coverage-heatmap {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: separate;
+  border-spacing: 6px;
+}
+
+.coverage-heatmap th {
+  color: #68717a;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.coverage-heatmap td {
+  min-width: 54px;
+}
+
+.heatmap-score {
+  display: inline-flex;
+  width: 100%;
+  min-height: 34px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #17202a;
+  background: rgba(22, 29, 36, 0.06);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.heatmap-score.score-1 { background: rgba(190, 210, 203, 0.6); }
+.heatmap-score.score-2 { background: rgba(146, 195, 178, 0.72); }
+.heatmap-score.score-3 { background: rgba(91, 166, 149, 0.78); color: #fff; }
+.heatmap-score.score-4 { background: rgba(31, 117, 117, 0.86); color: #fff; }
+.heatmap-score.score-5 { background: linear-gradient(135deg, #1f7575, #7ea35f); color: #fff; }
+
+.flow-map-chart {
+  display: grid;
+  gap: 10px;
+}
+
+.flow-map-chart svg {
+  width: 100%;
+  min-height: 230px;
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(31, 117, 117, 0.06), transparent 48%, rgba(126, 163, 95, 0.08)),
+    repeating-linear-gradient(90deg, rgba(15, 23, 42, 0.04) 0 1px, transparent 1px 76px);
+}
+
+.flow-map-chart path {
+  fill: none;
+  stroke: rgba(31, 117, 117, 0.58);
+  stroke-linecap: round;
+}
+
+.flow-node rect {
+  fill: rgba(255, 255, 255, 0.92);
+  stroke: rgba(31, 117, 117, 0.22);
+}
+
+.flow-node text {
+  fill: #26313b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flow-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.flow-link-list span {
+  border-radius: 999px;
+  padding: 5px 8px;
+  color: #3d454d;
+  background: rgba(31, 117, 117, 0.08);
+  font-size: 11px;
+}
+
+.flow-map-chart p {
+  margin: 0;
+  color: #68717a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 .agent-step-list {
   display: grid;
   gap: 8px;
@@ -2229,8 +2457,17 @@ pre {
   .eval-metric-grid,
   .conflict-claims,
   .task-output-grid,
+  .report-chart-grid,
   .filter-row {
     grid-template-columns: 1fr;
+  }
+
+  .report-chart-card.wide {
+    grid-column: auto;
+  }
+
+  .flow-map-chart svg {
+    min-height: 190px;
   }
 
   .agent-page,

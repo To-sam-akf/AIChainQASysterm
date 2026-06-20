@@ -39,6 +39,9 @@ requires = ["hatchling>=1.27"]
 build-backend = "hatchling.build"
 
 [project.optional-dependencies]
+pdf = [
+    "playwright>=1.45,<2",
+]
 full = [
     "beautifulsoup4>=4.12",
     "cryptography>=42",
@@ -51,6 +54,7 @@ full = [
     "psycopg[binary,pool]>=3.2,<3.3",
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
+    "playwright>=1.45,<2",
     "rank-bm25>=0.2.2",
     "requests>=2.31",
     "uvicorn>=0.30",
@@ -68,6 +72,7 @@ dev = [
     "psycopg[binary,pool]>=3.2,<3.3",
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
+    "playwright>=1.45,<2",
     "pytest>=8.0",
     "rank-bm25>=0.2.2",
     "requests>=2.31",
@@ -88,6 +93,7 @@ dev = [
     "psycopg[binary,pool]>=3.2,<3.3",
     "PyMuPDF>=1.24",
     "pypdf>=5.0",
+    "playwright>=1.45,<2",
     "pytest>=8.0",
     "rank-bm25>=0.2.2",
     "requests>=2.31",

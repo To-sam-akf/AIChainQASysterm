@@ -55,6 +55,8 @@ export interface ResearchOutputs {
     report_type?: string;
     report_type_label?: string;
     coverage?: Record<string, unknown>;
+    spec?: ReportSpec;
+    html?: string;
   };
   company_compare_table?: {
     columns: string[];
@@ -65,6 +67,59 @@ export interface ResearchOutputs {
   verification?: VerificationResult;
   task_outputs?: Record<string, unknown>;
   meta?: Record<string, unknown>;
+}
+
+export interface ReportSpec {
+  report_type: string;
+  topic: string;
+  title: string;
+  report_type_label?: string;
+  usability?: string;
+  coverage?: Record<string, unknown>;
+  executive_summary?: Record<string, unknown>;
+  charts?: ReportCharts;
+  appendix?: Record<string, unknown>;
+}
+
+export interface ReportCharts {
+  flow_map?: FlowMapChart;
+  company_coverage_heatmap?: CompanyCoverageHeatmapChart;
+  evidence_strength_bar?: EvidenceStrengthBarChart;
+  source_freshness_timeline?: FreshnessTimelineChart;
+}
+
+export interface CompanyCoverageHeatmapChart {
+  title?: string;
+  columns?: string[];
+  rows?: string[];
+  cells?: Array<{
+    company: string;
+    segment: string;
+    score: number;
+    evidence_ids?: string[];
+    reason?: string;
+  }>;
+  empty_message?: string;
+}
+
+export interface EvidenceStrengthBarChart {
+  title?: string;
+  counts?: Record<string, number>;
+  empty_message?: string;
+}
+
+export interface FlowMapChart {
+  title?: string;
+  nodes?: Array<{ id: string; label: string }>;
+  links?: Array<{ source: string; target: string; value: number; evidence_ids?: string[] }>;
+  caption?: string;
+  empty_message?: string;
+}
+
+export interface FreshnessTimelineChart {
+  title?: string;
+  items?: Array<{ year: string; count: number; freshness: string }>;
+  empty_message?: string;
 }
 
 export interface ConflictClaim {

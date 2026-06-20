@@ -3,6 +3,7 @@
 from aika.report.builder import build_report_spec
 from aika.report.render_html import render_html
 from aika.report.render_markdown import render_markdown, render_markdown_sections
+from aika.report.render_pdf import PdfRenderError, render_report_pdf
 from aika.report.spec import (
     AppendixSpec,
     ChartsSpec,
@@ -21,4 +22,6 @@ __all__ = [
     "render_html",
     "render_markdown",
     "render_markdown_sections",
+    "PdfRenderError",
+    "render_report_pdf",
 ]

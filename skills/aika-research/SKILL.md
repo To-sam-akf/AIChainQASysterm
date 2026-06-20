@@ -19,10 +19,12 @@ Call the registered `aika` MCP server. Route by task:
 - `build_research_brief`: concise deterministic brief when the user asks for a short topic report.
 - `audit_evidence_gaps`: missing, weak, uncited, or contradictory evidence review.
 - `run_research_task`: broad or complex research such as "分析液冷产业链" or multi-section reports.
+- `render_report_pdf`: final user-facing report delivery; renders one integrated HTML report with analysis, charts, evidence review, and appendix, then exports a PDF file.
 
 Default routes:
 
-- Broad industry-chain analysis: call `run_research_task`; add `query_industry_graph` if listed companies or value-chain transmission is central.
+- User asks for a report/PDF/visual report/deliverable: call `render_report_pdf` and return the PDF path plus a short note about the HTML audit file.
+- Broad industry-chain analysis in chat: call `run_research_task`; add `query_industry_graph` if listed companies or value-chain transmission is central.
 - Company comparison: call `compare_companies` with the topic; add `audit_evidence_gaps` if coverage is thin.
 - Company list by segment: call `search_claims` plus `query_industry_graph`.
 - Risk, contradiction, or evidence-quality request: call `audit_evidence_gaps` and cite any supporting evidence.
