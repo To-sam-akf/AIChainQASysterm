@@ -102,7 +102,6 @@ packages = ["aika"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "data/knowledge_packs/sample" = "aika/aika_core/bundled_sample"
-"aika/report/templates" = "aika/report/templates"
 "skills/aika-research" = "aika/bundled_skills/aika-research"
 
 [tool.hatch.build.targets.sdist]
