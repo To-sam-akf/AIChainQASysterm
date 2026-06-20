@@ -9,8 +9,10 @@ import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Iterable
 
+from aika.report import build_report_spec, render_html, render_markdown, render_markdown_sections
 from aika.aika_core.data_paths import (
     CLAIMS_FILE,
     EVIDENCE_SPANS_FILE,
@@ -416,24 +418,38 @@ class SQLiteResearchBackend(ResearchBackend):
         cards = _dedupe_evidence_cards(_ensure_citations([*dossier_cards, *evidence_cards, *claim_cards]))
         edges = self.query_graph(technology=focus_topic or subject, limit=12)
         gaps = self.audit_evidence_gaps(subject, topic=focus_topic)
-        title = f"{focus_topic or subject}投研简报"
-        sections = [
-            {"title": "核心判断", "content": _core_judgment(cards, subject)},
-            {"title": "技术机理", "content": _card_bullets(cards, {"mechanism", "bottleneck", "trend"}, limit=4)},
-            {"title": "产业传导", "content": _graph_bullets(edges, limit=6) or _card_bullets(cards, {"supply_chain", "company_exposure"}, limit=4)},
-            {"title": "风险清单", "content": _card_bullets(cards, {"risk", "bottleneck"}, limit=6)},
-            {"title": "证据缺口", "content": _gap_bullets(gaps)},
-            {"title": "证据索引", "content": _evidence_index(cards, limit=8)},
-        ]
-        markdown = "\n\n".join(f"## {section['title']}\n{section['content']}" for section in sections)
+        plan = SimpleNamespace(topics=[focus_topic] if focus_topic else [], companies=[])
+        spec = build_report_spec(
+            question=subject,
+            plan=plan,
+            evidence_cards=cards,
+            graph_records=edges,
+            gaps=gaps,
+            verification={"status": "not_run", "checks": {}},
+        )
+        title = spec.title
+        sections = render_markdown_sections(spec)
+        markdown = render_markdown(spec)
         research_outputs = {
-            "report": {"title": title, "markdown": markdown, "sections": sections},
+            "report": {
+                "title": title,
+                "markdown": markdown,
+                "html": render_html(spec),
+                "sections": sections,
+                "report_type": spec.report_type,
+                "report_type_label": spec.report_type_label,
+                "coverage": spec.coverage.model_dump(),
+                "spec": spec.model_dump(),
+            },
             "evidence_gaps": [gap.to_dict() for gap in gaps],
             "verification": {"status": "not_run", "checks": {}},
             "meta": {
                 "question": subject,
                 "topic": focus_topic,
                 "evidence_cards": len(cards),
+                "coverage": spec.coverage.model_dump(),
+                "report_type": spec.report_type,
+                "report_type_label": spec.report_type_label,
                 "backend": "sqlite",
                 "index_path": str(self.index_path),
             },

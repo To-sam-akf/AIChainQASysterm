@@ -1,0 +1,51 @@
+from __future__ import annotations
+
+from aika.report.render_html import render_html
+from aika.report.render_markdown import render_markdown
+from aika.report.spec import AppendixSpec, ChartsSpec, CoverageSpec, ExecutiveSummarySpec, ReportSpec
+
+
+def sample_spec() -> ReportSpec:
+    return ReportSpec(
+        report_type="evidence_coverage_audit",
+        topic="液冷产业链",
+        title="液冷产业链证据覆盖审计报告",
+        report_type_label="证据覆盖审计报告",
+        usability="Limited",
+        coverage=CoverageSpec(
+            coverage_score=0.15,
+            direct_claims=0,
+            indirect_claims=1,
+            mentioned_claims=1,
+            unsupported_claims=3,
+            covered_companies=1,
+            target_companies=9,
+            direct_claim_ratio=0.0,
+            company_coverage=1 / 9,
+            freshness_status="aging",
+        ),
+        executive_summary=ExecutiveSummarySpec(
+            can_answer=["当前证据只能支持以下有限判断：液冷存在成本不确定性 [E1]"],
+            cannot_answer=["不能回答完整公司排序。"],
+            key_findings=["当前证据只能支持以下有限判断：液冷存在成本不确定性 [E1]"],
+        ),
+        charts=ChartsSpec(),
+        appendix=AppendixSpec(evidence_cards=[]),
+    )
+
+
+def test_markdown_renderer_outputs_executive_page() -> None:
+    markdown = render_markdown(sample_spec())
+
+    assert "## 一页结论" in markdown
+    assert "## 证据覆盖审计" in markdown
+    assert "当前证据不足" in markdown
+
+
+def test_html_renderer_outputs_hierarchy_and_empty_chart_message() -> None:
+    html = render_html(sample_spec())
+
+    assert "<h1>液冷产业链证据覆盖审计报告</h1>" in html
+    assert "<h2>证据覆盖审计</h2>" in html
+    assert "当前证据不足" in html
+    assert "覆盖审计提醒" in html

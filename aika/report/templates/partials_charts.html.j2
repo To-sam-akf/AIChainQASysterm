@@ -1,0 +1,35 @@
+<article>
+  <h3>公司覆盖热力图</h3>
+  {% if report.charts.company_coverage_heatmap.cells %}
+  <table>
+    <thead><tr><th>公司</th>{% for col in report.charts.company_coverage_heatmap.columns %}<th>{{ col }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for row in report.charts.company_coverage_heatmap.rows %}
+      <tr><th>{{ row }}</th>{% for col in report.charts.company_coverage_heatmap.columns %}
+        {% set cell = (report.charts.company_coverage_heatmap.cells | selectattr("company", "equalto", row) | selectattr("segment", "equalto", col) | list | first) %}
+        <td>{{ cell.score if cell else 0 }}</td>
+      {% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p>当前证据不足</p>{% endif %}
+</article>
+<article>
+  <h3>证据强度柱状图</h3>
+  {% if report.charts.evidence_strength_bar.counts.values() | sum %}
+  <ul>{% for key, value in report.charts.evidence_strength_bar.counts.items() %}<li>{{ key }}: {{ value }}</li>{% endfor %}</ul>
+  {% else %}<p>当前证据不足</p>{% endif %}
+</article>
+<article>
+  <h3>Evidence-weighted supply chain map</h3>
+  {% if report.charts.flow_map.links %}
+  <ul>{% for link in report.charts.flow_map.links %}<li>{{ link.source }} -> {{ link.target }}: {{ link.value }}（{{ link.evidence_ids | join("、") }}）</li>{% endfor %}</ul>
+  <p>{{ report.charts.flow_map.caption }}</p>
+  {% else %}<p>当前证据不足</p>{% endif %}
+</article>
+<article>
+  <h3>Source freshness timeline</h3>
+  {% if report.charts.source_freshness_timeline["items"] %}
+  <ul>{% for item in report.charts.source_freshness_timeline["items"] %}<li>{{ item.year }}: {{ item.count }}（{{ item.freshness }}）</li>{% endfor %}</ul>
+  {% else %}<p>当前证据不足</p>{% endif %}
+</article>

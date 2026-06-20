@@ -7,6 +7,15 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 from aika.domain_lexicon import company_segment
+from aika.report_type import (
+    CoverageMetrics,
+    aggregate_freshness_status,
+    classify_report_type,
+    report_title,
+    report_type_label,
+    report_usability,
+)
+from aika.report import build_report_spec, render_html, render_markdown, render_markdown_sections
 
 
 EXPOSURE_LABELS = {
@@ -49,10 +58,26 @@ def build_research_outputs(
         evidence_gap_list(question, plan, cards, graph_records, verification),
         list(verification.get("evidence_gaps") or []),
     )
+    coverage = report_coverage_metrics(question, plan, cards, graph_records, gaps, verification)
+    report_type = classify_report_type(coverage.coverage_score, coverage.company_coverage, coverage.direct_claim_ratio)
+    company_table = company_compare_table(plan, cards, graph_records)
+    risks = risk_checklist(plan, cards, graph_records)
+    report = research_report(
+        question,
+        plan,
+        cards,
+        graph_records,
+        gaps,
+        coverage=coverage,
+        report_type=report_type,
+        company_table=company_table,
+        risk_checklist_rows=risks,
+        verification=verification,
+    )
     return {
-        "report": research_report(question, plan, cards, graph_records, gaps),
-        "company_compare_table": company_compare_table(plan, cards, graph_records),
-        "risk_checklist": risk_checklist(plan, cards, graph_records),
+        "report": report,
+        "company_compare_table": company_table,
+        "risk_checklist": risks,
         "evidence_gaps": gaps,
         "verification": verification,
         "meta": {
@@ -63,6 +88,9 @@ def build_research_outputs(
             "evidence_cards": len(cards),
             "verification_status": str(verification.get("status") or ""),
             "conflict_group_count": len(verification.get("conflict_groups") or []),
+            "coverage": coverage.to_dict(),
+            "report_type": report_type,
+            "report_type_label": report_type_label(report_type),
         },
     }
 
@@ -73,23 +101,36 @@ def research_report(
     cards: list[Any],
     graph_records: list[dict[str, Any]],
     gaps: list[dict[str, str]],
+    *,
+    coverage: CoverageMetrics | None = None,
+    report_type: str = "",
+    company_table: dict[str, Any] | None = None,
+    risk_checklist_rows: list[dict[str, Any]] | None = None,
+    verification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    title_subject = subject_label(plan) or question[:36] or "AI 算力产业链"
-    title = f"{title_subject}投研简报"
-    sections = [
-        {"title": "一页结论", "content": markdown_executive_page(question, plan, cards, gaps)},
-        {"title": "证据覆盖审计", "content": markdown_coverage_audit(cards, gaps)},
-        {"title": "核心判断", "content": core_judgment(cards, plan)},
-        {"title": "证据缺口", "content": markdown_gaps(gaps)},
-        {"title": "技术机理", "content": bullet_lines(cards_by_type(cards, {"mechanism", "bottleneck", "trend"}), 4)},
-        {"title": "产业传导", "content": industry_transmission(cards, graph_records)},
-        {"title": "公司对比", "content": markdown_compare_table(company_compare_table(plan, cards, graph_records))},
-        {"title": "风险清单", "content": markdown_risks(risk_checklist(plan, cards, graph_records))},
-        {"title": "证据摘要", "content": markdown_evidence_summary(cards, 8)},
-        {"title": "证据附录", "content": markdown_evidence_appendix(cards, 8)},
-    ]
-    markdown = "\n\n".join(f"## {section['title']}\n{section['content']}" for section in sections)
-    return {"title": title, "markdown": markdown, "sections": sections}
+    del coverage, report_type
+    spec = build_report_spec(
+        question=question,
+        plan=plan,
+        evidence_cards=cards,
+        graph_records=graph_records,
+        gaps=gaps,
+        verification=verification or {},
+        company_table=company_table if company_table is not None else company_compare_table(plan, cards, graph_records),
+        risk_checklist=risk_checklist_rows if risk_checklist_rows is not None else risk_checklist(plan, cards, graph_records),
+    )
+    sections = render_markdown_sections(spec)
+    markdown = render_markdown(spec)
+    return {
+        "title": spec.title,
+        "markdown": markdown,
+        "html": render_html(spec),
+        "sections": sections,
+        "report_type": spec.report_type,
+        "report_type_label": spec.report_type_label,
+        "coverage": spec.coverage.model_dump(),
+        "spec": spec.model_dump(),
+    }
 
 
 def company_compare_table(plan: Any, cards: list[Any], graph_records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -252,17 +293,89 @@ def subject_label(plan: Any) -> str:
     return ""
 
 
-def core_judgment(cards: list[Any], plan: Any) -> str:
+def report_subject_label(question: str, plan: Any) -> str:
+    quoted = re.search(r"“([^”]{1,40})”", str(question or ""))
+    if quoted:
+        return quoted.group(1).strip()
+    topics = list(getattr(plan, "topics", []) or [])
+    for topic in topics:
+        topic = str(topic or "").strip()
+        if topic and f"{topic}产业链" in str(question or ""):
+            return f"{topic}产业链"
+    return subject_label(plan) or short_text(question, 36) or "AI 算力产业链"
+
+
+def report_coverage_metrics(
+    question: str,
+    plan: Any,
+    cards: list[Any],
+    graph_records: list[dict[str, Any]],
+    gaps: list[dict[str, str]],
+    verification: dict[str, Any],
+) -> CoverageMetrics:
+    del question
+    coverage_score = agent_coverage_score(cards, gaps)
+    direct_cards = direct_exposure_cards(cards)
+    direct_claim_ratio = len(direct_cards) / max(len(cards), 1) if cards else 0.0
+    target_companies = [str(company).strip() for company in list(getattr(plan, "companies", []) or []) if str(company).strip()]
+    covered_companies = covered_company_names(cards, graph_records)
+    company_coverage = 1.0 if not target_companies else len([company for company in target_companies if company in covered_companies]) / max(len(target_companies), 1)
+    checks = verification.get("checks", {}) if isinstance(verification, dict) else {}
+    unsupported_terms = unique(str(item) for item in list(checks.get("unsupported_terms") or []) if str(item).strip())
+    freshness_values = []
+    for card in cards:
+        freshness_values.extend(
+            [
+                card_text_attr(card, "freshness_status"),
+                card_text_attr(card, "published_at"),
+                card_text_attr(card, "as_of_date"),
+            ]
+        )
+    return CoverageMetrics(
+        coverage_score=coverage_score,
+        company_coverage=max(0.0, min(1.0, company_coverage)),
+        direct_claim_ratio=max(0.0, min(1.0, direct_claim_ratio)),
+        unsupported_claims=len(gaps) + len(unsupported_terms),
+        freshness_status=aggregate_freshness_status(freshness_values),
+    )
+
+
+def covered_company_names(cards: list[Any], graph_records: list[dict[str, Any]]) -> set[str]:
+    covered = {card_text_attr(card, "company") for card in cards if card_text_attr(card, "company")}
+    covered.update(str(row.get("company") or "").strip() for row in graph_records if str(row.get("company") or "").strip())
+    return covered
+
+
+def direct_exposure_cards(cards: list[Any]) -> list[Any]:
+    return [
+        card
+        for card in cards
+        if card_text_attr(card, "claim_type") == "company_exposure" and card_text_attr(card, "exposure_level") in {"core", "direct"}
+    ]
+
+
+def core_judgment(cards: list[Any], plan: Any, *, report_type: str = "industry_research_report") -> str:
     dossier = next((card for card in cards if card_text_attr(card, "kind") == "dossier"), None)
     if dossier:
         first_line = card_text_attr(dossier, "evidence").splitlines()[0:1]
         if first_line:
-            return with_citation(short_text(first_line[0], 220), dossier)
+            return qualify_conclusion(with_citation(short_text(first_line[0], 220), dossier), report_type)
     claim = next((card for card in cards if card_text_attr(card, "kind") == "claim"), None)
     if claim:
-        return with_citation(short_text(card_text_attr(claim, "evidence"), 220), claim)
+        return qualify_conclusion(with_citation(short_text(card_text_attr(claim, "evidence"), 220), claim), report_type)
     topic = subject_label(plan) or "该主题"
     return f"{topic} 的研究结论需要以证据包中的公司敞口、技术机理、指标和风险共同验证。"
+
+
+def qualify_conclusion(text: str, report_type: str) -> str:
+    text = str(text or "").strip()
+    if not text:
+        return text
+    if report_type == "evidence_coverage_audit":
+        return f"当前证据只能支持以下有限判断：{text}"
+    if report_type == "preliminary_research_brief":
+        return f"当前证据初步显示：{text}"
+    return text
 
 
 def industry_transmission(cards: list[Any], graph_records: list[dict[str, Any]]) -> str:
@@ -309,8 +422,15 @@ def markdown_gaps(rows: list[dict[str, str]]) -> str:
     return "\n".join(f"- {row['gap']} 建议：{row['suggested_source']}" for row in rows[:8])
 
 
-def markdown_executive_page(question: str, plan: Any, cards: list[Any], gaps: list[dict[str, str]]) -> str:
-    can_answer = executive_answerable_items(cards, plan)
+def markdown_executive_page(
+    question: str,
+    plan: Any,
+    cards: list[Any],
+    gaps: list[dict[str, str]],
+    coverage: CoverageMetrics,
+    report_type: str,
+) -> str:
+    can_answer = executive_answerable_items(cards, plan, report_type=report_type)
     cannot_answer = [str(row.get("gap") or "").strip() for row in gaps if str(row.get("gap") or "").strip()]
     lines = ["### 本次报告能回答什么"]
     if can_answer:
@@ -326,33 +446,49 @@ def markdown_executive_page(question: str, plan: Any, cards: list[Any], gaps: li
     lines.append("")
     lines.append("### 当前报告适合的使用方式")
     lines.append(f"- 研究问题：{short_text(question, 120)}")
-    lines.append("- 适合作为证据覆盖审计和初步研究简报使用；需要完整投研结论时，应补充缺口证据后再升级报告类型。")
+    lines.append(f"- Report Type: `{report_type}`（{report_type_label(report_type)}）")
+    lines.append(f"- Coverage: {coverage.coverage_score:.0%}；Direct Claim Ratio: {coverage.direct_claim_ratio:.0%}")
+    lines.append(f"- Conclusion Usability: {report_usability(report_type)}")
+    if report_type == "evidence_coverage_audit":
+        lines.append("- 覆盖审计提醒：当前证据覆盖不足，本报告只适合识别证据边界和补数方向，不应当作为完整深度结论使用。")
+    else:
+        lines.append(f"- {report_usage_sentence(report_type)}")
     return "\n".join(lines)
 
 
-def markdown_coverage_audit(cards: list[Any], gaps: list[dict[str, str]]) -> str:
-    coverage = agent_coverage_score(cards, gaps)
-    direct_cards = [card for card in cards if card_text_attr(card, "claim_type") == "company_exposure" and card_text_attr(card, "exposure_level") in {"core", "direct"}]
+def markdown_coverage_audit(
+    cards: list[Any],
+    gaps: list[dict[str, str]],
+    coverage: CoverageMetrics,
+    report_type: str,
+) -> str:
+    direct_cards = direct_exposure_cards(cards)
     counter_cards = [card for card in cards if card_text_attr(card, "claim_type") in {"risk", "bottleneck"}]
-    return "\n".join(
-        [
-            f"- Coverage: {coverage:.0%}",
-            f"- Evidence Cards: {len(cards)}",
-            f"- Direct/Core Exposure Evidence: {len(direct_cards)}",
-            f"- Risk/Bottleneck Evidence: {len(counter_cards)}",
-            f"- Evidence Gaps: {len(gaps)}",
-            f"- Conclusion Usability: {agent_usability_label(coverage)}",
-        ]
-    )
+    lines = [
+        f"- Report Type: `{report_type}`（{report_type_label(report_type)}）",
+        f"- Coverage: {coverage.coverage_score:.0%}",
+        f"- Company Coverage: {coverage.company_coverage:.0%}",
+        f"- Direct Claim Ratio: {coverage.direct_claim_ratio:.0%}",
+        f"- Evidence Cards: {len(cards)}",
+        f"- Direct/Core Exposure Evidence: {len(direct_cards)}",
+        f"- Risk/Bottleneck Evidence: {len(counter_cards)}",
+        f"- Unsupported Claims: {coverage.unsupported_claims}",
+        f"- Source Freshness: {coverage.freshness_status}",
+        f"- Evidence Gaps: {len(gaps)}",
+        f"- Conclusion Usability: {report_usability(report_type)}",
+    ]
+    if report_type == "evidence_coverage_audit":
+        lines.append("- 覆盖审计提醒：证据覆盖低或直接证据占比不足，系统已自动降级为覆盖审计报告。")
+    return "\n".join(lines)
 
 
-def executive_answerable_items(cards: list[Any], plan: Any) -> list[str]:
+def executive_answerable_items(cards: list[Any], plan: Any, *, report_type: str = "industry_research_report") -> list[str]:
     items: list[str] = []
-    core = core_judgment(cards, plan)
+    core = core_judgment(cards, plan, report_type=report_type)
     if core and "需要以证据包" not in core:
         items.append(core)
     for card in cards:
-        text = with_citation(short_text(card_text_attr(card, "evidence"), 150), card)
+        text = qualify_conclusion(with_citation(short_text(card_text_attr(card, "evidence"), 150), card), report_type)
         if text and text not in items:
             items.append(text)
         if len(items) >= 4:
@@ -375,6 +511,16 @@ def agent_usability_label(score: float) -> str:
     if score < 0.8:
         return "Usable with caveats"
     return "High"
+
+
+def report_usage_sentence(report_type: str) -> str:
+    if report_type == "preliminary_research_brief":
+        return "适合作为初步研究简报使用；需要完整投研结论时，应补充缺口证据后再升级报告类型。"
+    if report_type == "industry_research_report":
+        return "适合作为带证据边界的产业分析报告使用；关键投资判断仍需回到证据附录核验。"
+    if report_type == "deep_research_report":
+        return "适合作为深度研究报告使用；仍需保留证据附录用于审计和复核。"
+    return "适合作为证据覆盖审计使用；需要完整投研结论时，应补充缺口证据后再升级报告类型。"
 
 
 def markdown_evidence_summary(cards: list[Any], limit: int) -> str:
@@ -595,6 +741,15 @@ def with_citation(text: str, card: Any) -> str:
 
 
 def card_text_attr(card: Any, name: str) -> str:
+    if isinstance(card, dict):
+        value = card.get(name, "")
+        if name == "source" and not value:
+            value = card.get("source_title", "")
+        if name == "evidence" and not value:
+            value = card.get("text", "")
+        if name == "published_at" and not value:
+            value = card.get("as_of_date", "")
+        return str(value or "")
     value = getattr(card, name, "")
     if value is None:
         return ""

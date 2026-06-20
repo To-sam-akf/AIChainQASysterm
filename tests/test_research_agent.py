@@ -51,7 +51,9 @@ def test_research_outputs_include_report_table_risks_and_gaps() -> None:
         verification={"status": "pass", "checks": {}},
     )
 
-    assert "投研简报" in outputs["report"]["title"]
+    assert outputs["report"]["report_type"] == "industry_research_report"
+    assert "分析报告" in outputs["report"]["title"]
+    assert outputs["meta"]["coverage"]["direct_claim_ratio"] > 0.25
     section_titles = [section["title"] for section in outputs["report"]["sections"]]
     assert section_titles[:4] == ["一页结论", "证据覆盖审计", "核心判断", "证据缺口"]
     assert section_titles[-2:] == ["证据摘要", "证据附录"]
@@ -63,6 +65,38 @@ def test_research_outputs_include_report_table_risks_and_gaps() -> None:
     assert len(outputs["company_compare_table"]["rows"]) == 2
     assert outputs["risk_checklist"][0]["priority"] == "高"
     assert any("领先指标" in row["gap"] for row in outputs["evidence_gaps"])
+
+
+def test_low_coverage_report_is_downgraded_to_evidence_audit() -> None:
+    plan = heuristic_plan_question("液冷产业链有哪些上市公司？")
+    cards = [
+        EvidenceCard(
+            citation_id="E1",
+            kind="claim",
+            title="液冷 risk",
+            evidence="液冷部署存在成本和交付节奏不确定性。",
+            claim_id="c1",
+            company="英维克",
+            topic="液冷",
+            claim_type="risk",
+            source="测试报告",
+        )
+    ]
+
+    outputs = build_research_outputs(
+        question=plan.question,
+        plan=plan,
+        evidence_cards=cards,
+        graph_records=[],
+        verification={"status": "warn", "checks": {"unsupported_terms": ["完整产业链排序"]}},
+    )
+
+    report = outputs["report"]
+    assert report["report_type"] == "evidence_coverage_audit"
+    assert "证据覆盖审计报告" in report["title"]
+    assert "深度研究报告" not in report["title"]
+    assert "覆盖审计提醒" in report["markdown"]
+    assert "当前证据只能支持" in report["markdown"]
 
 
 def test_research_outputs_merge_verification_gaps_and_conflicts() -> None:

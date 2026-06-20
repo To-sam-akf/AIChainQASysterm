@@ -52,6 +52,9 @@ export interface ResearchOutputs {
     title: string;
     markdown: string;
     sections: { title: string; content: string }[];
+    report_type?: string;
+    report_type_label?: string;
+    coverage?: Record<string, unknown>;
   };
   company_compare_table?: {
     columns: string[];
@@ -234,6 +237,11 @@ export interface AgentTask {
   final_outputs: {
     report_markdown?: string;
     report_title?: string;
+    report_type?: string;
+    report_type_label?: string;
+    coverage_score?: number;
+    company_coverage?: number;
+    direct_claim_ratio?: number;
     task_type?: AgentTaskType;
     task_label?: string;
     task_schema_type?: string;

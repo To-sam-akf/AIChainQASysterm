@@ -45,6 +45,17 @@ def test_run_research_task_returns_report_evidence_and_verification(tmp_path: Pa
 
     assert result["status"] == "completed"
     assert result["tool"] == "run_research_task"
+    assert result["title"]
+    assert result["report_type"] in {
+        "evidence_coverage_audit",
+        "preliminary_research_brief",
+        "industry_research_report",
+        "deep_research_report",
+    }
+    assert result["report_type_label"]
+    assert isinstance(result["coverage"], dict)
+    assert "coverage_score" in result["coverage"]
+    assert "direct_claim_ratio" in result["coverage"]
     assert result["report_markdown"]
     assert result["report_markdown"].startswith("## 一页结论")
     assert "## 证据覆盖评级" in result["report_markdown"]
@@ -75,6 +86,24 @@ def test_run_research_task_returns_report_evidence_and_verification(tmp_path: Pa
     assert "置信度" in appendix
     assert "时效" in appendix
     assert "反证状态" in appendix
+
+
+def test_build_research_brief_returns_report_type_and_coverage(tmp_path: Path) -> None:
+    result = tools.build_research_brief({"topic": "液冷产业链", "home": str(tmp_path / "missing")})
+
+    assert result["status"] == "completed"
+    assert result["tool"] == "build_research_brief"
+    assert result["title"]
+    assert result["report_type"] in {
+        "evidence_coverage_audit",
+        "preliminary_research_brief",
+        "industry_research_report",
+        "deep_research_report",
+    }
+    assert result["report_type_label"]
+    assert isinstance(result["coverage"], dict)
+    assert "coverage_score" in result["coverage"]
+    assert "direct_claim_ratio" in result["coverage"]
 
 
 def test_llm_counter_audit_uses_configured_client(monkeypatch) -> None:

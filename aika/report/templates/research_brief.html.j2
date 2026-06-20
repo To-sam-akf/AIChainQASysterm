@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }}</title>
+</head>
+<body>
+  <main>
+    <h1>{{ report.title }}</h1>
+    <p>Report Type: {{ report.report_type }}（{{ report.report_type_label }}）</p>
+    <section>
+      <h2>一页结论</h2>
+      <ul>{% for item in report.executive_summary.key_findings %}<li>{{ item }}</li>{% endfor %}</ul>
+    </section>
+    <section>
+      <h2>证据覆盖审计</h2>
+      <p>Coverage: {{ "%.0f"|format(report.coverage.coverage_score * 100) }}%；Direct Claim Ratio: {{ "%.0f"|format(report.coverage.direct_claim_ratio * 100) }}%</p>
+    </section>
+    <section>
+      <h2>图表</h2>
+      {% include "partials_charts.html.j2" %}
+    </section>
+    <section>
+      <h2>证据附录</h2>
+      {% if report.appendix.evidence_cards %}
+      <ul>{% for card in report.appendix.evidence_cards %}<li>[{{ card.citation_id or card.evidence_id }}] {{ card.evidence }}</li>{% endfor %}</ul>
+      {% else %}<p>当前证据不足</p>{% endif %}
+    </section>
+  </main>
+</body>
+</html>

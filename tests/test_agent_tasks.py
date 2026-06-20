@@ -49,7 +49,16 @@ class FakeResearchEngine:
             ],
             "research_outputs": {
                 "report": {
-                    "title": "液冷投研简报",
+                    "title": "液冷产业链初步研究简报",
+                    "report_type": "preliminary_research_brief",
+                    "report_type_label": "初步研究简报",
+                    "coverage": {
+                        "coverage_score": 0.45,
+                        "company_coverage": 1.0,
+                        "direct_claim_ratio": 0.5,
+                        "unsupported_claims": 1,
+                        "freshness_status": "fresh",
+                    },
                     "markdown": "## 核心判断\n液冷受益于功率密度提升。",
                     "sections": [{"title": "核心判断", "content": "液冷受益于功率密度提升。"}],
                 },
@@ -200,10 +209,15 @@ def test_research_agent_generates_completed_task_with_outputs(tmp_path: Path) ->
 
     assert task["status"] == "completed"
     assert "投研简报" in engine.questions[0]
-    assert task["research_outputs"]["report"]["title"] == "液冷投研简报"
+    assert task["research_outputs"]["report"]["title"] == "液冷产业链初步研究简报"
     assert task["research_outputs"]["task_outputs"]["schema_type"] == "research_brief"
     assert task["final_outputs"]["task_type"] == "research_brief"
     assert task["final_outputs"]["task_label"] == "投研简报"
+    assert task["final_outputs"]["report_type"] == "preliminary_research_brief"
+    assert task["final_outputs"]["report_type_label"] == "初步研究简报"
+    assert task["final_outputs"]["coverage_score"] == 0.45
+    assert task["final_outputs"]["company_coverage"] == 1.0
+    assert task["final_outputs"]["direct_claim_ratio"] == 0.5
     assert task["final_outputs"]["evidence_card_count"] == 2
     assert task["final_outputs"]["evidence_gap_count"] == 1
     assert task["final_outputs"]["verification_status"] == "warn"

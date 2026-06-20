@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }}</title>
+</head>
+<body>
+  <main>
+    <h1>{{ report.title }}</h1>
+    <p>Report Type: {{ report.report_type }}（{{ report.report_type_label }}）</p>
+    <section>
+      <h2>一页结论</h2>
+      <h3>本次报告能回答什么</h3>
+      <ul>{% for item in report.executive_summary.can_answer %}<li>{{ item }}</li>{% endfor %}</ul>
+      <h3>本次报告不能回答什么</h3>
+      <ul>{% for item in report.executive_summary.cannot_answer %}<li>{{ item }}</li>{% endfor %}</ul>
+    </section>
+    <section>
+      <h2>证据覆盖审计</h2>
+      <ul>
+        <li>Coverage: {{ "%.0f"|format(report.coverage.coverage_score * 100) }}%</li>
+        <li>Direct Claims: {{ report.coverage.direct_claims }}</li>
+        <li>Indirect Claims: {{ report.coverage.indirect_claims }}</li>
+        <li>Unsupported Claims: {{ report.coverage.unsupported_claims }}</li>
+        <li>Covered Companies: {{ report.coverage.covered_companies }}/{{ report.coverage.target_companies or report.coverage.covered_companies }}</li>
+      </ul>
+      <p>覆盖审计提醒：当前证据覆盖不足，本报告只适合识别证据边界和补数方向。</p>
+    </section>
+    <section>
+      <h2>图表</h2>
+      {% include "partials_charts.html.j2" %}
+    </section>
+    <section>
+      <h2>证据附录</h2>
+      {% if report.appendix.evidence_cards %}
+      <ul>{% for card in report.appendix.evidence_cards %}<li>[{{ card.citation_id or card.evidence_id }}] {{ card.evidence }}</li>{% endfor %}</ul>
+      {% else %}<p>当前证据不足</p>{% endif %}
+    </section>
+  </main>
+</body>
+</html>

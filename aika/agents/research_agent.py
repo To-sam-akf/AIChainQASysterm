@@ -313,6 +313,7 @@ def final_outputs_from_result(
     report = research_outputs.get("report") if isinstance(research_outputs, dict) else {}
     if not isinstance(report, dict):
         report = {}
+    coverage = report.get("coverage") if isinstance(report.get("coverage"), dict) else {}
     gaps = research_outputs.get("evidence_gaps") if isinstance(research_outputs, dict) else []
     if not isinstance(gaps, list):
         gaps = []
@@ -326,6 +327,11 @@ def final_outputs_from_result(
     return {
         "report_markdown": str(report.get("markdown") or ""),
         "report_title": str(report.get("title") or "投研简报"),
+        "report_type": str(report.get("report_type") or ""),
+        "report_type_label": str(report.get("report_type_label") or ""),
+        "coverage_score": float(coverage.get("coverage_score") or 0.0),
+        "company_coverage": float(coverage.get("company_coverage") or 0.0),
+        "direct_claim_ratio": float(coverage.get("direct_claim_ratio") or 0.0),
         "task_type": task_type,
         "task_label": task_label,
         "task_schema_type": task_schema_type,
