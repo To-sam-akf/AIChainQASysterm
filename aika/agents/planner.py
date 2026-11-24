@@ -6,6 +6,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from aika.question_planner import QuestionPlan
+from aika.comparison_evidence import requirements as comparison_requirements
+from aika.rd_evidence import requirements as rd_requirements
 
 
 DEFAULT_MAX_RETRIEVAL_ROUNDS = 3
@@ -92,10 +94,14 @@ def required_coverage_for_plan(plan: QuestionPlan) -> list[str]:
     required: list[str] = []
     if plan.answer_type == "company_compare" or plan.needs_comparison:
         required.append("company_coverage")
+        if comparison_requirements(plan):
+            required.append("comparison_evidence")
     if plan.answer_type == "risk_analysis" or plan.needs_risk:
         required.append("risk_evidence")
     if plan.needs_metrics or "HAS_METRIC" in plan.relations or "HAS_INDICATOR" in plan.relations:
         required.append("metric_evidence")
+    if rd_requirements(plan):
+        required.append('rd_evidence')
     if plan.answer_type == "topic_to_company":
         required.append("company_exposure")
     if plan.answer_type in {"industry_bottleneck", "thematic_research"}:
@@ -106,15 +112,17 @@ def required_coverage_for_plan(plan: QuestionPlan) -> list[str]:
 def query_suffix_for_coverage(coverage: str) -> str:
     return {
         "company_coverage": "业务 差异 指标 风险",
+        "comparison_evidence": "对应年度年报 业务 产品 服务 应用",
         "risk_evidence": "风险 反证 不确定性 年报风险披露",
         "metric_evidence": "指标 订单 收入 毛利率 产能 客户导入 渗透率",
+        "rd_evidence": "对应年度年报 研发费用 费用表 单位 万元 研发投入 资本化金额 会计政策",
         "company_exposure": "公司敞口 受益 上市公司 核心敞口 直接敞口",
         "mechanism_evidence": "技术机理 瓶颈 产业传导 领先指标",
     }.get(coverage, "")
 
 
 def tools_for_coverage(coverage: str) -> list[str]:
-    if coverage == "company_coverage":
+    if coverage in {"company_coverage", "comparison_evidence", "rd_evidence"}:
         return ["prepare_cypher", "query_graph", "search_research_claims", "search_rag", "search_semantic_index"]
     if coverage in {"risk_evidence", "metric_evidence", "company_exposure", "mechanism_evidence"}:
         return ["query_graph", "search_research_claims", "search_rag", "search_semantic_index"]

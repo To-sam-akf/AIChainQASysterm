@@ -8,6 +8,8 @@ from collections import defaultdict
 from typing import Any, Iterable
 
 from aika.question_planner import extract_companies
+from aika.numeric_evidence import accounting_consistency_check, audit_financial_numbers
+from aika.semantic_evidence import semantic_support_check, narrow_shared_ai
 
 
 EXPOSURE_LABELS = {
@@ -47,7 +49,7 @@ TECH_ROUTE_PAIRS = (
 
 NUMERIC_PATTERN = re.compile(
     r"(?<![A-Za-z0-9])(?:19|20)\d{2}(?![A-Za-z0-9])"
-    r"|[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:%|亿元|万元|元|万只|万台|台|套|个|GB/s|Tb/s|GT/s|G|T|kW|MW|PUE|ms|us|ns|GPU hours|tokens|parameters)",
+    r"|[-+]?\d+(?:,\d{3})*(?:\.\d+)?\s*(?:个百分点|%|亿元|万元|元|万只|万台|台|套|个|GB/s|Tb/s|GT/s|G|T|kW|MW|PUE|ms|us|ns|GPU hours|tokens|parameters)",
     flags=re.I,
 )
 CITATION_PATTERN = re.compile(r"\[(E\d+)\]")
@@ -71,7 +73,9 @@ def verify_answer_support(
     missing_citations = sorted(set(cited_ids) - set(citation_ids))
 
     company_check = company_coverage_checks(plan, cards, raw)
-    numeric_check = numeric_support_check(answer, evidence_text)
+    companies = list(getattr(plan, "companies", []) or [])
+    numeric_check = numeric_support_check(answer, evidence_text, cards=cards,
+                                          company=companies[0] if len(companies) == 1 else "")
     metric_check = metric_support_check(answer, question or card_text(plan, "question"), plan, all_cards)
     exposure_check = exposure_support_check(answer, all_cards)
     risk_check = risk_support_check(answer, question or card_text(plan, "question"), plan, all_cards)
@@ -93,6 +97,8 @@ def verify_answer_support(
         "citation_validity": citation_check,
         "company_coverage": company_check,
         "numeric_support": numeric_check,
+        "accounting_consistency": accounting_consistency_check(answer),
+        "semantic_support": semantic_support_check(answer, cards, question=question),
         "metric_support": metric_check,
         "exposure_support": exposure_check,
         "risk_support": risk_check,
@@ -115,9 +121,18 @@ def build_evidence_limited_answer(
     evidence_cards: list[Any],
     verification: dict[str, Any],
     coverage_report: Any | None = None,
+    *,
+    answer: str = "",
 ) -> str:
-    """Build a conservative answer that only states cited evidence and explicit gaps."""
+    """Remove local rejected statements, or show intact source excerpts.
+
+    Never flatten/truncate a financial table: its headers, units and comparative
+    columns are part of the evidence. A source excerpt is not a completed answer.
+    """
     cards = list(evidence_cards or [])
+    pruned = prune_rejected_statements(answer, verification, cards=cards) if answer else None
+    if pruned is not None:
+        return pruned
     gaps = list(verification.get("evidence_gaps") or [])
     if coverage_report is not None:
         for gap in getattr(coverage_report, "gaps", []) or []:
@@ -133,15 +148,15 @@ def build_evidence_limited_answer(
         )
 
     lines = [
-        f"核心判断：以下只保留关于{subject}的已验证证据，未被证据包支撑的判断不展开。",
+        f"回答边界：关于{subject}的原回答未通过核验，以下提供原始证据摘录，不能替代完整作答。",
         "",
         "证据支持：",
     ]
     for card in cards[:6]:
         citation = card_text(card, "citation_id") or "E?"
-        text = short_text(card_text(card, "evidence") or card_text(card, "evidence_span"), 180)
+        text = (card_text(card, "evidence") or card_text(card, "evidence_span")).strip()
         source = format_card_source(card)
-        lines.append(f"- [{citation}] {text}" + (f"（{source}）" if source else ""))
+        lines.extend([f"### 原文 [{citation}]" + (f"（{source}）" if source else ""), "", text, ""])
     conflict_groups = verification.get("conflict_groups") or []
     if conflict_groups:
         lines.extend(["", "冲突/边界："])
@@ -149,8 +164,106 @@ def build_evidence_limited_answer(
             resolution = str(group.get("resolution") or "").strip()
             lines.append(f"- {resolution or '存在方向不一致的证据，需要保守解释。'}")
     if gaps:
-        lines.extend(["", "证据缺口：", format_gap_lines(gaps)])
+        # Repeating a rejected amount in a diagnostic would turn it into another
+        # apparent assertion during the mandatory second verification.
+        lines.extend(["", "证据缺口：原回答存在数值、引用或覆盖缺口，尚未完成全部核验；未获支持的结论不展开。"])
     return "\n".join(line for line in lines if line is not None)
+
+
+def prune_rejected_statements(answer: str, verification: dict[str, Any], *, cards=None) -> str | None:
+    """Keep the candidate's supported content; remove only located hard failures.
+
+    Unknown/pending quantities are never a reason to delete content. Nonlocal
+    coverage/exposure failures use the explicit evidence-only fallback instead.
+    """
+    checks = verification.get('checks', {})
+    if any(checks.get(name, {}).get('status') == 'fail' for name in (
+            'company_coverage', 'metric_support', 'exposure_support', 'risk_support')):
+        return None
+    lines = answer.splitlines(keepends=True)
+    rejected: dict[int, list[str]] = defaultdict(list)
+    replacements = {}
+    numeric = checks.get('numeric_support', {})
+    audit = numeric.get('audit', {})
+    for item in audit.get('quantities', []):
+        if item['status'] == 'unsupported' and 'line' in item:
+            rejected[item['line']].append(item['text'])
+    for item in [*audit.get('calculations', []), *audit.get('conversions', [])]:
+        if item['status'] == 'unsupported':
+            for index, line in enumerate(lines):
+                if item['expression'] in line:
+                    rejected[index].append(item['expression'])
+    for issue in [*checks.get('accounting_consistency', {}).get('issues', []),
+                  *checks.get('semantic_support', {}).get('issues', [])]:
+        if issue.get('kind') == 'collective_scope' and cards:
+            repaired = narrow_shared_ai(issue['statement'], cards)
+            if repaired:
+                replacements[issue['line']] = (issue['statement'], repaired)
+                continue
+        rejected[issue['line']].append(issue['statement'])
+    missing = set(checks.get('citation_validity', {}).get('missing_citations', []))
+    for index, line in enumerate(lines):
+        if missing.intersection(CITATION_PATTERN.findall(line)):
+            rejected[index].append(line.strip())
+        for term in numeric.get('unsupported', []):
+            if term in line and not any(q['text'] == term for q in audit.get('quantities', [])):
+                rejected[index].append(term)
+    if not rejected and not replacements:
+        return None  # No reliable location; do not guess which assertion to remove.
+    output, removed = [], False
+    for index, line in enumerate(lines):
+        terms = rejected.get(index)
+        if index in replacements:
+            if terms:
+                return None  # Do not combine conflicting edits on one statement.
+            old, new = replacements[index]
+            if old not in line:
+                return None
+            line = line.replace(old, new)
+            removed = True
+        if not terms:
+            output.append(line)
+            continue
+        if '|' in line:
+            if index + 1 < len(lines) and re.fullmatch(r'[\s|:-]+', lines[index + 1]):
+                return None  # A rejected column heading needs a fresh intact excerpt.
+            # Drop one bad table row, retaining the original header and other rows.
+            removed = True
+            continue
+        # A citation following Chinese punctuation belongs to the preceding
+        # sentence. Keep list markers outside the sentence being removed so a
+        # surviving clause cannot turn into an orphaned citation or fragment.
+        prefix_match = re.match(r'^(\s*(?:\d+\.\s+|[-*]\s+(?:\[E\d+\]\s*)?))', line)
+        prefix = prefix_match.group(1) if prefix_match else ''
+        body = line[len(prefix):]
+        if missing.intersection(CITATION_PATTERN.findall(prefix)):
+            return None
+        sentences = re.findall(r'[^。！？；\n]+[。！？；]?(?:[ \t]*\[E\d+\])*', body)
+        kept = [s for s in sentences if not any(term in s for term in terms)]
+        if len(kept) == len(sentences):
+            return None  # Inferred-unit table value or unlocatable diagnostic.
+        removed = True
+        output.append((prefix + ''.join(kept).lstrip() if kept else '') + ('\n' if line.endswith('\n') else ''))
+    result = ''.join(output).strip()
+    # Do not silently return a numbered list with a missing item. Source
+    # excerpts are safer than inventing a replacement answer or numbering.
+    original_numbers = re.findall(r'^\s*(\d+)\.\s+', answer, re.M)
+    remaining_numbers = re.findall(r'^\s*(\d+)\.\s+', result, re.M)
+    if original_numbers != remaining_numbers:
+        return None
+    # If a previously listed source was deleted but is still cited in the
+    # answer, do not leave the reader with a dangling source entry.
+    marker = '**依据**'
+    if marker in answer and marker in result:
+        _, _, original_sources = answer.partition(marker)
+        result_body, _, result_sources = result.partition(marker)
+        missing_sources = (set(CITATION_PATTERN.findall(original_sources))
+                           & set(CITATION_PATTERN.findall(result_body))) - set(CITATION_PATTERN.findall(result_sources))
+        if missing_sources:
+            return None
+    if not removed or not re.search(r'[\w\u4e00-\u9fff]', result):
+        return None
+    return result + '\n\n核验边界：已删除或收窄证据支持不足的局部陈述；其余未决口径仍须核对。'
 
 
 def detect_conflict_groups(cards: list[Any]) -> list[dict[str, Any]]:
@@ -291,13 +404,41 @@ def conflict_claim(card: Any) -> dict[str, str]:
     }
 
 
-def numeric_support_check(answer: str, evidence_text: str) -> dict[str, Any]:
-    found = unique_texts([match.group(0).strip() for match in NUMERIC_PATTERN.finditer(str(answer or ""))])
-    unsupported = [value for value in found if not text_supports(value, evidence_text)]
+def numeric_support_check(answer: str, evidence_text: str, *, cards: list[Any] | None = None, company: str = "") -> dict[str, Any]:
+    dates = list(re.finditer(r'截至\s*(?:19|20)\d{2}[-年]\d{1,2}[-月]\d{1,2}日?[^。；\n]{0,15}(?:入库|资料)', answer))
+    publication_dates = list(re.finditer(r'(?:不晚于|早于|晚于)\s*(?:19|20)\d{2}[-年]\d{1,2}[-月]\d{1,2}日?', answer))
+    found = unique_texts([match.group(0).strip() for match in NUMERIC_PATTERN.finditer(str(answer or ""))
+                          if not any(d.start() <= match.start() < d.end() for d in dates + publication_dates)])
+    audit = audit_financial_numbers(answer, cards, company=company) if cards is not None else {"quantities": [], "calculations": []}
+    handled = {normalize_for_support(q['text']) for q in audit['quantities']}
+    unresolved_counts = []
+    unsupported = []
+    for value in found:
+        if normalize_for_support(value) in handled or text_supports(value, evidence_text):
+            continue
+        count = re.fullmatch(r'([\d,]+)\s*个', value)
+        # A Chinese classifier may not appear in an English source. Matching
+        # digits alone do not prove the subject or citation, but they are not
+        # sufficient evidence to delete a potentially supported statement.
+        if count and re.search(r'(?<![\d,])' + re.escape(count[1]) + r'(?![\d,])', evidence_text):
+            unresolved_counts.append(value)
+        else:
+            unsupported.append(value)
+    unsupported += [q['text'] for q in audit['quantities'] if q['status'] == 'unsupported']
+    unsupported += [q['expression'] for q in audit['calculations'] if q['status'] == 'unsupported']
+    unsupported += [q['expression'] for q in audit.get('conversions', []) if q['status'] == 'unsupported']
+    pending = unresolved_counts + [q['text'] for q in audit['quantities'] if q['status'] == 'pending']
+    pending += [q['expression'] for q in audit['calculations'] if q['status'] == 'pending']
+    pending += [q['expression'] for q in audit.get('conversions', []) if q['status'] == 'pending']
+    if dates:
+        pending.append('入库截止日资格待核实')
+    if publication_dates:
+        pending.append('公开日期限定待核实')
     return {
-        "found": found,
-        "unsupported": unsupported,
-        "status": "fail" if unsupported else "pass",
+        "found": unique_texts(found + [q['text'] for q in audit['quantities']]),
+        "unsupported": unique_texts(unsupported), "pending": unique_texts(pending),
+        "audit": audit,
+        "status": "fail" if unsupported else "warn" if pending else "pass",
     }
 
 
@@ -446,6 +587,14 @@ def evidence_gap_rows(checks: dict[str, Any], conflict_groups: list[dict[str, An
         gaps.append({"gap": "缺少公司证据：" + "、".join(checks["company_coverage"]["missing"]), "priority": "高", "suggested_source": "补充对应公司年报、公告、研报或投资者关系记录。"})
     if checks["numeric_support"]["unsupported"]:
         gaps.append({"gap": "答案中存在无来源年份或数值：" + "、".join(checks["numeric_support"]["unsupported"]), "priority": "高", "suggested_source": "回到原文页码、财务表或指标表核验后再引用。"})
+    if checks["numeric_support"].get("pending"):
+        gaps.append({"gap": "数值换算或计算口径仍待核对：" + "、".join(checks["numeric_support"]["pending"]), "priority": "中", "suggested_source": "核对计算公式、原文单位、主体和年份，未决项不自动通过。"})
+    if checks.get('accounting_consistency', {}).get('status') == 'fail':
+        gaps.append({'gap': '研发总投入与费用相加的重复项解释有误。', 'priority': '高',
+                     'suggested_source': '区分费用化与资本化，核对包含关系；正确数字不能替代正确解释。'})
+    if checks.get('semantic_support', {}).get('status') == 'fail':
+        gaps.append({'gap': '产品速率上限或双方共同技术概括超出所给原文支持。', 'priority': '高',
+                     'suggested_source': '逐公司核对产品状态，区分共同档位、最高披露速率和行业技术原理。'})
     if checks["metric_support"]["status"] == "fail":
         gaps.append({"gap": "缺少订单、收入、毛利率、产能、客户导入或渗透率等指标证据。", "priority": "高", "suggested_source": "补充年报财务表、经营数据、公告和研报指标表。"})
     if checks["exposure_support"]["mismatches"]:
@@ -460,10 +609,10 @@ def evidence_gap_rows(checks: dict[str, Any], conflict_groups: list[dict[str, An
 def verification_status(checks: dict[str, Any], gaps: list[dict[str, str]], conflict_groups: list[dict[str, Any]], has_cards: bool) -> str:
     if not has_cards:
         return "fail"
-    hard_checks = ("citation_validity", "company_coverage", "numeric_support", "metric_support", "exposure_support", "risk_support")
-    if any(checks[name].get("status") == "fail" for name in hard_checks):
+    hard_checks = ("citation_validity", "company_coverage", "numeric_support", "accounting_consistency", "semantic_support", "metric_support", "exposure_support", "risk_support")
+    if any(checks.get(name, {}).get("status") == "fail" for name in hard_checks):
         return "fail"
-    if checks["temporal_consistency"].get("status") == "warn" or conflict_groups or gaps:
+    if checks["numeric_support"].get("status") == "warn" or checks["temporal_consistency"].get("status") == "warn" or conflict_groups or gaps:
         return "warn"
     return "pass"
 

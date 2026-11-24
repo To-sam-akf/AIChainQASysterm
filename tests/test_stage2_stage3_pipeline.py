@@ -9,7 +9,7 @@ from aika.extraction_schema import SchemaError, sanitize_extraction_payload, val
 from aika.graph_builder import build_verified_graph
 from aika.kg_loader import CONSTRAINT_QUERIES, assert_label, assert_relation_type, validate_graph_csvs
 from aika.llm_extractor import build_user_prompt
-from aika.pdf_parser import clean_page_text, normalize_table_data, parse_pdf_pages
+from aika.pdf_parser import clean_page_text, normalize_table_data, parse_pdf_pages, recover_overlapping_table_notes
 from aika.text_cleaner import build_chunks_from_pages, split_table_rows
 
 
@@ -219,6 +219,33 @@ def test_table_chunks_repeat_headers_and_preserve_complete_rows() -> None:
     assert chunks[0]["table_row_start"] == 1
     assert chunks[-1]["table_row_end"] == 7
     assert sum(chunk["table_row_end"] - chunk["table_row_start"] + 1 for chunk in chunks) == 7
+
+
+def test_overlapping_text_block_preserves_table_note_in_each_chunk() -> None:
+    note = '注：本表中“研发投入”不包含股份支付费用。'
+    table = {'table_id':'table_1', 'title':'研发投入情况表', 'bbox':[0, 10, 100, 80],
+             'headers':['项目', '本年度'], 'rows':[[f'研发投入{i}', str(i)] for i in range(5)], 'markdown':''}
+    blocks = [{'bbox':[0, 5, 100, 90], 'text':'研发投入金额及表格数据/' + note}]
+    recover_overlapping_table_notes(blocks, [table])
+    assert table['footnotes'] == [note]
+    recover_overlapping_table_notes(blocks, [table])
+    assert table['footnotes'] == [note]
+    page = {'report_id':'report_1', 'page':22, 'text':'研发投入', 'tables':[table]}
+    chunks = [c for c in build_chunks_from_pages([page], max_chars=120) if c['content_type']=='table']
+    assert chunks and all(note in c['text'] for c in chunks)
+
+
+def test_note_from_unrelated_nonoverlapping_block_is_not_attached() -> None:
+    table = {'bbox':[0, 0, 100, 50], 'markdown':'| 指标 | 金额 |'}
+    recover_overlapping_table_notes([{'bbox':[0, 100, 100, 120], 'text':'注：另一个表的说明。'}], [table])
+    assert 'footnotes' not in table
+
+
+def test_note_overlapping_multiple_tables_is_not_assigned_by_guess() -> None:
+    tables = [{'bbox':[0, 0, 100, 50], 'markdown':'first'},
+              {'bbox':[0, 50, 100, 100], 'markdown':'second'}]
+    recover_overlapping_table_notes([{'bbox':[0, 0, 100, 100], 'text':'注：范围不明确。'}], tables)
+    assert all('footnotes' not in table for table in tables)
 
 
 def test_single_oversized_table_row_is_not_split_mid_row() -> None:

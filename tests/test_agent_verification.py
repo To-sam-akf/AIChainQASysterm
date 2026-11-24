@@ -1,4 +1,31 @@
-from aika.agents.verification import build_evidence_limited_answer, detect_conflict_groups, verify_answer_support
+from aika.agents.verification import build_evidence_limited_answer, detect_conflict_groups, verify_answer_support, prune_rejected_statements
+
+
+def test_pruning_keeps_number_and_evidence_marker_with_surviving_sentence():
+    answer = '1. 错误数值99%。[E1] 后一句正确。[E2]\n- [E3] 错误数值99%；保留依据。\n'
+    verification = {'checks': {'numeric_support': {'audit': {'quantities': [
+        {'status': 'unsupported', 'line': 0, 'text': '99%'},
+        {'status': 'unsupported', 'line': 1, 'text': '99%'},
+    ]}}}}
+    revised = prune_rejected_statements(answer, verification)
+    assert '1. 后一句正确。[E2]' in revised
+    assert '- [E3] 保留依据。' in revised
+    assert '99%' not in revised
+    assert '。[E1] 后一句' not in revised
+
+
+def test_pruning_does_not_return_numbered_list_with_missing_item():
+    answer = '1. 正确。\n2. 错误99%。[E1]\n3. 正确。\n'
+    verification = {'checks': {'numeric_support': {'audit': {'quantities': [
+        {'status': 'unsupported', 'line': 1, 'text': '99%'}]}}}}
+    assert prune_rejected_statements(answer, verification) is None
+
+
+def test_pruning_falls_back_when_source_listing_would_disappear():
+    answer = '正确的结论。[E1]\n\n**依据**\n- [E1] 不能支持的数字99%。\n'
+    verification = {'checks': {'numeric_support': {'audit': {'quantities': [
+        {'status': 'unsupported', 'line': 3, 'text': '99%'}]}}}}
+    assert prune_rejected_statements(answer, verification) is None
 from aika.professional_qa import EvidenceCard
 from aika.question_planner import heuristic_plan_question
 

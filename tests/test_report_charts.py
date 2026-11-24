@@ -28,7 +28,7 @@ def test_company_coverage_heatmap_scores_evidence_strength() -> None:
         [
             card(citation_id="E1", company="直接公司", exposure_level="direct", source="报告A"),
             card(citation_id="E2", company="提及公司", exposure_level="mentioned", claim_type="risk"),
-            card(citation_id="E3", company="加强公司", exposure_level="direct", source="报告A", published_at="2025"),
+            card(citation_id="E3", company="加强公司", exposure_level="direct", source="报告A", published_at="2025", freshness_status="fresh"),
             card(citation_id="E4", company="加强公司", exposure_level="indirect", claim_type="indicator", source="报告B", published_at="2025"),
         ],
         target_companies=["直接公司", "提及公司", "加强公司", "未覆盖公司"],

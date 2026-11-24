@@ -43,6 +43,9 @@ from aika.professional_qa import (
     rank_evidence_cards,
 )
 from aika.question_planner import QuestionPlan
+from aika.comparison_evidence import coverage_cards, queries as comparison_queries, requirements as comparison_requirements, matrix as comparison_matrix, missing_cells
+from aika.rd_evidence import (requirements as rd_requirements, queries as rd_queries,
+    coverage_cards as rd_coverage_cards, matrix as rd_matrix, missing_cells as missing_rd_cells)
 
 
 AGENT_TYPES = ("graph", "rag", "research", "semantic", "graphrag")
@@ -107,7 +110,7 @@ class EvidenceCandidate:
             "candidate_id": self.candidate_id,
             "kind": self.card.kind,
             "title": self.card.title,
-            "evidence": shorten(self.card.evidence, 500),
+            "evidence": self.card.evidence if self.card.kind == "rag" else shorten(self.card.evidence, 500),
             "source": self.card.source,
             "page": self.card.page,
             "company": self.card.company,
@@ -173,12 +176,18 @@ class CentralLLMBudget:
         with self._lock:
             if self._client is None:
                 raise LLMBudgetExhausted("LLM is not configured")
-            if self._used >= self.max_calls:
+            reserved = 0 if role == "answer" else min(self.max_calls, 1 if role == "summarizer" else 2)
+            if self._used >= self.max_calls - reserved:
                 raise LLMBudgetExhausted(f"LLM call budget exhausted ({self.max_calls})")
             self._used += 1
             self._method_calls[method] = self._method_calls.get(method, 0) + 1
             self._role_calls[role] = self._role_calls.get(role, 0) + 1
             return getattr(self._client, method)
+
+    def can_start_retrieval_round(self, query_agents: int, *, extra_calls: int = 0) -> bool:
+        """Allow dispatch, rewrites and review only with summary/answer calls left."""
+        with self._lock:
+            return self._client is None or self.max_calls - self._used >= query_agents + 4 + extra_calls
 
     def note_fallback(self, role: str, error: str = "") -> None:
         with self._lock:
@@ -197,6 +206,7 @@ class CentralLLMBudget:
                 "max_calls": self.max_calls,
                 "used_calls": self._used,
                 "remaining_calls": max(0, self.max_calls - self._used),
+                "reserved_final_calls": min(self.max_calls, 2),
                 "calls_by_role": dict(self._role_calls),
                 "fallbacks_by_role": dict(self._fallbacks),
                 "fallback_count": sum(self._fallbacks.values()),
@@ -222,8 +232,11 @@ class RoleLLMClient:
             return attr
 
         def budgeted(*args: Any, **kwargs: Any) -> Any:
+            from aika.request_observation import request_role
+
             method = self._budget.reserve(self._role, name)
-            return method(*args, **kwargs)
+            with request_role(self._role):
+                return method(*args, **kwargs)
 
         return budgeted
 
@@ -304,6 +317,10 @@ class CentralizedCoordinator:
             max_assignments=self.max_workers,
         )
         if assignments:
+            if (comparison_requirements(plan) or rd_requirements(plan)) and 'rag' in available and not any(a.agent_type == 'rag' for a in assignments):
+                required = AgentAssignment(assignment_id=f'r{round_index}-comparison-rag', agent_type='rag',
+                    query=question, coverage_goals=['comparison_evidence'] if comparison_requirements(plan) else ['rd_evidence'], round_index=round_index)
+                assignments = [*assignments[:max(0, self.max_workers - 1)], required]
             return assignments
         self.llm_budget.note_fallback("supervisor", "invalid or empty dispatch payload")
         return fallback
@@ -351,7 +368,8 @@ class CentralizedCoordinator:
                 degraded=True,
                 timed_out=True,
             )
-        executor.shutdown(wait=False, cancel_futures=True)
+        # Experiments must finish accounting for timed-out requests before the next case.
+        executor.shutdown(wait=bool(getattr(self.engine, "experiment_wait_for_workers", False)), cancel_futures=True)
         results = [
             by_id.get(
                 assignment.assignment_id,
@@ -442,13 +460,17 @@ class CentralizedCoordinator:
         *,
         plan: QuestionPlan,
     ) -> list[EvidenceCandidate]:
-        by_identity: dict[tuple[str, str, str, str], tuple[EvidenceCard, str]] = {}
+        by_identity: dict[tuple[str, str, str, str, str], tuple[EvidenceCard, str]] = {}
         for card, agent in entries:
             if not card.evidence.strip():
                 continue
             by_identity.setdefault(card_identity(card), (card, agent))
         cards = [item[0] for item in by_identity.values()]
         deterministic = rank_evidence_cards(cards, limit=max(len(cards), 1), plan=plan)
+        if comparison_requirements(plan):
+            deterministic = coverage_cards(deterministic, plan, len(deterministic))
+        if rd_requirements(plan):
+            deterministic = rd_coverage_cards(deterministic, plan, len(deterministic))
         agent_by_identity = {identity: value[1] for identity, value in by_identity.items()}
         return [
             EvidenceCandidate(
@@ -482,6 +504,8 @@ class CentralizedCoordinator:
             system_prompt=(
                 "你是证据审核 Agent。检查相关性、来源质量、冲突和覆盖度。"
                 "只能引用候选 ID，只输出严格 JSON，不生成新证据。"
+                "年报比较需逐公司、年度和要求的业务/速率/技术维度检查；历史研报预测、行业原理与收入表不能替代当年公司产品原文。"
+                "研发勾稽需要费用表的精确当前年费用行，不能用亿元舍入概述或总额减资本化反推来代替该原文；保留投入表及会计政策。"
             ),
             user_prompt=json.dumps(
                 {
@@ -489,6 +513,8 @@ class CentralizedCoordinator:
                     "question_plan": plan.to_dict(),
                     "required_coverage": task_plan.required_coverage,
                     "deterministic_coverage": deterministic_coverage.to_dict(),
+                    "comparison_matrix": comparison_matrix(plan, [candidate.card for candidate in candidates]),
+                    'rd_matrix': rd_matrix(plan, [candidate.card for candidate in candidates]),
                     "candidates": [candidate.prompt_payload() for candidate in candidates[:40]],
                     "schema": {
                         "accepted_ids": ["candidate_id"],
@@ -529,6 +555,11 @@ class CentralizedCoordinator:
             for value in clean_strings(payload.get("missing_coverage"))
             if value in task_plan.required_coverage
         ]
+        accepted_cards = [candidate.card for candidate in candidates if candidate.candidate_id in accepted]
+        if comparison_requirements(plan) and missing_cells(plan, accepted_cards) and 'comparison_evidence' not in missing:
+            missing.append('comparison_evidence')
+        if rd_requirements(plan) and missing_rd_cells(plan, accepted_cards) and 'rd_evidence' not in missing:
+            missing.append('rd_evidence')
         coverage = merge_review_coverage(deterministic_coverage, missing, plan)
         return ReviewReport(
             accepted_ids=accepted,
@@ -562,6 +593,8 @@ class CentralizedCoordinator:
             system_prompt=(
                 "你是证据归纳 Agent。只能选择候选、生成简短标题和选择理由。"
                 "不得改写 evidence，不得生成候选之外的事实，只输出严格 JSON。"
+                "比较题应优先为每家公司保留对应年度的业务、产品和技术原文，不能用收入数据或旧研报替代。"
+                "研发勾稽优先选择精确费用表、研发投入表和费用化/资本化会计政策，不能仅保留舍入概述。"
             ),
             user_prompt=json.dumps(
                 {
@@ -641,11 +674,29 @@ class CentralizedCoordinator:
                     cards[-1] = risk_card
                 else:
                     cards.append(risk_card)
+        coverage_selection = []
+        rd_selection = []
+        if comparison_requirements(plan):
+            original = list(cards)
+            # Use accepted, unchanged original cards only; never insert benchmark evidence.
+            pool = [*cards, *[replace(c.card, candidate_ids=[c.candidate_id], retrieval_agent=c.retrieval_agent)
+                            for c in accepted if c.candidate_id not in seen]]
+            cards = coverage_cards(pool, plan, int(getattr(self.engine, 'evidence_top_n', 6)))
+            coverage_selection = [c.candidate_ids[0] for c in cards if c not in original and c.candidate_ids]
+        if rd_requirements(plan):
+            original = list(cards)
+            pool = [*cards, *[replace(c.card, candidate_ids=[c.candidate_id], retrieval_agent=c.retrieval_agent)
+                            for c in accepted if c.candidate_id not in seen]]
+            cards = rd_coverage_cards(pool, plan, int(getattr(self.engine, 'evidence_top_n', 6)))
+            rd_selection = [c.candidate_ids[0] for c in cards if c not in original and c.candidate_ids]
         return (
             raw_cards,
             assign_citation_ids(cards),
             drafts,
-            {"source": source, "degraded": degraded, "drafts": [draft.to_dict() for draft in drafts]},
+            {"source": source, "degraded": degraded, "drafts": [draft.to_dict() for draft in drafts],
+             "comparison_coverage_selection": coverage_selection,
+             'rd_coverage_selection': rd_selection, 'rd_matrix': rd_matrix(plan, cards),
+             "comparison_matrix": comparison_matrix(plan, cards)},
         )
 
     def diagnostics(self) -> dict[str, Any]:
@@ -749,6 +800,23 @@ class CentralizedCoordinator:
             elif assignment.agent_type == "rag":
                 output, call = tools.search_rag(retrieval_query, scoped_plan)
                 tool_calls.append(call)
+                output = list(output or [])
+                for company, targeted in comparison_queries(plan, output)[:12]:
+                    focused = replace(plan, question=targeted, answer_type='company_profile',
+                                      companies=[company], expanded_topics=[])
+                    hits, call = tools.search_rag(targeted, focused)
+                    call.args.update(comparison_company=company, source='public_question_requirements')
+                    tool_calls.append(call)
+                    output = merge_rag_hits(output, list(hits or []))
+                for company, targeted, facet in rd_queries(plan, output)[:12]:
+                    if not any(c['company'] == company and c['facet'] == facet for c in missing_rd_cells(plan, output)):
+                        continue
+                    focused = replace(plan, question=targeted, answer_type='company_profile', companies=[company],
+                                      topics=[], expanded_topics=[], relations=[])
+                    hits, call = tools.search_rag(targeted, focused)
+                    call.args.update(rd_company=company, rd_facet=facet, source='public_question_rd_requirements')
+                    tool_calls.append(call)
+                    output = merge_rag_hits(output, list(hits or []))
             elif assignment.agent_type == "research":
                 output, call = tools.search_research(retrieval_query, scoped_plan)
                 tool_calls.append(call)

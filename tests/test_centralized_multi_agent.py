@@ -172,6 +172,47 @@ def test_supervisor_dynamically_selects_agent_and_summary_keeps_original_evidenc
     assert result["diagnostics"]["llm_calls"]["total"] <= 12
 
 
+def test_raw_metric_table_stops_supplement_and_reaches_answer_prompt():
+    from tests.test_raw_metric_evidence import TABLE, raw_hit
+
+    class TableIndex:
+        def search(self, *args, **kwargs):
+            return [raw_hit()]
+
+    class CaptureLLM(StructuredMultiAgentLLM):
+        def chat_text(self, *, user_prompt, **kwargs):
+            self.answer_messages = user_prompt
+            return "研发投入为12,345.67万元，占营收2.35%，资本化678.90万元[E1]。"
+
+        def chat_messages(self, *, messages, **kwargs):
+            self.answer_messages = messages
+            return ChatTextResult(content="研发投入为12,345.67万元，占营收2.35%，资本化678.90万元[E1]。")
+
+    llm = CaptureLLM()
+    result = QAEngine(rag_index=TableIndex(), llm_client=llm, multi_agent_max_llm_calls=12).answer_question(
+        "浪潮信息2025年研发投入金额、资本化研发投入及占营收比例是多少？")
+    diagnostics = result['diagnostics']
+    assert diagnostics['agent_coverage']['satisfied'] == ['metric_evidence']
+    assert diagnostics['agent_stop_reason'] == 'evidence_sufficient'
+    assert len(diagnostics['multi_agent']['rounds']) == 1
+    assert diagnostics['multi_agent']['llm']['fallback_count'] == 0
+    assert result['evidence_cards'][0]['evidence'] == TABLE
+    assert '678.90' in json.dumps(llm.answer_messages)
+
+
+def test_supplement_stops_before_budget_cannot_cover_summary_and_answer():
+    engine = QAEngine(rag_index=SingleRagIndex(), llm_client=StructuredMultiAgentLLM(),
+                      multi_agent_max_llm_calls=7)
+    result = engine.answer_question('浪潮信息2025年研发投入金额和占营收比例是多少？')
+    diagnostics = result['diagnostics']
+    assert diagnostics['agent_stop_reason'] == 'llm_budget_insufficient'
+    assert diagnostics['agent_coverage']['missing'] == ['metric_evidence']
+    assert len(diagnostics['multi_agent']['rounds']) == 1
+    assert diagnostics['multi_agent']['llm']['fallback_count'] == 0
+    assert diagnostics['multi_agent']['llm']['used_calls'] <= 7
+    assert '无法回答该指标问题' in result['answer']
+
+
 class ConditionalRiskMemory:
     def __init__(self) -> None:
         self.calls = 0

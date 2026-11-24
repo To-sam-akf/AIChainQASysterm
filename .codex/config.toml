@@ -1,0 +1,5 @@
+[mcp_servers.aika]
+command = "/home/sanmu/.local/share/uv/tools/aika-research-mcp/bin/aika"
+args = ["mcp"]
+startup_timeout_sec = 30
+tool_timeout_sec = 600

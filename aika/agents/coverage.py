@@ -7,6 +7,9 @@ from typing import Any
 
 from aika.agents.planner import AgentTaskPlan, query_suffix_for_coverage
 from aika.question_planner import QuestionPlan
+from aika.metric_evidence import has_numeric_disclosure
+from aika.comparison_evidence import missing_cells
+from aika.rd_evidence import missing_cells as missing_rd_cells
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,8 @@ class CoverageReport:
 
     @property
     def should_continue(self) -> bool:
-        return bool(self.missing) and self.retrieval_round < self.max_retrieval_rounds
+        return (bool(self.missing) and self.retrieval_round < self.max_retrieval_rounds
+                and self.stop_reason != "llm_budget_insufficient")
 
 
 class EvidenceCoverageChecker:
@@ -92,10 +96,14 @@ class EvidenceCoverageChecker:
     def _has_coverage(self, coverage: str, plan: QuestionPlan, state: Any) -> bool:
         if coverage == "company_coverage":
             return not missing_companies(plan, state)
+        if coverage == "comparison_evidence":
+            return not missing_cells(plan, [*getattr(state, 'rag_hits', []), *getattr(state, 'semantic_hits', [])])
+        if coverage == 'rd_evidence':
+            return not missing_rd_cells(plan, [*getattr(state, 'rag_hits', []), *getattr(state, 'semantic_hits', [])])
         if coverage == "risk_evidence":
             return has_risk_evidence(state)
         if coverage == "metric_evidence":
-            return has_metric_evidence(state)
+            return has_metric_evidence(state, plan)
         if coverage == "company_exposure":
             return has_company_exposure(state)
         if coverage == "mechanism_evidence":
@@ -103,6 +111,16 @@ class EvidenceCoverageChecker:
         return True
 
     def _gap_for(self, coverage: str, plan: QuestionPlan, state: Any) -> EvidenceGap:
+        if coverage == 'rd_evidence':
+            missing = missing_rd_cells(plan, [*getattr(state, 'rag_hits', []), *getattr(state, 'semantic_hits', [])])
+            return EvidenceGap(coverage=coverage,
+                reason='缺少研发原文：' + '；'.join(f"{c['company']} {c['year']} {c['facet']}" for c in missing),
+                query_suffix=query_suffix_for_coverage(coverage), companies=list(dict.fromkeys(c['company'] for c in missing)))
+        if coverage == "comparison_evidence":
+            missing = missing_cells(plan, [*getattr(state, 'rag_hits', []), *getattr(state, 'semantic_hits', [])])
+            return EvidenceGap(coverage=coverage,
+                reason='缺少同口径比较原文：' + '；'.join(f"{c['company']} {c['year']} {c['facet']}" for c in missing),
+                query_suffix=query_suffix_for_coverage(coverage), companies=list(dict.fromkeys(c['company'] for c in missing)))
         if coverage == "company_coverage":
             missing = missing_companies(plan, state)
             return EvidenceGap(
@@ -120,7 +138,7 @@ class EvidenceCoverageChecker:
         if coverage == "metric_evidence":
             return EvidenceGap(
                 coverage=coverage,
-                reason="指标问题缺少 indicator/HAS_METRIC/HAS_INDICATOR 证据，需要补检指标证据。",
+                reason="尚未找到相关指标的原文数值、表格或结构化指标证据，需要补检并核对指标口径。",
                 query_suffix=query_suffix_for_coverage(coverage),
             )
         if coverage == "company_exposure":
@@ -143,6 +161,8 @@ def next_supplement_gap(report: CoverageReport) -> EvidenceGap | None:
         return None
     priority = {
         "company_coverage": 0,
+        "comparison_evidence": 0,
+        'rd_evidence': 0,
         "risk_evidence": 1,
         "metric_evidence": 2,
         "company_exposure": 3,
@@ -189,13 +209,24 @@ def has_risk_evidence(state: Any) -> bool:
     )
 
 
-def has_metric_evidence(state: Any) -> bool:
+def has_metric_evidence(state: Any, plan: QuestionPlan | None = None) -> bool:
     metric_relations = {"HAS_METRIC", "HAS_INDICATOR"}
     if any(record.get("relation") in metric_relations for record in getattr(state, "graph_records", [])):
         return True
     if any(getattr(hit, "claim_type", "") == "indicator" for hit in getattr(state, "research_hits", [])):
         return True
-    return any(getattr(hit, "claim_type", "") == "indicator" for hit in getattr(state, "semantic_hits", []))
+    if any(getattr(hit, "claim_type", "") == "indicator" for hit in getattr(state, "semantic_hits", [])):
+        return True
+    for hit in [*getattr(state, "rag_hits", []), *getattr(state, "semantic_hits", [])]:
+        if getattr(hit, "kind", "rag") != "rag":
+            continue
+        text = getattr(hit, "text", "")
+        company = getattr(hit, "company", "")
+        if plan and plan.companies and not (company in plan.companies or any(c in text for c in plan.companies)):
+            continue
+        if has_numeric_disclosure(text, plan.question if plan else ""):
+            return True
+    return False
 
 
 def has_company_exposure(state: Any) -> bool:

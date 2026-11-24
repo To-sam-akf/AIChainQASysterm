@@ -5,6 +5,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
+from dataclasses import asdict, is_dataclass, replace
 from typing import Any, Callable, Iterator, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -25,7 +26,7 @@ from aika.agents.centralized import (
     EvidenceCandidate,
     ReviewReport,
 )
-from aika.agents.coverage import CoverageReport
+from aika.agents.coverage import CoverageReport, EvidenceGap
 from aika.langchain_tools import build_langchain_tools
 from aika.professional_qa import EvidenceCard
 
@@ -70,14 +71,26 @@ class LangGraphAgentState(TypedDict, total=False):
     raw_cards: list[EvidenceCard]
     evidence_cards: list[EvidenceCard]
     summary_metadata: dict[str, Any]
+    answer: str
+    reasoning_content: str
+    answer_call: AgentToolCall
+    refused_metric: bool
+    generation_context: dict[str, Any]
+    retrieval_outputs: list[dict[str, Any]]
     result: dict[str, Any]
 
 
 class LangGraphAgentRunner(AgentRunner):
     """Central supervisor with parallel query agents and deterministic fallbacks."""
 
-    def __init__(self, engine: Any, *, max_steps: int = 4) -> None:
+    def __init__(
+        self, engine: Any, *, max_steps: int = 4,
+        verify_final_answer: bool = True,
+        answer_generator: Callable[[LangGraphAgentState], dict[str, Any]] | None = None,
+    ) -> None:
         super().__init__(engine, max_steps=max_steps)
+        self.verify_final_answer = verify_final_answer
+        self.answer_generator = answer_generator
         self._graph = self._build_graph()
 
     def run(
@@ -199,6 +212,7 @@ class LangGraphAgentRunner(AgentRunner):
         builder.add_node("graphrag_join", self._graphrag_join_node)
         builder.add_node("review", self._review_node)
         builder.add_node("summarize", self._summarize_node)
+        builder.add_node("generate_answer", self._generate_answer_node)
         builder.add_node("verify_answer", self._verify_answer_node)
 
         builder.add_edge(START, "plan")
@@ -211,7 +225,8 @@ class LangGraphAgentRunner(AgentRunner):
             self._route_after_review,
             {"supplement": "dispatch", "summarize": "summarize"},
         )
-        builder.add_edge("summarize", "verify_answer")
+        builder.add_edge("summarize", "generate_answer")
+        builder.add_edge("generate_answer", "verify_answer")
         builder.add_edge("verify_answer", END)
         return builder.compile()
 
@@ -294,6 +309,15 @@ class LangGraphAgentRunner(AgentRunner):
             "retrieval_state": retrieval_state,
             "candidate_entries": entries,
             "all_tool_calls": [*list(state.get("all_tool_calls") or []), *calls],
+            "retrieval_outputs": [
+                *list(state.get("retrieval_outputs") or []),
+                *([{
+                    "round": int(state.get("round_index") or 0),
+                    "assignment": result.assignment.to_dict(),
+                    "output": experiment_plain_value(result.output),
+                    "diagnostic": result.diagnostic(),
+                } for result in state.get("wave_results") or []] if self.answer_generator is not None else []),
+            ],
         }
 
     def _review_node(self, state: LangGraphAgentState) -> dict[str, Any]:
@@ -310,6 +334,15 @@ class LangGraphAgentRunner(AgentRunner):
             candidates=candidates,
             round_index=round_index,
         )
+        coordinator = state["coordinator"]
+        available = coordinator.available_agents()
+        query_agents = min(len(available), coordinator.max_workers)
+        extra_calls = int("graph" in available and bool(getattr(self.engine, "enable_llm_cypher", False)))
+        if report.coverage.should_continue and not state["llm_budget"].can_start_retrieval_round(query_agents, extra_calls=extra_calls):
+            report = replace(report, coverage=replace(
+                report.coverage, stop_reason="llm_budget_insufficient",
+                status="fail" if "metric_evidence" in report.coverage.missing else "warn",
+            ))
         state["retrieval_state"].coverage_report = report.coverage
         missing = "、".join(report.coverage.missing) or "无"
         self._progress(
@@ -342,6 +375,22 @@ class LangGraphAgentRunner(AgentRunner):
             candidates=list(state.get("candidates") or []),
             accepted_ids=report.accepted_ids,
         )
+        missing_comparison = [cell for cell in metadata.get('comparison_matrix', []) if not cell['matched']]
+        if missing_comparison and 'comparison_evidence' not in report.coverage.missing:
+            coverage = replace(report.coverage, status='warn', stop_reason='selected_evidence_incomplete',
+                missing=[*report.coverage.missing, 'comparison_evidence'],
+                satisfied=[v for v in report.coverage.satisfied if v != 'comparison_evidence'],
+                gaps=[*report.coverage.gaps, EvidenceGap(coverage='comparison_evidence',
+                    reason='最终采用证据仍有公司/年度/比较维度缺口', query_suffix='对应年度年报 业务 产品 服务 应用')])
+            report = replace(report, coverage=coverage)
+        missing_rd = [cell for cell in metadata.get('rd_matrix', []) if not cell['matched']]
+        if missing_rd and 'rd_evidence' not in report.coverage.missing:
+            coverage = replace(report.coverage, status='warn', stop_reason='selected_evidence_incomplete',
+                missing=[*report.coverage.missing, 'rd_evidence'],
+                satisfied=[v for v in report.coverage.satisfied if v != 'rd_evidence'],
+                gaps=[*report.coverage.gaps, EvidenceGap(coverage='rd_evidence',
+                    reason='最终采用证据缺少精确研发费用表或其他研发原文', query_suffix='研发费用 费用表 单位 万元 研发投入 资本化')])
+            report = replace(report, coverage=coverage)
         self._record_timing(state["timings_ms"], "evidence", started_at)
         state["retrieval_state"].reranker = dict(metadata)
         trace = list(state.get("trace") or [])
@@ -386,12 +435,19 @@ class LangGraphAgentRunner(AgentRunner):
             "raw_cards": raw_cards,
             "evidence_cards": evidence_cards,
             "summary_metadata": {**metadata, "draft_count": len(drafts)},
+            "coverage_report": report.coverage,
+            "review_report": report,
             "trace": trace,
         }
 
-    def _verify_answer_node(self, state: LangGraphAgentState) -> dict[str, Any]:
+    def _generate_answer_node(self, state: LangGraphAgentState) -> dict[str, Any]:
         from aika.agents.coverage import metric_gap_answer
-        from aika.agents.verification import build_evidence_limited_answer
+
+        if self.answer_generator is not None:
+            started_at = time.perf_counter()
+            outcome = self.answer_generator(state)
+            self._record_timing(state["timings_ms"], "answer", started_at)
+            return outcome
 
         answer_tools = AgentTools(
             self.engine,
@@ -451,13 +507,32 @@ class LangGraphAgentRunner(AgentRunner):
             )
         self._record_timing(state["timings_ms"], "answer", started_at)
 
-        verification, verify_call = answer_tools.verify_answer_support(
-            answer,
-            state["plan"],
-            evidence_cards,
-            raw_cards,
-            str(state.get("contextual_question") or ""),
+        return {
+            "answer": answer, "reasoning_content": reasoning_content,
+            "answer_call": answer_call, "refused_metric": refused_metric,
+        }
+
+    def _verify_answer_node(self, state: LangGraphAgentState) -> dict[str, Any]:
+        from aika.agents.verification import build_evidence_limited_answer
+
+        answer_tools = AgentTools(
+            self.engine, errors=state["errors"], llm_options=state["llm_options"],
+            llm_client=state["llm_budget"].client("answer"),
         )
+        evidence_cards = list(state.get("evidence_cards") or [])
+        raw_cards = list(state.get("raw_cards") or [])
+        coverage = state["coverage_report"]
+        answer = state["answer"]
+        reasoning_content = state["reasoning_content"]
+        refused_metric = state["refused_metric"]
+        verification = {"status": "skipped", "reason": "final_answer_check_disabled"}
+        verify_call = None
+
+        if self.verify_final_answer:
+            verification, verify_call = answer_tools.verify_answer_support(
+                answer, state["plan"], evidence_cards, raw_cards,
+                str(state.get("contextual_question") or ""),
+            )
         tool_calls = [
             AgentToolCall(
                 tool="summarize_evidence",
@@ -465,11 +540,12 @@ class LangGraphAgentRunner(AgentRunner):
                 result_count=len(evidence_cards),
                 error="" if state.get("summary_metadata", {}).get("source") == "llm" else "deterministic fallback",
             ),
-            answer_call,
-            verify_call,
+            state["answer_call"],
         ]
+        if verify_call is not None:
+            tool_calls.append(verify_call)
         if verification.get("status") == "fail" and not refused_metric:
-            answer = build_evidence_limited_answer(state["plan"], evidence_cards, verification, coverage)
+            answer = build_evidence_limited_answer(state["plan"], evidence_cards, verification, coverage, answer=answer)
             reasoning_content = ""
             verification, second_verify_call = answer_tools.verify_answer_support(
                 answer,
@@ -478,15 +554,20 @@ class LangGraphAgentRunner(AgentRunner):
                 raw_cards,
                 str(state.get("contextual_question") or ""),
             )
+            tool_calls.append(AgentToolCall(
+                tool="build_evidence_limited_answer", args={"reason": "verification_failed"},
+                result_count=1 if answer else 0,
+            ))
             tool_calls.append(second_verify_call)
 
         trace = list(state.get("trace") or [])
         trace.append(
             AgentTraceStep(
                 step=len(trace) + 1,
-                phase="verify_answer",
+                phase="verify_answer" if self.verify_final_answer else "generate_answer",
                 thought="归纳证据卡后生成答案，并执行引用、数值、风险和公司覆盖验证。",
-                action="summarize_evidence -> generate_answer -> verify_answer_support",
+                action=("summarize_evidence -> generate_answer -> verify_answer_support"
+                        if self.verify_final_answer else "summarize_evidence -> generate_answer"),
                 tool_calls=tool_calls,
                 observation=f"verification={verification.get('status')}，证据卡 {len(evidence_cards)} 条。",
             )
@@ -525,6 +606,15 @@ class LangGraphAgentRunner(AgentRunner):
             "summary": dict(state.get("summary_metadata") or {}),
         }
         diagnostics["agent_budget"]["max_llm_calls"] = state["llm_budget"].max_calls
+        if not self.verify_final_answer or self.answer_generator is not None:
+            result["candidate_context"] = {
+                "raw_cards": [card.to_dict() for card in raw_cards],
+                "semantic_hits": [hit.to_dict() for hit in state["retrieval_state"].semantic_hits],
+                "retrieval_rounds": list(state.get("retrieval_outputs") or []),
+                "trace": [step.to_dict() for step in trace],
+                "generation_context": state.get("generation_context") or {},
+                "refused_metric": refused_metric,
+            }
         return {"result": result, "trace": trace}
 
     def _progress(self, state: LangGraphAgentState, stage: str, message: str) -> None:
@@ -543,3 +633,16 @@ class LangGraphAgentRunner(AgentRunner):
 
         for chunk in chunk_text(answer):
             self._callback(state, {"type": "answer_delta", "content": chunk})
+
+
+def experiment_plain_value(value: Any) -> Any:
+    """Preserve complete retrieval outputs only when experimental capture is requested."""
+    if hasattr(value, "to_dict"):
+        return experiment_plain_value(value.to_dict())
+    if is_dataclass(value):
+        return experiment_plain_value(asdict(value))
+    if isinstance(value, dict):
+        return {key: experiment_plain_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [experiment_plain_value(item) for item in value]
+    return value

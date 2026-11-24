@@ -278,7 +278,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
                 citation_id="",
                 kind="rag",
                 title=f"{hit.company or hit.source_type} 原文片段".strip(),
-                evidence=hit.snippet,
+                evidence=hit.text,
                 claim_id="",
                 source=hit.source_title,
                 page=str(hit.page),
@@ -287,6 +287,7 @@ def cards_from_rag_hits(hits: list[RagHit], plan: QuestionPlan) -> list[Evidence
                 source_tier=hit.source_tier,
                 score=round(score, 4),
                 reason="本地文档检索",
+                semantic_ref_id=hit.chunk_id,
             )
         )
     return cards
@@ -351,7 +352,7 @@ def dedupe_cards(cards: list[EvidenceCard]) -> list[EvidenceCard]:
     deduped: list[EvidenceCard] = []
     seen = set()
     for card in sorted(cards, key=lambda item: (-item.score, item.kind, item.source, item.page)):
-        key = re.sub(r"\s+", "", card.evidence)[:80]
+        key = (card.company, card.source, card.page, re.sub(r"\s+", "", card.evidence))
         if key in seen:
             continue
         seen.add(key)
@@ -472,8 +473,8 @@ def fill_remaining(selected: list[EvidenceCard], cards: list[EvidenceCard], limi
     return output[:limit]
 
 
-def card_identity(card: EvidenceCard) -> tuple[str, str, str, str]:
-    return (card.kind, card.source, card.page, re.sub(r"\s+", "", card.evidence)[:100])
+def card_identity(card: EvidenceCard) -> tuple[str, str, str, str, str]:
+    return (card.kind, card.company, card.source, card.page, re.sub(r"\s+", "", card.evidence))
 
 
 def assign_citation_ids(cards: list[EvidenceCard]) -> list[EvidenceCard]:

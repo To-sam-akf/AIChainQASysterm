@@ -252,8 +252,11 @@ def build_table_chunks(
         if isinstance(row, list) and any(normalize_table_value(cell) for cell in row)
     ]
     title = normalize_table_value(table.get("title", ""))
+    notes = [str(note).strip() for note in table.get('footnotes', []) if str(note).strip()]
+    note_text = '\n\n'.join(dict.fromkeys(notes))
     table_id = str(table.get("table_id") or stable_id("table", page["report_id"], page.get("page", ""), title))
-    row_groups = split_table_rows(headers, rows, title=title, max_chars=max_chars)
+    row_groups = split_table_rows(headers, rows, title=title,
+                                  max_chars=max(64, max_chars - len(note_text) - 2) if note_text else max_chars)
     if not row_groups:
         markdown = str(table.get("markdown") or "").strip()
         if not markdown:
@@ -262,6 +265,8 @@ def build_table_chunks(
 
     chunks = []
     for index, (row_start, row_end, text) in enumerate(row_groups, start=1):
+        if note_text and note_text not in text:
+            text = text.rstrip() + '\n\n' + note_text
         chunk_id = stable_id("chunk", table_id, row_start, row_end, index, text[:80])
         chunks.append(
             build_chunk_record(

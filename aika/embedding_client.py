@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from typing import Any
 
 import requests
 
 from aika.llm_client import load_dotenv
+from aika.request_observation import REQUEST_ROLE, RequestObserver
 
 
 DEFAULT_EMBEDDING_BATCH_SIZE = 32
@@ -36,6 +38,7 @@ class OpenAICompatibleEmbeddingClient:
         dimensions: int | None = None,
         timeout: int = DEFAULT_EMBEDDING_TIMEOUT,
         max_retries: int = DEFAULT_EMBEDDING_RETRIES,
+        request_observer: RequestObserver | None = None,
     ) -> None:
         load_dotenv()
         self.base_url = (
@@ -55,6 +58,7 @@ class OpenAICompatibleEmbeddingClient:
         self.dimensions = dimensions if dimensions is not None else parse_optional_int(os.getenv("EMBEDDING_DIMENSIONS", ""))
         self.timeout = timeout
         self.max_retries = max(0, int(max_retries))
+        self.request_observer = request_observer
 
         if not self.model:
             raise ValueError("EMBEDDING_MODEL is not configured")
@@ -90,7 +94,12 @@ class OpenAICompatibleEmbeddingClient:
             payload["dimensions"] = self.dimensions
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
         last_error: Exception | None = None
+        request_id = uuid.uuid4().hex
         for attempt in range(self.max_retries + 1):
+            started = time.perf_counter()
+            data: dict[str, Any] = {}
+            error = ""
+            status_code = None
             try:
                 response = requests.post(
                     self.embeddings_url,
@@ -98,13 +107,25 @@ class OpenAICompatibleEmbeddingClient:
                     json=payload,
                     timeout=self.timeout,
                 )
+                status_code = response.status_code
                 response.raise_for_status()
-                return self._parse_embeddings(response.json(), expected_count=len(texts))
+                data = response.json()
+                return self._parse_embeddings(data, expected_count=len(texts))
             except Exception as exc:  # pragma: no cover - retry timing is environment-sensitive.
+                error = str(exc)
                 last_error = exc
                 if attempt >= self.max_retries:
                     break
                 time.sleep(0.5 * (attempt + 1))
+            finally:
+                if self.request_observer is not None:
+                    self.request_observer({
+                        "request_id": request_id, "attempt": attempt + 1, "kind": "embedding",
+                        "role": REQUEST_ROLE.get(), "request": payload,
+                        "response_model": data.get("model"), "usage": data.get("usage"),
+                        "http_status": status_code, "error": error,
+                        "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                    })
         raise RuntimeError(f"Embedding request failed: {last_error}") from last_error
 
     def _parse_embeddings(self, payload: dict[str, Any], *, expected_count: int) -> list[list[float]]:

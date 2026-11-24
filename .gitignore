@@ -49,6 +49,8 @@ data/agent_tasks/**/*.jsonl
 data/agent_tasks/*.jsonl
 data/eval_runs/**/*.jsonl
 data/eval_runs/*.jsonl
+data/eval_runs/experiments/
+data/eval_runs/scores/
 data/feedback/**/*.jsonl
 data/feedback/*.jsonl
 data/semantic_index/
@@ -88,6 +90,8 @@ data/*
 !data/eval/
 data/eval/*
 !data/eval/*.jsonl
+!data/eval/experiment_protocol_v1.md
+!data/eval/benchmark_v2_review.md
 !data/knowledge_packs/
 data/knowledge_packs/*
 !data/knowledge_packs/sample/

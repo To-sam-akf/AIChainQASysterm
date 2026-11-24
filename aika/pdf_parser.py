@@ -207,6 +207,7 @@ def extract_page(
             warnings.append(f"ocr_unavailable: {exc}")
 
     table_rects = [fitz.Rect(table["bbox"]) for table in tables]
+    recover_overlapping_table_notes(blocks, tables)
     body_blocks = [block for block in blocks if not overlaps_table(block["bbox"], table_rects)]
     return {
         "report_id": report["report_id"],
@@ -315,6 +316,35 @@ def overlaps_table(bbox: list[float], table_rects: list[fitz.Rect]) -> bool:
         ):
             return True
     return False
+
+
+def recover_overlapping_table_notes(blocks: list[dict[str, Any]], tables: list[dict[str, Any]]) -> None:
+    """Keep explicit notes swallowed by a table-overlapping PDF text block.
+
+    Do not copy the entire block (which would duplicate table values) or infer
+    prose. Attach the verbatim bounded note only when one table overlaps.
+    """
+    for block in blocks:
+        rect = fitz.Rect(block.get('bbox', []))
+        if rect.is_empty:
+            continue
+        matches = []
+        for table in tables:
+            box = fitz.Rect(table.get('bbox', []))
+            intersection = rect & box
+            if not intersection.is_empty:
+                matches.append((intersection.get_area(), table))
+        if len(matches) != 1 or not overlaps_table(block['bbox'], [fitz.Rect(t['bbox']) for _, t in matches]):
+            continue
+        table = matches[0][1]
+        text = str(block.get('text') or '')
+        for match in re.finditer(r'(?<![\u4e00-\u9fff])注\s*[:：][^\n。！？]{1,240}[。！？]?', text):
+            note = match.group().strip()
+            normalized = re.sub(r'\s+', '', note)
+            if normalized and normalized not in re.sub(r'\s+', '', str(table.get('markdown') or '')):
+                notes = table.setdefault('footnotes', [])
+                if note not in notes:
+                    notes.append(note)
 
 
 def edge_fingerprint(text: str) -> str:

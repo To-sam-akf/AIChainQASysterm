@@ -218,7 +218,7 @@ class AgentRunner:
         if verification.get("status") == "fail" and not refused_metric:
             from aika.agents.verification import build_evidence_limited_answer
 
-            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report)
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report, answer=answer)
             reasoning_content = ""
             verification, second_verify_call = tools.verify_answer_support(
                 answer,
@@ -534,7 +534,7 @@ class AgentRunner:
         if verification.get("status") == "fail" and not refused_metric:
             from aika.agents.verification import build_evidence_limited_answer
 
-            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report)
+            answer = build_evidence_limited_answer(plan, evidence_cards, verification, coverage_report, answer=answer)
             reasoning_content = ""
             verification, second_verify_call = tools.verify_answer_support(
                 answer,
@@ -734,7 +734,7 @@ def build_supplemental_question(contextual_question: str, gap: dict[str, Any]) -
 def should_refuse_metric_answer(report: CoverageReport | None) -> bool:
     if report is None:
         return False
-    return "metric_evidence" in report.missing and report.stop_reason == "max_retrieval_rounds_reached"
+    return "metric_evidence" in report.missing and report.stop_reason in {"max_retrieval_rounds_reached", "llm_budget_insufficient"}
 
 
 def merge_graph_records(existing: list[dict[str, Any]], additions: list[dict[str, Any]]) -> list[dict[str, Any]]:

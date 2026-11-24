@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import uuid
 from dataclasses import dataclass
 from collections.abc import Iterator
 from pathlib import Path
@@ -13,6 +14,7 @@ from typing import Any
 import requests
 
 from aika.extraction_schema import SchemaError, parse_json_object
+from aika.request_observation import REQUEST_ROLE, RequestObserver
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -69,6 +71,8 @@ class OpenAICompatibleClient:
         model: str | None = None,
         timeout: int = 60,
         max_retries: int = 3,
+        request_observer: RequestObserver | None = None,
+        request_attempt_limit: int | None = None,
     ) -> None:
         load_dotenv()
         self.api_key = api_key or os.getenv("LLM_API_KEY", "")
@@ -78,6 +82,8 @@ class OpenAICompatibleClient:
         self.model = model or os.getenv("LLM_MODEL", "")
         self.timeout = timeout
         self.max_retries = max_retries
+        self.request_observer = request_observer
+        self.request_attempt_limit = request_attempt_limit
         self.max_tokens = int(os.getenv("LLM_MAX_TOKENS", "4096"))
         model_name = self.model.casefold()
         thinking_default = "deepseek" in self.base_url.casefold() and (
@@ -115,7 +121,7 @@ class OpenAICompatibleClient:
             reasoning_effort=reasoning_effort,
         )
         last_error: Exception | None = None
-        for attempt in range(self.max_retries):
+        for attempt in range(1 if self.request_attempt_limit is not None else self.max_retries):
             try:
                 data = self._post_chat(payload)
                 content = data["choices"][0]["message"]["content"]
@@ -177,7 +183,7 @@ class OpenAICompatibleClient:
             reasoning_effort=reasoning_effort,
         )
         last_error: Exception | None = None
-        for attempt in range(self.max_retries):
+        for attempt in range(1 if self.request_attempt_limit is not None else self.max_retries):
             try:
                 data = self._post_chat(payload)
                 message = data["choices"][0]["message"]
@@ -242,7 +248,13 @@ class OpenAICompatibleClient:
         last_error: Exception | None = None
         allow_response_format = "response_format" in payload
         allow_thinking = "thinking" in payload or "reasoning_effort" in payload
-        for attempt in range(self.max_retries):
+        request_id = uuid.uuid4().hex
+        attempts = self.max_retries if self.request_attempt_limit is None else self.request_attempt_limit
+        for attempt in range(attempts):
+            started = time.perf_counter()
+            data: dict[str, Any] = {}
+            error = ""
+            status_code = None
             try:
                 request_payload = dict(payload)
                 if not allow_response_format:
@@ -251,6 +263,7 @@ class OpenAICompatibleClient:
                     request_payload.pop("thinking", None)
                     request_payload.pop("reasoning_effort", None)
                 response = requests.post(self.chat_url, headers=headers, json=request_payload, timeout=self.timeout)
+                status_code = response.status_code
                 if response.status_code == 400 and allow_response_format:
                     allow_response_format = False
                     continue
@@ -259,12 +272,26 @@ class OpenAICompatibleClient:
                     self._thinking_runtime_disabled = True
                     continue
                 response.raise_for_status()
-                return response.json()
+                data = response.json()
+                return data
             except (requests.RequestException, ValueError) as exc:
+                error = str(exc)
                 last_error = exc
-                if attempt + 1 < self.max_retries:
+                if attempt + 1 < attempts:
                     time.sleep(1.5 * (attempt + 1))
-        raise RuntimeError(f"LLM request failed after {self.max_retries} attempts: {last_error}")
+            finally:
+                if self.request_observer is not None:
+                    self.request_observer({
+                        "request_id": request_id, "attempt": attempt + 1, "kind": "llm",
+                        "role": REQUEST_ROLE.get(), "request": request_payload,
+                        "response_model": data.get("model"), "usage": data.get("usage"),
+                        "http_status": status_code, "error": error,
+                        "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "parameter_downgrade": status_code == 400 and any(
+                            key in request_payload for key in ("response_format", "thinking", "reasoning_effort")
+                        ),
+                    })
+        raise RuntimeError(f"LLM request failed after {attempts} attempts: {last_error}")
 
     def _stream_chat(self, payload: dict[str, Any]) -> Iterator[ChatStreamChunk]:
         headers = {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}

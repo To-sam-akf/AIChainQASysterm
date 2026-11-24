@@ -1,0 +1,83 @@
+{
+  "source_scores_sha256": "2d05c4af66ae9cf86dfcdba2636b5e6d95c779582aa5f90f15061a835bc97b8b",
+  "run_id": "experiment_20261123_215354_ca07ed1a",
+  "dataset_sha256": "128adf1b70231e5f41c744da9cf5bda48a2c89ae5d24c06e7d50d5a9da679103",
+  "variants": {
+    "A": {
+      "point": 0.22083333333333335,
+      "point_n": 20,
+      "citation": null,
+      "citation_n": 0,
+      "citation_pending": 0,
+      "citation_absent": 20,
+      "usable": 0.1,
+      "usable_n": 20,
+      "usable_pending": 0,
+      "median": 2.28562,
+      "min": 1.4861900000000001,
+      "max": 4.67012,
+      "serious": 0,
+      "serious_pending": 0,
+      "failures": 0
+    },
+    "B": {
+      "point": 0.8333333333333334,
+      "point_n": 20,
+      "citation": 0.9736842105263158,
+      "citation_n": 19,
+      "citation_pending": 0,
+      "citation_absent": 1,
+      "usable": 0.625,
+      "usable_n": 16,
+      "usable_pending": 4,
+      "median": 5.800669999999999,
+      "min": 3.5228099999999998,
+      "max": 12.43464,
+      "serious": 0,
+      "serious_pending": 1,
+      "failures": 0
+    },
+    "E": {
+      "point": 0.9833333333333334,
+      "point_n": 20,
+      "citation": 0.9909090909090909,
+      "citation_n": 20,
+      "citation_pending": 1,
+      "citation_absent": 0,
+      "usable": 0.875,
+      "usable_n": 16,
+      "usable_pending": 4,
+      "median": 18.36725,
+      "min": 12.06385,
+      "max": 26.218220000000002,
+      "serious": 0,
+      "serious_pending": 0,
+      "failures": 0
+    },
+    "F": {
+      "point": 0.9083333333333334,
+      "point_n": 20,
+      "citation": 0.9909090909090909,
+      "citation_n": 20,
+      "citation_pending": 1,
+      "citation_absent": 0,
+      "usable": 0.7647058823529411,
+      "usable_n": 17,
+      "usable_pending": 3,
+      "median": 18.398255,
+      "min": 12.13088,
+      "max": 26.24104,
+      "serious": 0,
+      "serious_pending": 0,
+      "failures": 0
+    }
+  },
+  "ef_task_comparison": {
+    "持平": 12,
+    "待比较": 8
+  },
+  "expert_decisions_applied": 19,
+  "expert_items_unresolved": 60,
+  "expert_items_not_mapped_with_opinion": 34,
+  "status": "exploratory_pending_review"
+}
