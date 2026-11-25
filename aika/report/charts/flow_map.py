@@ -27,7 +27,7 @@ def build_flow_map(
 ) -> FlowMapSpec:
     grouped: dict[tuple[str, str], dict[str, Any]] = defaultdict(lambda: {"value": 0.0, "evidence_ids": []})
     for index, record in enumerate(graph_records or [], start=1):
-        source = text_attr(record, "source") or text_attr(record, "head_name") or text_attr(record, "company")
+        source = text_attr(record, "head_name") or text_attr(record, "company") or text_attr(record, "source")
         target = text_attr(record, "target") or text_attr(record, "tail_name") or text_attr(record, "topic")
         if not source or not target or source == target:
             continue

@@ -411,6 +411,7 @@ class AgentTools:
         plan: QuestionPlan,
         graph_records: list[dict[str, Any]],
         evidence_cards: list[EvidenceCard],
+        generation_diagnostics: list[dict[str, Any]] | None = None,
     ) -> tuple[tuple[str, str], AgentToolCall]:
         """基于所有已收集的证据生成最终答案。
 
@@ -438,6 +439,7 @@ class AgentTools:
                 self.errors,
                 self.llm_options,
                 self.llm_client,
+                generation_diagnostics,
             ),
             lambda result: 1 if result[0] else 0,
         )

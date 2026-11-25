@@ -127,6 +127,3 @@ npm run dev
 
 默认使用 CSV 图谱，Neo4j 可作为可选增强。模型和 Embedding 调用可能产生费用。
 
-## 更多文档
-
-数据准备、图谱构建、评测和高级配置等历史记录见[详细文档](docs/README-extended.md)。其中部分配置和实验记录可能随代码演进而过时，请以当前 `.env.example` 和命令帮助为准。

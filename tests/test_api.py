@@ -230,6 +230,19 @@ async def test_api_status_and_graph_endpoints(tmp_path: Path) -> None:
         assert status_response.json()["settings"]["agent_max_steps"] == 4
         assert summary_response.json()["relation_options"]["拥有产品"] == "HAS_PRODUCT"
         assert "<svg" in subgraph_response.json()["svg"]
+        search = await client.get("/api/graph/entities", params={"q": "浪潮"})
+        node = search.json()["items"][0]
+        assert node["name"] == "浪潮信息"
+        neighbors = await client.get(f"/api/graph/entities/{node['id']}/neighbors", params={"limit": 1})
+        assert neighbors.json()["total"] == 1
+        edge = neighbors.json()["items"][0]
+        assert edge["evidence"] == "浪潮信息布局AI服务器。"
+        reverse = await client.get(f"/api/graph/entities/{edge['target_id']}/neighbors")
+        assert reverse.json()["total"] == 1
+        filtered = await client.get(f"/api/graph/entities/{node['id']}/neighbors", params={"relation_type": "USES_TECHNOLOGY"})
+        assert filtered.json()["total"] == 0
+        invalid = await client.get("/api/graph/entities/invalid/neighbors")
+        assert invalid.status_code == 400
     finally:
         await client.aclose()
         app.dependency_overrides.clear()

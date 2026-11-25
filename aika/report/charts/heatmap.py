@@ -82,7 +82,13 @@ def _score_cards(cards: list[Any]) -> tuple[int, str]:
 def _base_score(card: Any) -> int:
     exposure = text_attr(card, "exposure_level").casefold()
     claim_type = text_attr(card, "claim_type").casefold()
-    if exposure in {"core", "direct"} or claim_type == "company_exposure":
+    if exposure in {"core", "direct"}:
+        return 3
+    if exposure == "indirect":
+        return 2
+    if exposure == "mentioned":
+        return 1
+    if claim_type == "company_exposure":
         return 3
     if exposure == "indirect" or claim_type in {"mechanism", "indicator", "supply_chain", "trend", "policy"}:
         return 2

@@ -791,6 +791,7 @@ class QAEngine:
 
         # 阶段 10: LLM 生成答案
         stage_start = time.perf_counter()
+        generation_diagnostics: list[dict[str, Any]] = []
         answer, reasoning_content = self._generate_answer(
             question,
             contextual_question,
@@ -801,6 +802,7 @@ class QAEngine:
             errors,
             llm_options,
             llm_client,
+            generation_diagnostics,
         )
         record_timing(timings_ms, "answer", stage_start)
 
@@ -864,6 +866,7 @@ class QAEngine:
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
         diagnostics["llm_calls"] = llm_client.calls if llm_client is not None else {"total": 0}
+        diagnostics["answer_generation"] = generation_diagnostics
 
         return {
             "question": question,
@@ -1009,6 +1012,7 @@ class QAEngine:
         stage_start = time.perf_counter()
         answer = ""
         reasoning_content = ""
+        generation_diagnostics: list[dict[str, Any]] = []
         for event in self._generate_answer_stream(
             question,
             contextual_question,
@@ -1020,6 +1024,7 @@ class QAEngine:
             llm_options,
             llm_client,
             thinking_enabled=bool(thinking_enabled),
+            generation_diagnostics=generation_diagnostics,
         ):
             if event.get("type") in {"answer_delta", "progress"}:
                 yield event
@@ -1088,6 +1093,7 @@ class QAEngine:
         timings_ms["total"] = round((time.perf_counter() - total_start) * 1000, 2)
         diagnostics["timings_ms"] = timings_ms
         diagnostics["llm_calls"] = llm_client.calls if llm_client is not None else {"total": 0}
+        diagnostics["answer_generation"] = generation_diagnostics
 
         yield {
             "type": "final",
@@ -1426,6 +1432,7 @@ class QAEngine:
         errors: list[str],
         llm_options: dict[str, Any],
         llm_client: Any | None,
+        generation_diagnostics: list[dict[str, Any]] | None = None,
     ) -> tuple[str, str]:
         """基于多源证据生成最终答案（非流式）。
 
@@ -1454,6 +1461,7 @@ class QAEngine:
             prompt_question = f"用户当前追问：{question}\n结合历史对话改写后的检索问题：{contextual_question}"
         user_prompt = build_professional_answer_prompt(prompt_question, plan, graph_records, evidence_cards)
         if llm_client is not None and hasattr(llm_client, "chat_text"):
+            started = time.perf_counter()
             try:
                 if history and hasattr(llm_client, "chat_messages"):
                     response = llm_client.chat_messages(
@@ -1465,22 +1473,37 @@ class QAEngine:
                         temperature=0.2,
                         **llm_options,
                     )
-                    return response.content, response.reasoning_content
-                if hasattr(llm_client, "chat_text_with_metadata"):
+                elif hasattr(llm_client, "chat_text_with_metadata"):
                     response = llm_client.chat_text_with_metadata(
                         system_prompt=answer_system_prompt(),
                         user_prompt=user_prompt,
                         temperature=0.2,
                         **llm_options,
                     )
-                    return response.content, response.reasoning_content
-                return llm_client.chat_text(
-                    system_prompt=answer_system_prompt(),
-                    user_prompt=user_prompt,
-                    temperature=0.2,
-                    **llm_options,
-                ), ""
+                else:
+                    from aika.llm_client import ChatTextResult
+                    response = ChatTextResult(content=llm_client.chat_text(
+                        system_prompt=answer_system_prompt(), user_prompt=user_prompt,
+                        temperature=0.2, **llm_options,
+                    ))
+                content = str(response.content or "").strip()
+                if generation_diagnostics is not None:
+                    generation_diagnostics.append({
+                        "mode": "non_stream", "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "finish_reason": getattr(response, "finish_reason", "") or None,
+                        "usage": getattr(response, "usage", None), "answer_chars": len(content),
+                        "reasoning_chars": len(response.reasoning_content or ""),
+                    })
+                if content:
+                    return content, response.reasoning_content
+                errors.append("LLM answer was empty; no final answer was returned")
+                return "答案生成失败：模型未返回正文，请重试或关闭思考模式后重试。已检索到的证据可在诊断中查看。", ""
             except Exception as exc:
+                if generation_diagnostics is not None:
+                    generation_diagnostics.append({
+                        "mode": "non_stream", "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "error": str(exc),
+                    })
                 errors.append(f"LLM answer failed: {exc}")
         return fallback_professional_answer(plan, evidence_cards, graph_records), ""
 
@@ -1497,6 +1520,7 @@ class QAEngine:
         llm_client: Any | None,
         *,
         thinking_enabled: bool,
+        generation_diagnostics: list[dict[str, Any]] | None = None,
     ) -> Iterator[dict[str, Any]]:
         """流式生成答案。
 
@@ -1534,6 +1558,10 @@ class QAEngine:
 
         if llm_client is not None and hasattr(llm_client, "stream_chat_messages"):
             chunks: list[str] = []
+            started = time.perf_counter()
+            finish_reason = ""
+            usage = None
+            reasoning_chars = 0
             try:
                 messages = [
                     {"role": "system", "content": answer_system_prompt()},
@@ -1545,18 +1573,29 @@ class QAEngine:
                     temperature=0.2,
                     **llm_options,
                 ):
+                    finish_reason = str(getattr(chunk, "finish_reason", "") or finish_reason)
+                    usage = getattr(chunk, "usage", None) or usage
+                    reasoning_chars += len(str(getattr(chunk, "reasoning_content", "") or ""))
                     content = str(getattr(chunk, "content", "") or "")
                     if not content:
                         continue
                     chunks.append(content)
                     yield {"type": "answer_delta", "content": content}
                 answer = "".join(chunks).strip()
+                if generation_diagnostics is not None:
+                    generation_diagnostics.append({"mode": "stream", "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "finish_reason": finish_reason or None, "usage": usage, "answer_chars": len(answer),
+                        "reasoning_chars": reasoning_chars})
                 if answer:
                     yield {"type": "answer_complete", "answer": answer, "reasoning_content": ""}
                     return
             except Exception as exc:
+                if generation_diagnostics is not None:
+                    generation_diagnostics.append({"mode": "stream", "elapsed_ms": round((time.perf_counter() - started) * 1000, 2),
+                        "finish_reason": finish_reason or None, "usage": usage, "answer_chars": len("".join(chunks).strip()),
+                        "reasoning_chars": reasoning_chars, "error": str(exc)})
                 errors.append(f"LLM answer stream failed: {exc}")
-                if chunks:
+                if "".join(chunks).strip():
                     yield {"type": "answer_complete", "answer": "".join(chunks).strip(), "reasoning_content": ""}
                     return
 
@@ -1571,6 +1610,7 @@ class QAEngine:
             errors,
             llm_options,
             llm_client,
+            generation_diagnostics,
         )
         for chunk in chunk_text(answer):
             yield {"type": "answer_delta", "content": chunk}

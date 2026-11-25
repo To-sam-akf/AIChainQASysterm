@@ -51,6 +51,7 @@ class ChatTextResult:
     reasoning_content: str = ""
     model: str = ""
     usage: dict[str, Any] | None = None
+    finish_reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -192,6 +193,7 @@ class OpenAICompatibleClient:
                     reasoning_content=str(message.get("reasoning_content") or "").strip(),
                     model=str(data.get("model") or self.model),
                     usage=data.get("usage"),
+                    finish_reason=str(data["choices"][0].get("finish_reason") or ""),
                 )
             except (requests.RequestException, KeyError, IndexError, ValueError) as exc:
                 last_error = exc

@@ -1,3 +1,5 @@
+import { lazy, Suspense } from "react";
+const GraphExplorer = lazy(() => import("./GraphExplorer"));
 import {
   BarChart3,
   Bot,
@@ -38,8 +40,6 @@ import {
   getConversation,
   getEvalRun,
   getExamples,
-  getGraphSubgraph,
-  getGraphSummary,
   getStatus,
   listAgentTasks,
   listConversations,
@@ -63,8 +63,6 @@ import type {
   EvalRunSummary,
   FeedbackCreateRequest,
   GraphEdge,
-  GraphSubgraph,
-  GraphSummary,
   ClaimReviewRequest,
   CompanyCoverageHeatmapChart,
   EvidenceStrengthBarChart,
@@ -205,7 +203,7 @@ function updateTurnClaimReview(
 }
 
 function App() {
-  const [view, setView] = useState<View>("chat");
+  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).has("graph_view") ? "graph" : "chat");
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [examples, setExamples] = useState<string[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>(EMPTY_ARRAY);
@@ -1368,11 +1366,13 @@ function MessagePair(props: {
                 {renderAnswerMarkdown(props.turn.answer)}
                 {props.isStreaming && <span className="stream-caret" />}
               </>
-            ) : (
+            ) : props.isStreaming ? (
               <div className="stream-placeholder">
                 <Loader2 size={16} className="spin" />
                 <span>正在生成答案</span>
               </div>
+            ) : (
+              <div className="stream-placeholder">本轮未生成答案，请重试；可在证据与诊断中查看详情。</div>
             )}
           </div>
           {!props.isStreaming && (
@@ -1523,13 +1523,56 @@ function DetailDrawer(props: {
   onClose: () => void;
   onClaimReview: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
 }) {
+  const [drawerWidth, setDrawerWidth] = useState(480);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
+  const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
+  const minWidth = Math.min(320, viewportWidth);
+  const maxWidth = Math.max(minWidth, viewportWidth - (viewportWidth > 600 ? 80 : 0));
+  const width = Math.min(maxWidth, Math.max(minWidth, drawerWidth));
+
+  useEffect(() => {
+    const updateViewport = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", updateViewport);
+    return () => window.removeEventListener("resize", updateViewport);
+  }, []);
+
   if (!props.turn || !props.open) return null;
   const result = props.turn.result;
   const evidence = result.evidence_cards?.length ? result.evidence_cards : result.evidence;
   const verification = verificationFromResult(result);
 
   return (
-    <aside className="detail-drawer">
+    <aside className="detail-drawer" style={{ width }}>
+      <div
+        className="drawer-resize-handle"
+        role="separator"
+        aria-label="调整证据侧栏宽度"
+        aria-orientation="vertical"
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        aria-valuenow={width}
+        tabIndex={0}
+        onPointerDown={(event) => {
+          if (event.button !== 0) return;
+          resizeRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width };
+          event.currentTarget.setPointerCapture(event.pointerId);
+          event.preventDefault();
+        }}
+        onPointerMove={(event) => {
+          const drag = resizeRef.current;
+          if (!drag || drag.pointerId !== event.pointerId) return;
+          setDrawerWidth(Math.min(maxWidth, Math.max(minWidth, drag.startWidth + drag.startX - event.clientX)));
+        }}
+        onPointerUp={() => { resizeRef.current = null; }}
+        onPointerCancel={() => { resizeRef.current = null; }}
+        onLostPointerCapture={() => { resizeRef.current = null; }}
+        onKeyDown={(event) => {
+          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+          event.preventDefault();
+          const next = event.key === "Home" ? minWidth : event.key === "End" ? maxWidth : width + (event.key === "ArrowLeft" ? 24 : -24);
+          setDrawerWidth(Math.min(maxWidth, Math.max(minWidth, next)));
+        }}
+      ><span /></div>
       <div className="drawer-header">
         <div>
           <span className="eyebrow">证据详情</span>
@@ -1591,35 +1634,58 @@ function DetailDrawer(props: {
 }
 
 function renderAnswerMarkdown(markdown: string): ReactNode[] {
-  return markdown.split(/\r?\n/).map((line, index) => {
+  const lines = markdown.split(/\r?\n/);
+  const rendered: ReactNode[] = [];
+  const cells = (line: string) => line.trim().replace(/^\|/, "").replace(/\|$/, "").split(/(?<!\\)\|/).map((cell) => cell.trim().replace(/\\\|/g, "|"));
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     const text = line.trim();
-    if (!text) return <div className="answer-space" key={index} />;
+    const separator = lines[index + 1]?.trim();
+    if (text.includes("|") && separator?.includes("|") && cells(separator).every((cell) => /^:?-{3,}:?$/.test(cell))) {
+      const headers = cells(text);
+      const rows: string[][] = [];
+      const tableIndex = index;
+      index += 2;
+      while (index < lines.length && lines[index].trim().includes("|") && lines[index].trim()) {
+        rows.push(cells(lines[index]));
+        index += 1;
+      }
+      index -= 1;
+      rendered.push(<div className="table-wrap markdown-table-wrap" key={tableIndex} tabIndex={0} aria-label="表格，可横向滚动">
+        <table className="markdown-table"><thead><tr>{headers.map((header, i) => <th scope="col" key={i}>{renderInlineMarkdown(header)}</th>)}</tr></thead>
+          <tbody>{rows.map((row, i) => <tr key={i}>{headers.map((_, j) => <td key={j}>{renderInlineMarkdown(row[j] ?? "")}</td>)}</tr>)}</tbody>
+        </table>
+      </div>);
+      continue;
+    }
+    if (!text) { rendered.push(<div className="answer-space" key={index} />); continue; }
     if (text.startsWith("### ")) {
-      return <h3 key={index}>{renderInlineMarkdown(text.slice(4))}</h3>;
+      rendered.push(<h3 key={index}>{renderInlineMarkdown(text.slice(4))}</h3>); continue;
     }
     if (text.startsWith("## ")) {
-      return <h3 key={index}>{renderInlineMarkdown(text.slice(3))}</h3>;
+      rendered.push(<h3 key={index}>{renderInlineMarkdown(text.slice(3))}</h3>); continue;
     }
     const bulletMatch = text.match(/^[-*]\s+(.+)$/);
     if (bulletMatch) {
-      return (
+      rendered.push(
         <p className="answer-bullet" key={index}>
           <span>•</span>
           <span>{renderInlineMarkdown(bulletMatch[1])}</span>
         </p>
-      );
+      ); continue;
     }
     const orderedMatch = text.match(/^(\d+)\.\s+(.+)$/);
     if (orderedMatch) {
-      return (
+      rendered.push(
         <p className="answer-bullet" key={index}>
           <span>{orderedMatch[1]}.</span>
           <span>{renderInlineMarkdown(orderedMatch[2])}</span>
         </p>
-      );
+      ); continue;
     }
-    return <p key={index}>{renderInlineMarkdown(text)}</p>;
-  });
+    rendered.push(<p key={index}>{renderInlineMarkdown(text)}</p>);
+  }
+  return rendered;
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
@@ -1668,100 +1734,7 @@ function OverviewView(props: { status: ApiStatus | null }) {
 }
 
 function GraphView() {
-  const [summary, setSummary] = useState<GraphSummary | null>(null);
-  const [subgraph, setSubgraph] = useState<GraphSubgraph | null>(null);
-  const [company, setCompany] = useState("");
-  const [technology, setTechnology] = useState("");
-  const [relation, setRelation] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    async function loadSummary() {
-      try {
-        const payload = await getGraphSummary();
-        setSummary(payload);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "加载图谱摘要失败");
-      }
-    }
-    void loadSummary();
-  }, []);
-
-  useEffect(() => {
-    async function loadSubgraph() {
-      setLoading(true);
-      setError("");
-      try {
-        const payload = await getGraphSubgraph({ company, technology, relation_type: relation });
-        setSubgraph(payload);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "加载子图失败");
-      } finally {
-        setLoading(false);
-      }
-    }
-    void loadSubgraph();
-  }, [company, technology, relation]);
-
-  const relationEntries = Object.entries(summary?.relation_options ?? {});
-
-  return (
-    <section className="page-panel graph-page">
-      <div className="page-header">
-        <span className="eyebrow">Industry Graph</span>
-        <h1>产业链图谱</h1>
-        <p>按公司、技术或关系筛选局部图谱，用于解释答案背后的结构化证据。</p>
-      </div>
-      <div className="filter-row">
-        <label>
-          公司
-          <select value={company} onChange={(event) => setCompany(event.target.value)}>
-            <option value="">全部公司</option>
-            {summary?.companies_options.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          技术
-          <select value={technology} onChange={(event) => setTechnology(event.target.value)}>
-            <option value="">全部技术</option>
-            {summary?.technologies_options.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          关系
-          <select value={relation} onChange={(event) => setRelation(event.target.value)}>
-            {relationEntries.length === 0 && <option value="">全部关系</option>}
-            {relationEntries.map(([label, value]) => (
-              <option key={label} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      {error && <div className="warning">{error}</div>}
-      <div className="graph-surface">
-        {loading ? (
-          <div className="center-loading">
-            <Loader2 size={18} className="spin" />
-            <span>加载图谱中</span>
-          </div>
-        ) : (
-          <GraphCanvas edges={subgraph?.edges ?? []} empty="当前筛选条件下没有可展示的子图" />
-        )}
-      </div>
-      <DataTable rows={subgraph?.rows ?? []} empty="当前筛选条件下没有关系" />
-    </section>
-  );
+  return <Suspense fallback={<div>正在加载图谱…</div>}><GraphExplorer /></Suspense>;
 }
 
 function MetricCard(props: { label: string; value: number }) {
@@ -2246,6 +2219,7 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
   if (!outputs) return <div className="empty-table">当前回答没有生成投研产物</div>;
   const report = outputs.report;
   const charts = report?.spec?.charts;
+  const hasCharts = hasReportChartData(charts);
   const table = outputs.company_compare_table;
   const risks = outputs.risk_checklist ?? [];
   const gaps = outputs.evidence_gaps ?? [];
@@ -2260,7 +2234,7 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
         </div>
         <div className="research-report">
           {report?.sections?.length ? (
-            report.sections.map((section) => (
+            report.sections.filter((section) => !(hasCharts && section.title === "图表")).map((section) => (
               <div className="research-report-section" key={section.title}>
                 <h4>{section.title}</h4>
                 <div>{renderAnswerMarkdown(section.content)}</div>
@@ -2298,13 +2272,7 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
 
 function ReportChartsView(props: { charts?: ReportCharts }) {
   const charts = props.charts;
-  if (!charts) return null;
-  const hasChartData =
-    Boolean(charts.company_coverage_heatmap?.cells?.length) ||
-    Boolean(charts.evidence_strength_bar?.counts && Object.values(charts.evidence_strength_bar.counts).some(Boolean)) ||
-    Boolean(charts.flow_map?.links?.length) ||
-    Boolean(charts.source_freshness_timeline?.items?.length);
-  if (!hasChartData) return null;
+  if (!hasReportChartData(charts)) return null;
   return (
     <section className="research-section report-chart-section">
       <div className="research-section-title">
@@ -2312,19 +2280,29 @@ function ReportChartsView(props: { charts?: ReportCharts }) {
         <span>证据覆盖图表</span>
       </div>
       <div className="report-chart-grid">
-        <EvidenceStrengthChart chart={charts.evidence_strength_bar} />
-        <FreshnessTimelineChartView chart={charts.source_freshness_timeline} />
-        <CompanyHeatmapChart chart={charts.company_coverage_heatmap} />
-        <FlowMapChartView chart={charts.flow_map} />
+        <EvidenceStrengthChart chart={charts?.evidence_strength_bar} />
+        <FreshnessTimelineChartView chart={charts?.source_freshness_timeline} />
+        <CompanyHeatmapChart chart={charts?.company_coverage_heatmap} />
+        <FlowMapChartView chart={charts?.flow_map} />
       </div>
     </section>
   );
 }
 
+function hasReportChartData(charts?: ReportCharts): boolean {
+  if (!charts) return false;
+  return (
+    Boolean(charts.company_coverage_heatmap?.cells?.length) ||
+    Boolean(charts.evidence_strength_bar?.counts && Object.values(charts.evidence_strength_bar.counts).some(Boolean)) ||
+    Boolean(charts.flow_map?.links?.length) ||
+    Boolean(charts.source_freshness_timeline?.items?.length)
+  );
+}
+
 function EvidenceStrengthChart(props: { chart?: EvidenceStrengthBarChart }) {
   const counts = props.chart?.counts ?? {};
-  const entries = Object.entries(counts).filter(([, value]) => Number(value) > 0);
-  if (!entries.length) return <ChartEmpty title={props.chart?.title ?? "证据强度柱状图"} message={props.chart?.empty_message} />;
+  const entries = Object.entries(counts);
+  if (!entries.some(([, value]) => Number(value) > 0)) return <ChartEmpty title={props.chart?.title ?? "证据强度柱状图"} message={props.chart?.empty_message} />;
   const max = Math.max(...entries.map(([, value]) => Number(value)), 1);
   const labels: Record<string, string> = {
     direct: "直接证据",
@@ -2337,33 +2315,35 @@ function EvidenceStrengthChart(props: { chart?: EvidenceStrengthBarChart }) {
     <article className="report-chart-card">
       <div className="report-chart-head">
         <strong>{props.chart?.title ?? "证据强度柱状图"}</strong>
-        <span>Evidence quality</span>
+        <span>数量</span>
       </div>
       <div className="evidence-bar-chart">
         {entries.map(([key, value]) => (
           <div className="evidence-bar-row" key={key}>
             <span>{labels[key] ?? key}</span>
             <div>
-              <i style={{ width: `${Math.max((Number(value) / max) * 100, 7)}%` }} />
+              <i style={{ width: `${(Number(value) / max) * 100}%` }} />
             </div>
             <b>{value}</b>
           </div>
         ))}
       </div>
+      <p className="chart-note">敞口级别按证据卡统计；未支撑和无证据按审计条目统计，统计口径不同。</p>
     </article>
   );
 }
 
 function FreshnessTimelineChartView(props: { chart?: FreshnessTimelineChart }) {
   const items = props.chart?.items ?? [];
-  if (!items.length) return <ChartEmpty title={props.chart?.title ?? "Source freshness timeline"} message={props.chart?.empty_message} />;
+  if (!items.length) return <ChartEmpty title="来源年份分布" message={props.chart?.empty_message} />;
   const max = Math.max(...items.map((item) => Number(item.count)), 1);
   return (
     <article className="report-chart-card">
       <div className="report-chart-head">
-        <strong>{props.chart?.title ?? "Source freshness timeline"}</strong>
-        <span>Source age</span>
+        <strong>来源年份分布</strong>
+        <span>证据卡数</span>
       </div>
+      <p className="chart-note">仅统计标注日期的证据卡；新鲜度为报告生成时的状态。</p>
       <div className="freshness-timeline-chart">
         {items.map((item) => (
           <div className={`freshness-year ${item.freshness || "unknown"}`} key={item.year}>
@@ -2426,46 +2406,22 @@ function CompanyHeatmapChart(props: { chart?: CompanyCoverageHeatmapChart }) {
 }
 
 function FlowMapChartView(props: { chart?: FlowMapChart }) {
-  const chart = props.chart;
-  const links = (chart?.links ?? []).slice(0, 8);
-  if (!links.length) return <ChartEmpty title={chart?.title ?? "Evidence-weighted supply chain map"} message={chart?.empty_message} />;
-  const max = Math.max(...links.map((link) => Number(link.value)), 1);
-  const nodes = flowNodes(links);
+  const links = props.chart?.links ?? [];
+  if (!links.length) return <ChartEmpty title="证据关联" message={props.chart?.empty_message} />;
   return (
     <article className="report-chart-card wide">
       <div className="report-chart-head">
-        <strong>{chart?.title ?? "Evidence-weighted supply chain map"}</strong>
-        <span>Evidence weighted</span>
+        <strong>证据关联</strong>
+        <span>共 {links.length} 条</span>
       </div>
-      <div className="flow-map-chart">
-        <svg viewBox="0 0 760 260" role="img" aria-label={chart?.title ?? "Evidence-weighted supply chain map"}>
-          {links.map((link, index) => {
-            const source = nodes.get(link.source) ?? { x: 40, y: 40 };
-            const target = nodes.get(link.target) ?? { x: 720, y: 220 };
-            const width = 2 + (Number(link.value) / max) * 8;
-            return (
-              <path
-                d={`M ${source.x + 112} ${source.y} C ${source.x + 230} ${source.y}, ${target.x - 150} ${target.y}, ${target.x - 14} ${target.y}`}
-                key={`${link.source}-${link.target}-${index}`}
-                strokeWidth={width}
-              />
-            );
-          })}
-          {Array.from(nodes.entries()).map(([id, point]) => (
-            <g className="flow-node" key={id}>
-              <rect x={point.x} y={point.y - 18} width="132" height="36" rx="8" />
-              <text x={point.x + 10} y={point.y + 4}>{shortSvgLabel(id)}</text>
-            </g>
-          ))}
-        </svg>
-        <div className="flow-link-list">
-          {links.slice(0, 5).map((link) => (
-            <span key={`${link.source}-${link.target}`}>
-              {`${link.source} -> ${link.target} · ${link.value}`}
-            </span>
-          ))}
-        </div>
-        <p>{chart?.caption ?? "线条粗细代表 AIKA 本地证据数量/强度，不代表市场规模或收入占比。"}</p>
+      <p className="chart-note">展示记录中的起点、关联对象和本地权重，不能据此判断供应链关系或市场规模。历史报告的起点可能是文档名称。</p>
+      <div className="table-wrap flow-relations-wrap" tabIndex={0} aria-label="证据关联表，可滚动查看">
+        <table className="markdown-table flow-relations">
+          <thead><tr><th scope="col">记录起点</th><th scope="col">关联对象</th><th scope="col">权重</th><th scope="col">证据编号</th></tr></thead>
+          <tbody>{links.map((link, index) => <tr key={`${link.source}-${link.target}-${index}`}>
+            <td>{link.source}</td><td>{link.target}</td><td>{link.value}</td><td>{link.evidence_ids?.join("、") || "未标注"}</td>
+          </tr>)}</tbody>
+        </table>
       </div>
     </article>
   );
@@ -2490,25 +2446,6 @@ function freshnessLabel(value: string) {
 function clampNumber(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.round(value)));
-}
-
-function flowNodes(links: Array<{ source: string; target: string }>) {
-  const sources = Array.from(new Set(links.map((link) => link.source)));
-  const targets = Array.from(new Set(links.map((link) => link.target).filter((target) => !sources.includes(target))));
-  const nodes = new Map<string, { x: number; y: number }>();
-  const sourceStep = 200 / Math.max(sources.length, 1);
-  sources.forEach((source, index) => nodes.set(source, { x: 26, y: 40 + sourceStep * index }));
-  const targetStep = 200 / Math.max(targets.length, 1);
-  targets.forEach((target, index) => nodes.set(target, { x: 596, y: 40 + targetStep * index }));
-  if (!targets.length && sources.length) {
-    Array.from(new Set(links.map((link) => link.target))).forEach((target, index) => nodes.set(target, { x: 596, y: 40 + targetStep * index }));
-  }
-  return nodes;
-}
-
-function shortSvgLabel(value: string) {
-  const text = String(value || "");
-  return text.length > 12 ? `${text.slice(0, 11)}…` : text;
 }
 
 const CONFLICT_TYPE_LABELS: Record<string, string> = {

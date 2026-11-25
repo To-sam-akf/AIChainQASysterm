@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import binascii
 import os
 from contextlib import asynccontextmanager
 from functools import lru_cache
@@ -750,6 +752,36 @@ async def graph_subgraph(
         "edges": edges,
         "svg": render_svg_graph(edges),
     }
+
+
+def _graph_node_id(kind: str, name: str) -> str:
+    return base64.urlsafe_b64encode(json.dumps([kind, name], ensure_ascii=False).encode()).decode().rstrip("=")
+
+
+@router.get("/graph/entities")
+async def graph_entities(q: str = "", limit: int = Query(30, ge=1, le=100), graph: LocalKnowledgeGraph = Depends(get_knowledge_graph)) -> dict[str, Any]:
+    query = q.strip().casefold()
+    if not query:
+        return {"items": []}
+    items = sorted((row for row in graph.entities if query in row.get("name", "").casefold()), key=lambda row: (not row.get("name", "").casefold().startswith(query), row.get("name", "")))
+    return {"items": [{"id": _graph_node_id(row.get("type", ""), row.get("name", "")), "type": row.get("type", ""), "name": row.get("name", "")} for row in items[:limit]]}
+
+
+@router.get("/graph/entities/{node_id}/neighbors")
+async def graph_neighbors(node_id: str, relation_type: str = "", offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100), graph: LocalKnowledgeGraph = Depends(get_knowledge_graph)) -> dict[str, Any]:
+    try:
+        kind, name = json.loads(base64.urlsafe_b64decode(node_id + "=" * (-len(node_id) % 4)))
+        if not isinstance(kind, str) or not isinstance(name, str):
+            raise ValueError()
+    except (ValueError, TypeError, UnicodeDecodeError, binascii.Error):
+        raise HTTPException(status_code=400, detail="无效的节点标识")
+    if not any(row.get("type") == kind and row.get("name") == name for row in graph.entities) and not any((row.get("head_type"), row.get("head_name")) == (kind, name) or (row.get("tail_type"), row.get("tail_name")) == (kind, name) for row in graph.relations):
+        raise HTTPException(status_code=404, detail="节点不存在")
+    rows = [row for row in graph.relations if ((row.get("head_type"), row.get("head_name")) == (kind, name) or (row.get("tail_type"), row.get("tail_name")) == (kind, name)) and (not relation_type or row.get("relation") == relation_type)]
+    items = []
+    for row in rows[offset:offset + limit]:
+        items.append({**row, "source_id": _graph_node_id(row.get("head_type", ""), row.get("head_name", "")), "target_id": _graph_node_id(row.get("tail_type", ""), row.get("tail_name", "")), "label": RELATION_LABELS.get(row.get("relation", ""), row.get("relation", ""))})
+    return {"node": {"id": node_id, "type": kind, "name": name}, "items": items, "total": len(rows), "offset": offset}
 
 
 @asynccontextmanager

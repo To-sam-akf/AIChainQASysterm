@@ -31,12 +31,14 @@ def build_evidence_strength_bar(
 def _coverage_level(card: Any) -> str:
     exposure = text_attr(card, "exposure_level").casefold()
     claim_type = text_attr(card, "claim_type").casefold()
-    if exposure in {"core", "direct"} or claim_type == "company_exposure":
+    if exposure in {"core", "direct"}:
         return "direct"
     if exposure == "indirect":
         return "indirect"
     if exposure == "mentioned":
         return "mentioned"
+    if claim_type == "company_exposure":
+        return "direct"
     if claim_type in {"mechanism", "indicator", "supply_chain", "trend", "policy"}:
         return "indirect"
     return "mentioned"

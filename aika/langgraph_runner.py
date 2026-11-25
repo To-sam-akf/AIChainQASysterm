@@ -73,6 +73,7 @@ class LangGraphAgentState(TypedDict, total=False):
     summary_metadata: dict[str, Any]
     answer: str
     reasoning_content: str
+    generation_diagnostics: list[dict[str, Any]]
     answer_call: AgentToolCall
     refused_metric: bool
     generation_context: dict[str, Any]
@@ -462,6 +463,7 @@ class LangGraphAgentRunner(AgentRunner):
         started_at = time.perf_counter()
         answer = ""
         reasoning_content = ""
+        generation_diagnostics: list[dict[str, Any]] = []
         if refused_metric:
             answer = metric_gap_answer(coverage)
             answer_call = AgentToolCall(
@@ -483,6 +485,7 @@ class LangGraphAgentRunner(AgentRunner):
                 state["llm_options"],
                 answer_tools.llm_client,
                 thinking_enabled=bool(state.get("thinking_enabled")),
+                generation_diagnostics=generation_diagnostics,
             ):
                 event_type = event.get("type")
                 if event_type in {"answer_delta", "progress"}:
@@ -504,11 +507,13 @@ class LangGraphAgentRunner(AgentRunner):
                 state["plan"],
                 state["retrieval_state"].graph_records,
                 evidence_cards,
+                generation_diagnostics,
             )
         self._record_timing(state["timings_ms"], "answer", started_at)
 
         return {
             "answer": answer, "reasoning_content": reasoning_content,
+            "generation_diagnostics": generation_diagnostics,
             "answer_call": answer_call, "refused_metric": refused_metric,
         }
 
@@ -596,6 +601,7 @@ class LangGraphAgentRunner(AgentRunner):
             history_memory=state.get("history_memory") or {},
         )
         diagnostics = result.setdefault("diagnostics", {})
+        diagnostics["answer_generation"] = state.get("generation_diagnostics") or []
         diagnostics["agent_runner"] = "langgraph"
         diagnostics["langgraph_enabled"] = True
         diagnostics["langchain_tools"] = list(state.get("langchain_tool_names") or [])

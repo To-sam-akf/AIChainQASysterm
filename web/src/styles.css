@@ -837,6 +837,37 @@ button {
   backdrop-filter: blur(20px);
 }
 
+.drawer-resize-handle {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: -8px;
+  display: flex;
+  width: 16px;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.drawer-resize-handle span {
+  width: 4px;
+  height: 52px;
+  border-radius: 4px;
+  background: #9daaa5;
+}
+
+.drawer-resize-handle:hover span,
+.drawer-resize-handle:focus-visible span {
+  background: #1f7575;
+}
+
+.drawer-resize-handle:focus-visible {
+  outline: 2px solid #1f7575;
+  outline-offset: -2px;
+}
+
 .drawer-header {
   display: flex;
   align-items: flex-start;
@@ -891,6 +922,36 @@ button {
   border: 1px solid rgba(29, 34, 39, 0.12);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+.markdown-table-wrap {
+  max-width: 100%;
+  margin: 12px 0;
+}
+
+.markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.markdown-table th,
+.markdown-table td {
+  min-width: 76px;
+  border-bottom: 1px solid rgba(29, 34, 39, 0.1);
+  padding: 9px 11px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.markdown-table th {
+  background: #edf3ef;
+  color: #334a44;
+  white-space: nowrap;
+}
+
+.markdown-table tr:last-child td {
+  border-bottom: 0;
 }
 
 .evidence-groups {
@@ -1009,11 +1070,15 @@ button {
 
 .research-output {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 18px;
 }
 
 .research-section {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 10px;
 }
 
@@ -1142,10 +1207,13 @@ button {
 
 .research-report {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 14px;
 }
 
 .research-report-section {
+  min-width: 0;
   border-bottom: 1px solid rgba(29, 34, 39, 0.1);
   padding-bottom: 12px;
 }
@@ -2070,6 +2138,10 @@ pre {
   gap: 12px;
 }
 
+.detail-drawer .report-chart-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .report-chart-card {
   display: grid;
   gap: 14px;
@@ -2106,6 +2178,22 @@ pre {
 .report-chart-head span {
   color: #68717a;
   font-size: 12px;
+}
+
+.chart-note {
+  margin: 0;
+  color: #68717a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.flow-relations-wrap {
+  max-height: 360px;
+}
+
+.flow-relations td {
+  min-width: 110px;
+  overflow-wrap: anywhere;
 }
 
 .evidence-bar-chart {

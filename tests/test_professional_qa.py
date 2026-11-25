@@ -521,3 +521,25 @@ def test_answer_question_stream_emits_progress_deltas_and_final_result() -> None
     assert final["result"]["diagnostics"]["agent_runner"] == "langgraph"
     assert final["result"]["diagnostics"]["langgraph_enabled"] is True
     assert final["result"]["diagnostics"]["llm_calls"]["stream_chat_messages"] == 1
+
+
+def test_empty_model_answer_returns_failure_and_diagnostics() -> None:
+    class EmptyAnswerClient(RecordingLLMClient):
+        def stream_chat_messages(self, **kwargs):
+            yield ChatStreamChunk(reasoning_content="思考", finish_reason="length")
+
+        def chat_text_with_metadata(self, **kwargs):
+            return ChatTextResult(content="", reasoning_content="思考未完成", finish_reason="length", usage={"completion_tokens": 4096})
+
+    graph = LocalKnowledgeGraph(entities=[], relations=[
+        {"head_type": "Company", "head_name": "浪潮信息", "relation": "HAS_PRODUCT", "tail_type": "Product", "tail_name": "AI服务器", "evidence": "浪潮信息布局AI服务器。", "source_title": "报告", "page": "1", "source_tier": "1", "section": "主营业务"},
+    ])
+    engine = QAEngine(csv_graph=graph, rag_index=None, llm_client=EmptyAnswerClient())
+    result = list(engine.answer_question_stream("哪些上市公司涉及AI服务器？", thinking_enabled=True))[-1]["result"]
+
+    assert "答案生成失败" in result["answer"]
+    assert any("answer was empty" in error for error in result["errors"])
+    calls = result["diagnostics"]["answer_generation"]
+    assert [call["mode"] for call in calls] == ["stream", "non_stream"]
+    assert calls[0]["finish_reason"] == "length"
+    assert calls[1]["usage"]["completion_tokens"] == 4096

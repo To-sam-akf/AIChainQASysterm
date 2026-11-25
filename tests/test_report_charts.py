@@ -54,6 +54,21 @@ def test_evidence_strength_bar_counts_levels() -> None:
     assert bar.counts == {"direct": 1, "indirect": 1, "mentioned": 1, "unsupported": 2, "no_evidence": 4}
 
 
+def test_company_exposure_keeps_explicit_indirect_and_mentioned_levels() -> None:
+    cards = [card(company="间接公司", exposure_level="indirect"), card(company="提及公司", exposure_level="mentioned")]
+    counts = build_evidence_strength_bar(cards).counts
+    assert (counts["direct"], counts["indirect"], counts["mentioned"]) == (0, 1, 1)
+    heatmap = build_company_coverage_heatmap(cards)
+    scores = {(cell.company, cell.segment): cell.score for cell in heatmap.cells}
+    assert scores[("间接公司", "液冷")] == 2
+    assert scores[("提及公司", "液冷")] == 1
+
+
+def test_flow_map_prefers_graph_entity_to_document_source() -> None:
+    flow = build_flow_map([{"source": "2025年年度报告", "head_name": "浪潮信息", "company": "浪潮信息", "target": "液冷服务器", "relation": "HAS_PRODUCT"}])
+    assert flow.links[0].source == "浪潮信息"
+
+
 def test_flow_map_links_include_evidence_ids_and_caption() -> None:
     flow = build_flow_map(
         [
