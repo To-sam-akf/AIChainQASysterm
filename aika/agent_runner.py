@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from aika.agents.roles import lead_question
+
 import time
 from dataclasses import dataclass, field
 from typing import Any, Iterator
@@ -186,7 +188,7 @@ class AgentRunner:
         else:
             for event in self.engine._generate_answer_stream(
                 question,
-                contextual_question,
+                lead_question(contextual_question),
                 history,
                 plan,
                 retrieval_state.graph_records,

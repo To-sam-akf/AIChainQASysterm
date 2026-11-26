@@ -2671,3 +2671,49 @@ pre {
     margin-left: 16px;
   }
 }
+
+.knowledge-page { overflow: auto; }
+.knowledge-grid { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(300px, 1.4fr); gap: 32px; padding: 20px; }
+.knowledge-grid label { display: block; margin: 10px 0; }
+.knowledge-grid input:not([type=file]), .knowledge-grid textarea, .knowledge-grid select { display: block; width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #cbd5e1; border-radius: 8px; background: white; }
+.knowledge-grid textarea { min-height: 120px; }
+.knowledge-grid button { padding: 8px 12px; cursor: pointer; }
+.knowledge-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid #e2e8f0; }
+.knowledge-item button { border: 0; background: transparent; text-align: left; }
+.knowledge-text { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
+@media (max-width: 750px) { .knowledge-grid { grid-template-columns: 1fr; } }
+
+/* Durable research-role events in the conversation. */
+.role-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 10px 14px 0; font-size: 12px; }
+.role-picker select { max-width: 160px; padding: 5px 8px; border: 1px solid var(--line, #ddd); border-radius: 8px; background: var(--panel, #fff); color: inherit; }
+.role-directory { position: relative; }
+.role-directory summary { cursor: pointer; }
+.role-directory-cards { position: absolute; bottom: 24px; left: 0; z-index: 12; width: min(350px, 75vw); max-height: 320px; overflow: auto; background: var(--panel, #fff); border: 1px solid var(--line, #ddd); border-radius: 12px; padding: 14px; box-shadow: 0 12px 32px #0002; }
+.role-directory-cards article + article { border-top: 1px solid var(--line, #ddd); padding-top: 10px; }
+.role-directory-cards p { line-height: 1.6; }
+.role-workspace { margin: 12px 0 14px 44px; border: 1px solid var(--line, #dce3ec); border-radius: 12px; background: var(--panel, #fff); overflow: hidden; }
+.role-workspace-toggle { display: flex; flex-wrap: wrap; justify-content: space-between; width: 100%; gap: 8px; border: 0; background: transparent; color: inherit; padding: 12px 14px; text-align: left; cursor: pointer; }
+.role-workspace-toggle span, .role-event small { color: #67758a; font-size: 12px; }
+.role-active { display: flex; flex-direction: column; gap: 5px; padding: 0 14px 10px; font-size: 12px; }
+.role-active:empty { display: none; }
+.role-timeline { list-style: none; margin: 0; padding: 0 14px 14px; }
+.role-event { display: flex; gap: 10px; padding: 12px 0; border-top: 1px solid var(--line, #e8edf3); }
+.role-avatar { flex: 0 0 28px; height: 28px; display: grid; place-items: center; border-radius: 9px; color: #226b79; background: #e8f4f5; font-size: 12px; }
+.role-event-body { flex: 1; min-width: 0; font-size: 13px; overflow-wrap: anywhere; }
+.role-event-heading { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.role-event-heading time { margin-left: auto; font-size: 11px; color: #748094; }
+.role-event p { margin: 6px 0; line-height: 1.65; white-space: pre-wrap; }
+.role-status { font-size: 11px; border: 1px solid #dce3ec; border-radius: 6px; padding: 2px 6px; }
+.role-failed .role-status, .role-task-error { color: #a73030; }
+.role-degraded .role-status { color: #956417; }
+.role-running .role-status { color: #216c98; }
+.role-document { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; padding: 10px; border: 1px solid var(--line, #e1e7ef); border-radius: 9px; }
+.role-document small, .role-document p { flex-basis: 100%; }
+.role-document a, .role-references a { color: #247184; }
+.role-references { padding-top: 8px; }
+.role-references summary { cursor: pointer; }
+.role-references > div { padding: 10px 0; border-bottom: 1px solid var(--line, #e1e7ef); }
+.role-references small { display: block; }
+.role-task-error { padding: 0 14px 14px; font-size: 13px; }
+.role-workspace button:not(.role-workspace-toggle) { cursor: pointer; border: 1px solid #dce3ec; border-radius: 6px; background: transparent; color: inherit; padding: 5px 8px; }
+@media (max-width: 600px) { .role-workspace { margin-left: 0; } }

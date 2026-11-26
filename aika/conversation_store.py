@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import re
 import uuid
+import threading
+from functools import wraps
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -20,8 +22,27 @@ class ConversationNotFoundError(KeyError):
     """Raised when a conversation id cannot be resolved to a stored file."""
 
 
+class ConversationConflictError(ValueError):
+    """An active task or a conflicting request prevents this operation."""
+
+
 class InvalidConversationError(ValueError):
     """Raised when a conversation id or stored payload is invalid."""
+
+
+_LOCKS: dict[str, threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def conversation_locked(method):
+    @wraps(method)
+    def wrapped(self, conversation_id, *args, **kwargs):
+        key = str(self.directory.resolve()) + "/" + conversation_id
+        with _LOCKS_GUARD:
+            lock = _LOCKS.setdefault(key, threading.RLock())
+        with lock:
+            return method(self, conversation_id, *args, **kwargs)
+    return wrapped
 
 
 @dataclass(frozen=True)
@@ -58,6 +79,8 @@ def short_text(value: str, limit: int = 42) -> str:
 def conversation_messages_from_turns(turns: list[dict[str, Any]]) -> list[dict[str, str]]:
     messages: list[dict[str, str]] = []
     for turn in turns:
+        if turn.get("status", "completed") != "completed":
+            continue
         question = str(turn.get("question") or "").strip()
         answer = str(turn.get("answer") or "").strip()
         if question:
@@ -90,6 +113,14 @@ def conversation_markdown(conversation: dict[str, Any]) -> str:
         )
         if contextual_question and contextual_question != turn.get("question"):
             lines.extend([f"**上下文改写**：{contextual_question}", ""])
+        if turn.get("task_id"):
+            lines.extend([f"**任务状态**：{turn.get('status', 'completed')}", ""])
+            for event in turn.get("events", []):
+                if event.get("type") == "role_event":
+                    from aika.agents.roles import ROLE_BY_ID
+                    name = ROLE_BY_ID.get(event["role_id"], {}).get("name", event["role_id"])
+                    lines.append(f"- {name} · {event['status']}：{event.get('summary', '')}")
+            lines.append("")
         lines.extend([f"**助手回答**：{turn.get('answer', '')}", ""])
     return "\n".join(lines)
 
@@ -142,12 +173,14 @@ class ConversationStore:
         self._write(self._new_path(conversation_id), conversation)
         return conversation
 
+    @conversation_locked
     def get(self, conversation_id: str) -> dict[str, Any]:
         path = self._path_for_id(conversation_id)
         if path is None:
             raise ConversationNotFoundError(conversation_id)
         return self._load_path(path)
 
+    @conversation_locked
     def update_title(self, conversation_id: str, title: str) -> dict[str, Any]:
         title = title.strip()
         if not title:
@@ -158,12 +191,16 @@ class ConversationStore:
         self._write(path, conversation)
         return conversation
 
+    @conversation_locked
     def delete(self, conversation_id: str) -> None:
         path = self._path_for_id(conversation_id)
         if path is None:
             raise ConversationNotFoundError(conversation_id)
+        if any(t.get("status") in {"pending", "running"} for t in self.get(conversation_id)["turns"]):
+            raise ConversationConflictError("任务仍在执行，完成后可删除会话")
         path.unlink()
 
+    @conversation_locked
     def append_turn(self, conversation_id: str, turn: dict[str, Any]) -> dict[str, Any]:
         conversation, path = self._load_with_path(conversation_id)
         turns = list(conversation.get("turns") or [])
@@ -174,6 +211,68 @@ class ConversationStore:
         conversation["updated_at"] = now_iso()
         self._write(path, conversation)
         return conversation
+
+    @conversation_locked
+    def begin_task(self, conversation_id: str, turn: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        conversation = self.get(conversation_id)
+        for existing in conversation["turns"]:
+            if existing.get("request_id") == turn["request_id"]:
+                if existing.get("request_signature") != turn["request_signature"]:
+                    raise ConversationConflictError("相同请求 ID 的内容不一致")
+                return existing, False
+        if any(t.get("status") in {"pending", "running"} for t in conversation["turns"]):
+            raise ConversationConflictError("当前会话已有执行中的任务")
+        self.append_turn(conversation_id, turn)
+        return turn, True
+
+    def task(self, conversation_id: str, task_id: str) -> dict[str, Any]:
+        for turn in self.get(conversation_id)["turns"]:
+            if turn.get("task_id") == task_id:
+                return turn
+        raise ConversationNotFoundError(task_id)
+
+    @conversation_locked
+    def update_task(self, conversation_id: str, task_id: str, *, event: dict[str, Any] | None = None, **updates: Any) -> dict[str, Any]:
+        conversation, path = self._load_with_path(conversation_id)
+        turn = next((t for t in conversation["turns"] if t.get("task_id") == task_id), None)
+        if turn is None:
+            raise ConversationNotFoundError(task_id)
+        if turn.get("status") not in {"pending", "running"}:
+            return turn
+        if event is not None:
+            events = turn.setdefault("events", [])
+            if event.get("type") == "role_event":
+                previous = next((e for e in reversed(events) if e.get("type") == "role_event" and e.get("step_id") == event["step_id"]), None)
+                if previous and previous["status"] in {"completed", "failed", "degraded", "skipped"}:
+                    return turn
+            event = {**event, "event_id": uuid.uuid4().hex, "seq": len(events) + 1,
+                     "conversation_id": conversation_id, "task_id": task_id, "created_at": now_iso()}
+            events.append(event)
+            if event["type"] == "answer_delta":
+                turn["answer"] = turn.get("answer", "") + event["content"]
+        turn.update(updates)
+        conversation["updated_at"] = now_iso()
+        self._write(path, conversation)
+        return turn
+
+    def recover_tasks(self) -> int:
+        recovered = 0
+        for summary in self.list():
+            conversation_id = summary["id"]
+            for turn in self.get(conversation_id)["turns"]:
+                if turn.get("status") in {"pending", "running"}:
+                    self.fail_task(conversation_id, turn["task_id"], "服务重启导致任务中断，请重新提交")
+                    recovered += 1
+        return recovered
+
+    @conversation_locked
+    def fail_task(self, conversation_id: str, task_id: str, message: str) -> None:
+        turn = self.task(conversation_id, task_id)
+        latest = {e["step_id"]: e for e in turn.get("events", []) if e.get("type") == "role_event"}
+        for step_id, event in latest.items():
+            if event["status"] in {"pending", "running"}:
+                self.update_task(conversation_id, task_id, event={"type": "role_event", "role_id": event["role_id"], "step_id": step_id, "status": "failed", "summary": message})
+        self.update_task(conversation_id, task_id, event={"type": "error", "message": message}, status="failed", error=message)
 
     def export(self, conversation_id: str, fmt: str) -> tuple[str, str, str]:
         conversation = self.get(conversation_id)

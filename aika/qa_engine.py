@@ -20,6 +20,9 @@ QA 引擎核心模块，协调多源数据检索和 LLM 生成的全流程。
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from aika.agents.roles import role_step, lead_role, lead_question
+
 import json
 import os
 import re
@@ -921,51 +924,52 @@ class QAEngine:
         llm_client = CountingLLMClient(self.llm_client) if self.llm_client is not None else None
         llm_options = build_llm_options(thinking_enabled=thinking_enabled, reasoning_effort=reasoning_effort)
 
-        if thinking_enabled:
-            yield stream_progress("history", "正在结合历史对话理解当前问题")
-        stage_start = time.perf_counter()
-        history, history_memory = self._prepare_conversation_history(
-            conversation_history,
-            errors=errors,
-            llm_options=llm_options,
-            llm_client=llm_client,
-        )
-        record_timing(timings_ms, "history", stage_start)
-
-        if thinking_enabled:
-            yield stream_progress("contextualize", "正在判断是否需要补全追问上下文")
-        stage_start = time.perf_counter()
-        contextual_question = self._contextualize_question(question, history, errors, llm_options, llm_client)
-        record_timing(timings_ms, "contextualize", stage_start)
-        if thinking_enabled and contextual_question != question:
-            yield stream_progress("contextualize", "已将追问改写为可独立检索的问题")
-
-        if thinking_enabled:
-            yield stream_progress("plan", "正在识别公司、主题和答案类型")
-        stage_start = time.perf_counter()
-        plan = heuristic_plan_question(contextual_question, core_companies_only=self.core_companies_only)
-        planner_source = "heuristic"
-        if self._should_use_llm_planner(plan, llm_client):
-            plan = plan_question(
-                contextual_question,
-                client=llm_client,
-                core_companies_only=self.core_companies_only,
+        with role_step("chief", "理解问题并制定检索计划"):
+            if thinking_enabled:
+                yield stream_progress("history", "正在结合历史对话理解当前问题")
+            stage_start = time.perf_counter()
+            history, history_memory = self._prepare_conversation_history(
+                conversation_history,
+                errors=errors,
                 llm_options=llm_options,
+                llm_client=llm_client,
             )
-            planner_source = "llm"
-        record_timing(timings_ms, "plan", stage_start)
-        if thinking_enabled:
-            yield stream_progress("plan", describe_plan_progress(plan))
+            record_timing(timings_ms, "history", stage_start)
 
-        if thinking_enabled:
-            yield stream_progress("hyde", "正在生成用于检索扩展的假想答案")
-        stage_start = time.perf_counter()
-        hyde_query = self._build_hyde_query(contextual_question, plan, errors, llm_options, llm_client)
-        retrieval_question = hyde_query.retrieval_query or contextual_question
-        record_timing(timings_ms, "hyde", stage_start)
-        if thinking_enabled:
-            message = "HYDE 已生成检索扩展" if hyde_query.hypothetical_answer else "HYDE 未生成，使用原问题检索"
-            yield stream_progress("hyde", message)
+            if thinking_enabled:
+                yield stream_progress("contextualize", "正在判断是否需要补全追问上下文")
+            stage_start = time.perf_counter()
+            contextual_question = self._contextualize_question(question, history, errors, llm_options, llm_client)
+            record_timing(timings_ms, "contextualize", stage_start)
+            if thinking_enabled and contextual_question != question:
+                yield stream_progress("contextualize", "已将追问改写为可独立检索的问题")
+
+            if thinking_enabled:
+                yield stream_progress("plan", "正在识别公司、主题和答案类型")
+            stage_start = time.perf_counter()
+            plan = heuristic_plan_question(contextual_question, core_companies_only=self.core_companies_only)
+            planner_source = "heuristic"
+            if self._should_use_llm_planner(plan, llm_client):
+                plan = plan_question(
+                    contextual_question,
+                    client=llm_client,
+                    core_companies_only=self.core_companies_only,
+                    llm_options=llm_options,
+                )
+                planner_source = "llm"
+            record_timing(timings_ms, "plan", stage_start)
+            if thinking_enabled:
+                yield stream_progress("plan", describe_plan_progress(plan))
+
+            if thinking_enabled:
+                yield stream_progress("hyde", "正在生成用于检索扩展的假想答案")
+            stage_start = time.perf_counter()
+            hyde_query = self._build_hyde_query(contextual_question, plan, errors, llm_options, llm_client)
+            retrieval_question = hyde_query.retrieval_query or contextual_question
+            record_timing(timings_ms, "hyde", stage_start)
+            if thinking_enabled:
+                message = "HYDE 已生成检索扩展" if hyde_query.hypothetical_answer else "HYDE 未生成，使用原问题检索"
+                yield stream_progress("hyde", message)
 
         if thinking_enabled:
             yield stream_progress("cypher", "正在准备图谱查询条件")
@@ -978,19 +982,32 @@ class QAEngine:
         if thinking_enabled:
             yield stream_progress("graph", "正在检索产业链图谱关系")
         stage_start = time.perf_counter()
-        graph_records = self._query_graph(generated, plan, errors)
+        with (role_step("industry", "查询产业链图谱") if self.graph_client is not None or self.csv_graph is not None else nullcontext({})) as outcome:
+            before_errors = len(errors)
+            graph_records = self._query_graph(generated, plan, errors)
+            outcome.update(status="degraded" if len(errors) > before_errors else "completed", summary=f"检索到 {len(graph_records)} 条图谱关系",
+                           reason="图谱查询异常，结果受限" if len(errors) > before_errors else "")
         record_timing(timings_ms, "graph", stage_start)
 
         if thinking_enabled:
             yield stream_progress("rag", "正在召回本地研报与原文片段")
         stage_start = time.perf_counter()
-        rag_hits = self._search_rag(retrieval_question, plan, errors)
+        with (role_step("analyst", "检索研报原文") if self.rag_index is not None else nullcontext({})) as outcome:
+            before_errors = len(errors)
+            rag_hits = self._search_rag(retrieval_question, plan, errors)
+            outcome.update(status="degraded" if len(errors) > before_errors else "completed", summary=f"检索到 {len(rag_hits)} 条原文",
+                           reason="原文检索异常，结果受限" if len(errors) > before_errors else "",
+                           references=[card.to_dict() for card in cards_from_rag_hits(rag_hits, plan)])
         record_timing(timings_ms, "rag", stage_start)
 
         if thinking_enabled:
             yield stream_progress("research", "正在召回投研 Claim 与产业链摘要")
         stage_start = time.perf_counter()
-        research_hits = self._search_research(retrieval_question, plan, errors)
+        with (role_step("industry", "检索产业研究证据") if self.research_memory is not None else nullcontext({})) as outcome:
+            before_errors = len(errors)
+            research_hits = self._search_research(retrieval_question, plan, errors)
+            outcome.update(status="degraded" if len(errors) > before_errors else "completed", summary=f"检索到 {len(research_hits)} 条产业证据",
+                           reason="产业证据检索异常，结果受限" if len(errors) > before_errors else "")
         record_timing(timings_ms, "research", stage_start)
 
         if thinking_enabled:
@@ -1013,33 +1030,38 @@ class QAEngine:
         answer = ""
         reasoning_content = ""
         generation_diagnostics: list[dict[str, Any]] = []
-        for event in self._generate_answer_stream(
-            question,
-            contextual_question,
-            history,
-            plan,
-            graph_records,
-            evidence_cards,
-            errors,
-            llm_options,
-            llm_client,
-            thinking_enabled=bool(thinking_enabled),
-            generation_diagnostics=generation_diagnostics,
-        ):
-            if event.get("type") in {"answer_delta", "progress"}:
-                yield event
-                continue
-            if event.get("type") == "answer_complete":
-                answer = str(event.get("answer") or "")
-                reasoning_content = str(event.get("reasoning_content") or "")
+        with role_step(lead_role(), "生成带引用的研究回答"):
+            for event in self._generate_answer_stream(
+                question,
+                lead_question(contextual_question),
+                history,
+                plan,
+                graph_records,
+                evidence_cards,
+                errors,
+                llm_options,
+                llm_client,
+                thinking_enabled=bool(thinking_enabled),
+                generation_diagnostics=generation_diagnostics,
+            ):
+                if event.get("type") in {"answer_delta", "progress"}:
+                    yield event
+                    continue
+                if event.get("type") == "answer_complete":
+                    answer = str(event.get("answer") or "")
+                    reasoning_content = str(event.get("reasoning_content") or "")
         record_timing(timings_ms, "answer", stage_start)
 
-        # 验证 + 重试（如果验证失败则使用 evidence-limited 答案）
-        verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
-        if verification.get("status") == "fail":
-            answer = build_evidence_limited_answer(plan, evidence_cards, verification)
-            reasoning_content = ""
+        with role_step("reviewer", "核查回答和引用") as outcome:
+            # 验证 + 重试（如果验证失败则使用 evidence-limited 答案）
             verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+            if verification.get("status") == "fail":
+                answer = build_evidence_limited_answer(plan, evidence_cards, verification)
+                reasoning_content = ""
+                verification = verify_answer_support(answer, plan, evidence_cards, raw_cards, question=contextual_question)
+            outcome.update(status="degraded" if verification.get("status") in {"fail", "warn"} else "completed",
+                           summary="答案核查完成", references=[card.to_dict() for card in evidence_cards],
+                           reason="核查发现证据缺口，请查看证据与诊断" if verification.get("status") in {"fail", "warn"} else "")
 
         stage_start = time.perf_counter()
         evidence = legacy_evidence_rows(evidence_cards)

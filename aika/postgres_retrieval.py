@@ -318,7 +318,7 @@ class PostgresRetrievalStore:
                     [(value[0],) for value in values],
                 )
             deleted = connection.execute(
-                "DELETE FROM rag_chunks WHERE NOT EXISTS (SELECT 1 FROM stage_rag_ids s WHERE s.chunk_id = rag_chunks.chunk_id)"
+                "DELETE FROM rag_chunks WHERE kind <> 'user_knowledge' AND NOT EXISTS (SELECT 1 FROM stage_rag_ids s WHERE s.chunk_id = rag_chunks.chunk_id)"
             ).rowcount
             digest = corpus_hash(value[0] for value in values)
             connection.execute(
@@ -815,7 +815,7 @@ class PostgresRagIndex:
         for field in ("company", "source_type", "source_tier", "kind", "content_type"):
             value = str(filters.get(field) or "")
             if value:
-                clauses.append(f"{field} = %s")
+                clauses.append("(company = %s OR (kind = 'user_knowledge' AND company = ''))" if field == "company" else f"{field} = %s")
                 params.append(value)
         candidate_k = max(top_k * 8, 40)
         params.append(candidate_k)
@@ -834,7 +834,7 @@ class PostgresRagIndex:
             ).fetchall()
         hits = [self._hit_from_row(dict(row), question, tokens) for row in rows]
         hits = [hit for hit in hits if not is_low_value_hit(hit)]
-        hits.sort(key=lambda hit: (-hit.score, source_priority(hit), hit.source_title, hit.page, hit.chunk_id))
+        hits.sort(key=lambda hit: (hit.source_type != "user_knowledge", -hit.score, source_priority(hit), hit.source_title, hit.page, hit.chunk_id))
         return dedupe_hits(hits)[: max(0, top_k)]
 
     @staticmethod

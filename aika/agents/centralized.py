@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from contextvars import copy_context
 import json
 import re
 import threading
@@ -24,6 +25,7 @@ from aika.agent_tools import (
     cards_from_graphrag_result,
     cards_from_semantic_hits,
 )
+from aika.agents.roles import QUERY_ROLES, emit_role
 from aika.agents.coverage import CoverageReport, EvidenceCoverageChecker, EvidenceGap
 from aika.agents.planner import AgentTaskPlan, query_suffix_for_coverage
 from aika.extraction_schema import parse_json_object
@@ -257,11 +259,13 @@ class CentralizedCoordinator:
             1.0,
             float(getattr(engine, "multi_agent_task_timeout_seconds", 90.0) or 90.0),
         )
-        self._runtime_lock = threading.Lock()
+        self._runtime_lock = threading.RLock()
         self._active_workers = 0
         self._peak_concurrency = 0
         self._timeouts = 0
         self._rounds: list[dict[str, Any]] = []
+        self._settled_assignments: dict[str, AgentResult] = {}
+        self._expired_assignments: set[str] = set()
 
     def dispatch(
         self,
@@ -339,8 +343,10 @@ class CentralizedCoordinator:
             max_workers=min(self.max_workers, len(assignments)),
             thread_name_prefix="qa-query-agent",
         )
+        for assignment in assignments:
+            emit_role(QUERY_ROLES[assignment.agent_type], assignment.assignment_id, "pending", "等待执行检索", tool=assignment.agent_type)
         futures: dict[Future[AgentResult], AgentAssignment] = {
-            executor.submit(self._run_assignment_with_metrics, assignment, plan, hyde_query): assignment
+            executor.submit(copy_context().run, self._run_assignment_with_metrics, assignment, plan, hyde_query): assignment
             for assignment in assignments
         }
         done, pending = wait(futures, timeout=self.timeout_seconds)
@@ -359,7 +365,13 @@ class CentralizedCoordinator:
             assignment = futures[future]
             future.cancel()
             with self._runtime_lock:
+                settled = self._settled_assignments.get(assignment.assignment_id)
+                if settled is not None:
+                    by_id[assignment.assignment_id] = settled
+                    continue
+                self._expired_assignments.add(assignment.assignment_id)
                 self._timeouts += 1
+                emit_role(QUERY_ROLES[assignment.agent_type], assignment.assignment_id, "failed", "检索超时，最终结论将受此限制", reason=f"超过 {self.timeout_seconds:g} 秒", tool=assignment.agent_type)
             by_id[assignment.assignment_id] = AgentResult(
                 assignment=assignment,
                 status="timeout",
@@ -753,8 +765,26 @@ class CentralizedCoordinator:
         with self._runtime_lock:
             self._active_workers += 1
             self._peak_concurrency = max(self._peak_concurrency, self._active_workers)
+        role = QUERY_ROLES[assignment.agent_type]
+        emit_role(role, assignment.assignment_id, "running", "正在检索相关证据", tool=assignment.agent_type)
         try:
-            return self._run_assignment(assignment, plan, hyde_query)
+            result = self._run_assignment(assignment, plan, hyde_query)
+            # Use the same conversion as join_results so results retain source locators.
+            _, entries, _, _ = self.join_results(AgentRetrievalState(), [result], plan=plan, existing_entries=[])
+            with self._runtime_lock:
+                if assignment.assignment_id not in self._expired_assignments:
+                    emit_role(role, assignment.assignment_id,
+                              "failed" if result.status != "completed" else "degraded" if result.degraded else "completed",
+                              f"检索得到 {result_count(result.output)} 条结果", reason=result.error or ("查询改写不可用，使用原始查询执行检索" if result.degraded else ""),
+                              tool=assignment.agent_type, references=[card.to_dict() for card, _ in entries])
+                    self._settled_assignments[assignment.assignment_id] = result
+            return result
+        except Exception as exc:
+            with self._runtime_lock:
+                if assignment.assignment_id not in self._expired_assignments:
+                    emit_role(role, assignment.assignment_id, "failed", "检索执行失败", tool=assignment.agent_type)
+                    self._settled_assignments[assignment.assignment_id] = AgentResult(assignment, "error", error=str(exc))
+            raise
         finally:
             with self._runtime_lock:
                 self._active_workers -= 1

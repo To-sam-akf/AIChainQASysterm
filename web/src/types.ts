@@ -17,7 +17,50 @@ export interface Conversation {
   turns: ConversationTurn[];
 }
 
+export interface ResearchRole {
+  id: string;
+  name: string;
+  avatar: string;
+  responsibility: string;
+  capabilities: string[];
+}
+
+export interface RoleEvent {
+  type: "role_event";
+  event_id: string;
+  seq: number;
+  task_id: string;
+  conversation_id: string;
+  created_at: string;
+  role_id: string;
+  step_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "skipped" | "degraded";
+  summary: string;
+  reason?: string;
+  references?: Record<string, unknown>[];
+  document?: KnowledgeDocument;
+  evidence_gaps?: Record<string, unknown>[];
+  conflicts?: Record<string, unknown>[];
+}
+
+export interface KnowledgeDocument {
+  document_id: string;
+  title: string;
+  status: string;
+  semantic_status?: string;
+  error?: string;
+  active_version?: number;
+  pending_version?: number;
+  source_deleted?: boolean;
+}
+
 export interface ConversationTurn {
+  task_id?: string;
+  request_id?: string;
+  lead_role_id?: string;
+  status?: "pending" | "running" | "completed" | "failed";
+  error?: string;
+  events?: MessageStreamEvent[];
   created_at: string;
   question: string;
   answer: string;
@@ -395,7 +438,9 @@ export interface GraphSubgraph {
 }
 
 export type MessageStreamEvent =
-  | { type: "progress"; stage: string; message: string }
-  | { type: "answer_delta"; content: string }
+  | RoleEvent
+  | { type: "task"; status: string; task_id: string; lead_role_id: string; seq: number }
+  | { type: "progress"; stage: string; message: string; seq?: number }
+  | { type: "answer_delta"; content: string; seq?: number }
   | { type: "final"; conversation: Conversation; turn: ConversationTurn }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string; seq?: number };

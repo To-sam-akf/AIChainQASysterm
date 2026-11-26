@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import queue
+from contextvars import copy_context
 import threading
 import time
 from dataclasses import asdict, is_dataclass, replace
@@ -26,6 +27,7 @@ from aika.agents.centralized import (
     EvidenceCandidate,
     ReviewReport,
 )
+from aika.agents.roles import role_step, lead_question, lead_role
 from aika.agents.coverage import CoverageReport, EvidenceGap
 from aika.langchain_tools import build_langchain_tools
 from aika.professional_qa import EvidenceCard
@@ -136,7 +138,7 @@ class LangGraphAgentRunner(AgentRunner):
             except Exception as exc:  # pragma: no cover - defensive streaming boundary.
                 events.put({"type": "_runner_error", "error": str(exc)})
 
-        thread = threading.Thread(target=worker, name="qa-centralized-stream", daemon=True)
+        thread = threading.Thread(target=copy_context().run, args=(worker,), name="qa-centralized-stream", daemon=True)
         thread.start()
         while True:
             event = events.get()
@@ -207,14 +209,14 @@ class LangGraphAgentRunner(AgentRunner):
 
     def _build_graph(self) -> Any:
         builder = StateGraph(LangGraphAgentState)
-        builder.add_node("plan", self._plan_node)
-        builder.add_node("dispatch", self._dispatch_node)
+        builder.add_node("plan", self._role_node(self._plan_node, "chief", "制定研究计划"))
+        builder.add_node("dispatch", self._role_node(self._dispatch_node, "chief", "安排检索分工"))
         builder.add_node("query_wave", self._query_wave_node)
         builder.add_node("graphrag_join", self._graphrag_join_node)
-        builder.add_node("review", self._review_node)
-        builder.add_node("summarize", self._summarize_node)
-        builder.add_node("generate_answer", self._generate_answer_node)
-        builder.add_node("verify_answer", self._verify_answer_node)
+        builder.add_node("review", self._role_node(self._review_node, "reviewer", "检查证据覆盖、冲突和资料缺口"))
+        builder.add_node("summarize", self._role_node(self._summarize_node, "chief", "整理可追溯证据"))
+        builder.add_node("generate_answer", self._role_node(self._generate_answer_node, "lead", "生成研究回答"))
+        builder.add_node("verify_answer", self._role_node(self._verify_answer_node, "reviewer", "核查最终回答与引用"))
 
         builder.add_edge(START, "plan")
         builder.add_edge("plan", "dispatch")
@@ -230,6 +232,41 @@ class LangGraphAgentRunner(AgentRunner):
         builder.add_edge("generate_answer", "verify_answer")
         builder.add_edge("verify_answer", END)
         return builder.compile()
+
+    def _role_node(self, node, role_id: str, label: str):
+        def execute(state):
+            role = lead_role() if role_id == "lead" else role_id
+            # Complex research always has a chief's final synthesis.
+            if role_id == "lead" and getattr(state.get("plan"), "needs_comparison", False):
+                role = "chief"
+            with role_step(role, label) as outcome:
+                updates = node(state)
+                if "task_plan" in updates:
+                    plan = updates["plan"]
+                    names = {"company_compare": "公司比较", "risk_analysis": "风险分析", "industry_bottleneck": "产业瓶颈研究", "topic_to_company": "产业链公司梳理", "company_profile": "公司研究", "thematic_research": "主题研究"}
+                    outcome.update(summary=f"研究方向：{names.get(plan.answer_type, '证据检索')}；关注公司：{'、'.join(plan.companies) or '按问题主题检索'}")
+                if "assignments" in updates:
+                    outcome.update(summary=f"已安排 {len(updates['assignments'])} 项检索任务")
+                if "answer" in updates:
+                    outcome.update(summary="已形成研究回答草稿，等待最终证据核查")
+                report = updates.get("review_report")
+                if report is not None:
+                    outcome.update(summary=f"已审查 {len(report.accepted_ids)} 条证据；缺口：{'、'.join(report.coverage.missing) or '无'}",
+                                   status="degraded" if report.degraded else "completed",
+                                   reason=report.error or ("模型审核不可用，已使用规则核查" if report.degraded else ""), conflicts=report.conflicts,
+                                   evidence_gaps=[gap.to_dict() for gap in report.coverage.gaps])
+                if "evidence_cards" in updates:
+                    outcome.update(summary=f"整理了 {len(updates['evidence_cards'])} 条可追溯证据", references=[card.to_dict() for card in updates["evidence_cards"]])
+                if "result" in updates:
+                    result = updates["result"]
+                    verification = result.get("verification") or result.get("diagnostics", {}).get("agent_verification", {})
+                    status = verification.get("status")
+                    outcome.update(status="skipped" if status == "skipped" else "degraded" if status in {"fail", "warn"} else "completed",
+                                   summary=f"答案核查：{ {'pass': '通过', 'warn': '存在证据缺口', 'fail': '未通过', 'skipped': '跳过'}.get(status, '已执行')}", verification=verification,
+                                   reason="当前配置关闭最终答案核查" if status == "skipped" else "证据或引用核查存在限制，请查看证据与诊断" if status in {"warn", "fail"} else "",
+                                   references=result.get("evidence_cards", []))
+                return updates
+        return execute
 
     def _plan_node(self, state: LangGraphAgentState) -> dict[str, Any]:
         self._progress(state, "agent_plan", "中心调度 Agent 正在规划问题和证据目标")
@@ -476,7 +513,7 @@ class LangGraphAgentRunner(AgentRunner):
         elif state.get("streaming"):
             for event in self.engine._generate_answer_stream(
                 str(state.get("question") or ""),
-                str(state.get("contextual_question") or ""),
+                lead_question(str(state.get("contextual_question") or "")),
                 state.get("history") or [],
                 state["plan"],
                 state["retrieval_state"].graph_records,
@@ -502,7 +539,7 @@ class LangGraphAgentRunner(AgentRunner):
         else:
             (answer, reasoning_content), answer_call = answer_tools.generate_answer(
                 str(state.get("question") or ""),
-                str(state.get("contextual_question") or ""),
+                lead_question(str(state.get("contextual_question") or "")),
                 state.get("history") or [],
                 state["plan"],
                 state["retrieval_state"].graph_records,

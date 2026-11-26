@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import asyncio
+import copy
 import base64
 import binascii
 import os
+import re
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
@@ -19,10 +22,14 @@ from pydantic import BaseModel
 from aika.agents.research_agent import ResearchAgent
 from aika.agents.store import AgentTaskNotFoundError, AgentTaskStore, InvalidAgentTaskError
 from aika.conversation_store import (
+    ConversationConflictError,
     ConversationNotFoundError,
     ConversationStore,
     InvalidConversationError,
     now_iso,
+    conversation_json,
+    conversation_markdown,
+    conversation_messages_from_turns,
 )
 from aika.curated_graph import DEFAULT_CURATED_DIR
 from aika.eval.feedback import FeedbackStore, InvalidFeedbackError
@@ -55,6 +62,24 @@ class MessageCreateRequest(BaseModel):
     question: str
     thinking_enabled: bool | None = None
     reasoning_effort: str | None = None
+    role_id: str | None = None
+    request_id: str | None = None
+
+
+class KnowledgeCreateRequest(BaseModel):
+    kind: str
+    content: str
+    title: str = ""
+    filename: str = ""
+    duplicate_action: str = "check"
+    document_id: str | None = None
+
+
+class KnowledgeUpdateRequest(BaseModel):
+    title: str
+    tags: list[str] = []
+    topic: str = ""
+    company: str = ""
 
 
 class AgentTaskCreateRequest(BaseModel):
@@ -183,6 +208,136 @@ async def get_qa_engine() -> QAEngine:
     return _cached_qa_engine()
 
 
+@lru_cache(maxsize=1)
+def _cached_knowledge_base():
+    from aika.knowledge_base import KnowledgeBase
+    engine = _cached_qa_engine()
+    if not engine.retrieval_store:
+        raise HTTPException(status_code=503, detail="动态知识库需要启用 PostgreSQL 检索服务")
+    semantic = engine.semantic_index
+    service = KnowledgeBase(engine.retrieval_store, getattr(semantic, "embedding_client", None))
+    service.recover()
+    return service
+
+
+def knowledge_base():
+    return _cached_knowledge_base()
+
+
+def knowledge_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, HTTPException):
+        return exc
+    if isinstance(exc, KeyError):
+        return HTTPException(status_code=404, detail="资料不存在")
+    if isinstance(exc, (ValueError, UnicodeError, binascii.Error)):
+        return HTTPException(status_code=400, detail=str(exc))
+    return HTTPException(status_code=500, detail="知识库操作失败")
+
+
+def is_knowledge_command(question: str) -> bool:
+    context = any(word in question for word in ("知识库", "入库", "收录"))
+    return context and any(word in question for word in ("保存", "收录", "存入", "存到", "加入", "添加", "入库", "查找", "列出", "有哪些资料", "删除", "移除", "重试", "重新处理"))
+
+
+def knowledge_chat_result(question: str) -> dict[str, Any] | None:
+    """Handle explicit knowledge management commands."""
+    command = is_knowledge_command(question)
+    saving = command and any(word in question for word in ("保存", "收录", "存入", "存到", "加入", "添加", "入库"))
+    searching = command and any(word in question for word in ("查找", "列出", "有哪些资料"))
+    deleting = command and any(word in question for word in ("删除", "移除"))
+    retrying = command and any(word in question for word in ("重试", "重新处理"))
+    if not (saving or searching or deleting or retrying):
+        return None
+    service = knowledge_base()
+    document = None
+    if retrying:
+        doc_id = re.search(r"\b[0-9a-f]{32}\b", question)
+        if not doc_id:
+            answer = "请提供需要重新处理的资料 ID。"
+        else:
+            document = service.retry(doc_id.group())
+            answer = f"已重新处理资料《{document['title']}》，请查看索引状态。"
+    elif saving:
+        url = re.search(r"https?://[^\s，。；）)]+", question)
+        quoted = re.search(r"[“\"](.+?)[”\"]", question, re.S)
+        if url or quoted:
+            outcome = service.create("url" if url else "text", url.group(0) if url else quoted.group(1))
+            if "duplicate" in outcome:
+                answer = f"资料已存在：{outcome['duplicate']['title']}。可在知识库页面选择创建新版本。"
+            else:
+                document = outcome
+                answer = f"已接收资料《{outcome['title']}》，正在处理；请在知识库页面查看索引状态。"
+        else:
+            answer = "请提供网址，或用引号括起需要保存的文本；PDF 请在知识库页面上传。"
+    elif deleting:
+        doc_id = re.search(r"\b[0-9a-f]{32}\b", question)
+        if "确认" in question and doc_id:
+            try:
+                doc = service.get(doc_id.group())
+                service.delete(doc_id.group())
+                answer = f"已删除《{doc['title']}》，并清理其原文与检索索引。"
+            except KeyError:
+                answer = "该资料不存在或已删除。"
+        else:
+            term = re.sub(r"(请|帮我|从|知识库|里面|中|的|把|将|删除|移除|资料|文档|文章|这份|这个|：|:|《|》|\s)", "", question)
+            docs = service.list(term) if term else service.list()
+            if docs:
+                answer = "请选择要删除的资料，并回复“确认删除知识库 [资料ID]”：\n" + "\n".join(f"- {d['title']}（{d['document_id']}）" for d in docs[:20])
+            else:
+                answer = "未找到匹配的资料，请提供更准确的标题。"
+    elif searching:
+        docs = service.list()
+        answer = "知识库资料：\n" + "\n".join(f"- {d['title']}（{d['status']}）" for d in docs[:30]) if docs else "知识库目前没有资料。"
+    cards: list[dict[str, Any]] = []
+    return {"question": question, "contextual_question": question, "answer": answer, "reasoning_content": "", "answer_type": "knowledge", "knowledge_document": document, "plan": {}, "cypher": "", "cypher_params": {}, "cypher_source": "", "graph_records": [], "rag_hits": [], "evidence_cards": cards, "evidence": cards, "research_outputs": {"report": {"title": "", "markdown": "", "sections": []}, "company_compare_table": {"columns": [], "rows": []}, "risk_checklist": [], "evidence_gaps": []}, "subgraph": [], "diagnostics": {}, "errors": []}
+
+
+def redact_deleted_sources(conversation: dict[str, Any]) -> dict[str, Any]:
+    """Hide persisted evidence excerpts when their source has been deleted."""
+    encoded = json.dumps(conversation, ensure_ascii=False)
+    ids = set(re.findall(r"knowledge:([0-9a-f]{32}):", encoded))
+    ids.update(re.findall(r'"(?:document_id|report_id)": "([0-9a-f]{32})"', encoded))
+    if not ids:
+        return conversation
+    service = knowledge_base()
+    with service.store.pool.connection() as c:
+        rows = c.execute("SELECT document_id FROM knowledge_documents WHERE document_id = ANY(%s) AND deleted_at IS NOT NULL", (list(ids),)).fetchall()
+    deleted = {r["document_id"] for r in rows}
+    if not deleted:
+        return conversation
+    result = copy.deepcopy(conversation)
+    for turn in result.get("turns", []):
+        excerpts: set[str] = set()
+        def scrub(value):
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            if not isinstance(value, dict):
+                return value
+            ref = str(value.get("semantic_ref_id") or value.get("chunk_id") or "")
+            doc_id = str(value.get("document_id") or value.get("report_id") or "")
+            if doc_id in deleted or any(ref.startswith(f"knowledge:{item}:") for item in deleted):
+                for field in ("evidence", "evidence_span", "text", "snippet", "raw_text", "source_data"):
+                    if value.get(field):
+                        excerpts.add(str(value[field]))
+                        value[field] = "来源已删除"
+                value["source_deleted"] = True
+                value["source"] = "来源已删除"
+            return {key: scrub(item) for key, item in value.items()}
+        scrubbed = scrub(turn)
+        turn.clear()
+        turn.update(scrubbed)
+        if excerpts:
+            for event in turn.get("events", []):
+                if event.get("type") == "answer_delta":
+                    event["content"] = "[来源已删除]"
+        for excerpt in sorted(excerpts, key=len, reverse=True):
+            if excerpt:
+                turn["answer"] = str(turn.get("answer") or "").replace(excerpt, "[来源已删除]")
+                if isinstance(turn["result"].get("answer"), str):
+                    turn["result"]["answer"] = turn["result"]["answer"].replace(excerpt, "[来源已删除]")
+    return result
+
+
 async def get_knowledge_graph() -> LocalKnowledgeGraph:
     return _cached_knowledge_graph()
 
@@ -192,6 +347,8 @@ def relation_label_options() -> dict[str, str]:
 
 
 def http_error_from_store(exc: Exception) -> HTTPException:
+    if isinstance(exc, ConversationConflictError):
+        return HTTPException(status_code=409, detail=str(exc))
     if isinstance(exc, ConversationNotFoundError):
         return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
     if isinstance(exc, InvalidConversationError):
@@ -515,6 +672,60 @@ async def list_conversations(
     return {"conversations": store.list(limit=limit)}
 
 
+@router.get("/knowledge/documents")
+def list_knowledge_documents(q: str = "", service=Depends(knowledge_base)):
+    return {"documents": service.list(q)}
+
+
+@router.post("/knowledge/documents", status_code=201)
+def create_knowledge_document(request: KnowledgeCreateRequest, service=Depends(knowledge_base)):
+    try:
+        if request.duplicate_action not in ("check", "version"):
+            raise ValueError("无效的重复处理方式")
+        from aika.knowledge_base import MAX_BYTES
+        if len(request.content) > (MAX_BYTES * 4 // 3 + 8 if request.kind == "pdf" else MAX_BYTES):
+            raise ValueError("内容超过大小限制")
+        content = base64.b64decode(request.content, validate=True) if request.kind == "pdf" else request.content
+        return service.create(request.kind, content, request.title, request.filename, request.duplicate_action, request.document_id)
+    except Exception as exc:
+        raise knowledge_error(exc) from exc
+
+
+@router.get("/knowledge/documents/{document_id}")
+def get_knowledge_document(document_id: str, version: int | None = Query(None, ge=1), service=Depends(knowledge_base)):
+    try:
+        return service.get(document_id, version=version)
+    except Exception as exc:
+        raise knowledge_error(exc) from exc
+
+
+@router.patch("/knowledge/documents/{document_id}")
+def update_knowledge_document(document_id: str, request: KnowledgeUpdateRequest, service=Depends(knowledge_base)):
+    try:
+        if not request.title.strip():
+            raise ValueError("标题不能为空")
+        return service.update(document_id, request.title.strip(), request.tags, request.topic, request.company)
+    except Exception as exc:
+        raise knowledge_error(exc) from exc
+
+
+@router.post("/knowledge/documents/{document_id}/retry")
+def retry_knowledge_document(document_id: str, service=Depends(knowledge_base)):
+    try:
+        return service.retry(document_id)
+    except Exception as exc:
+        raise knowledge_error(exc) from exc
+
+
+@router.delete("/knowledge/documents/{document_id}", status_code=204)
+def delete_knowledge_document(document_id: str, service=Depends(knowledge_base)):
+    try:
+        service.delete(document_id)
+        return Response(status_code=204)
+    except Exception as exc:
+        raise knowledge_error(exc) from exc
+
+
 @router.post("/conversations", status_code=status.HTTP_201_CREATED)
 async def create_conversation(
     request: ConversationCreateRequest,
@@ -529,7 +740,7 @@ async def get_conversation(
     store: ConversationStore = Depends(get_conversation_store),
 ) -> dict[str, Any]:
     try:
-        return store.get(conversation_id)
+        return redact_deleted_sources(store.get(conversation_id))
     except Exception as exc:
         raise http_error_from_store(exc) from exc
 
@@ -541,7 +752,7 @@ async def update_conversation(
     store: ConversationStore = Depends(get_conversation_store),
 ) -> dict[str, Any]:
     try:
-        return store.update_title(conversation_id, request.title)
+        return redact_deleted_sources(store.update_title(conversation_id, request.title))
     except Exception as exc:
         raise http_error_from_store(exc) from exc
 
@@ -558,119 +769,82 @@ async def delete_conversation(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/conversations/{conversation_id}/messages")
-async def append_message(
-    conversation_id: str,
-    request: MessageCreateRequest,
-    store: ConversationStore = Depends(get_conversation_store),
-    engine: QAEngine = Depends(get_qa_engine),
-) -> dict[str, Any]:
-    question = request.question.strip()
-    if not question:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
-    if request.reasoning_effort and request.reasoning_effort not in REASONING_EFFORTS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reasoning effort")
-    try:
-        history = store.history_messages(conversation_id)
-    except Exception as exc:
-        raise http_error_from_store(exc) from exc
+@router.get("/agent/roles")
+async def list_conversation_roles():
+    from aika.agents.roles import ROLES
+    return {"roles": ROLES}
 
-    thinking_enabled = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
-    reasoning_effort = request.reasoning_effort or (default_reasoning_effort() if thinking_enabled else "")
-    result = engine.answer_question(
-        question,
-        conversation_history=history,
-        thinking_enabled=thinking_enabled,
-        reasoning_effort=reasoning_effort or None,
-    )
-    result["diagnostics"]["thinking_enabled"] = thinking_enabled
-    result["diagnostics"]["reasoning_effort"] = reasoning_effort
-    turn = {
-        "created_at": now_iso(),
-        "question": question,
-        "answer": result["answer"],
-        "thinking_enabled": thinking_enabled,
-        "reasoning_effort": reasoning_effort,
-        "result": result,
-    }
+
+def start_conversation_task(conversation_id, request, store, engine):
+    from aika.conversation_tasks import runtime
+    if not request.question.strip():
+        raise HTTPException(status_code=400, detail="Question cannot be empty")
+    if request.reasoning_effort and request.reasoning_effort not in REASONING_EFFORTS:
+        raise HTTPException(status_code=400, detail="Invalid reasoning effort")
+    thinking = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
+    payload = request.model_dump()
+    payload.update(thinking_enabled=thinking, reasoning_effort=request.reasoning_effort or (default_reasoning_effort() if thinking else ""))
     try:
-        conversation = store.append_turn(conversation_id, turn)
-    except Exception as exc:
+        return runtime.submit(store, conversation_id, payload, engine, knowledge_chat_result, redact_deleted_sources)
+    except (ConversationNotFoundError, InvalidConversationError, ConversationConflictError) as exc:
         raise http_error_from_store(exc) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def conversation_task_events(store, conversation_id, task_id, after_seq=0):
+    cursor = after_seq
+    heartbeat = 0
+    while True:
+        turn = store.task(conversation_id, task_id)
+        if len(turn.get("events", [])) > cursor or turn["status"] not in {"pending", "running"}:
+            conversation = redact_deleted_sources(store.get(conversation_id))
+            turn = next(t for t in conversation["turns"] if t.get("task_id") == task_id)
+            for event in turn.get("events", []):
+                if event["seq"] > cursor:
+                    cursor = event["seq"]
+                    yield f"id: {cursor}\n" + sse_event(event["type"], public_stream_payload(event))
+            if turn["status"] not in {"pending", "running"}:
+                yield sse_event("final", {"conversation": conversation, "turn": turn})
+                return
+        heartbeat += 1
+        if heartbeat % 100 == 0:
+            yield ": keep-alive\n\n"
+        await asyncio.sleep(0.1)
+
+
+@router.post("/conversations/{conversation_id}/messages")
+async def append_message(conversation_id: str, request: MessageCreateRequest,
+                         store: ConversationStore = Depends(get_conversation_store),
+                         engine: QAEngine = Depends(get_qa_engine)) -> dict[str, Any]:
+    turn = start_conversation_task(conversation_id, request, store, engine)
+    while store.task(conversation_id, turn["task_id"])["status"] in {"pending", "running"}:
+        await asyncio.sleep(0.05)
+    conversation = redact_deleted_sources(store.get(conversation_id))
+    turn = next(t for t in conversation["turns"] if t.get("task_id") == turn["task_id"])
     return {"conversation": conversation, "turn": turn}
 
 
 @router.post("/conversations/{conversation_id}/messages/stream")
-async def append_message_stream(
-    conversation_id: str,
-    request: MessageCreateRequest,
-    store: ConversationStore = Depends(get_conversation_store),
-    engine: QAEngine = Depends(get_qa_engine),
-) -> StreamingResponse:
-    question = request.question.strip()
-    if not question:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Question cannot be empty")
-    if request.reasoning_effort and request.reasoning_effort not in REASONING_EFFORTS:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid reasoning effort")
+async def append_message_stream(conversation_id: str, request: MessageCreateRequest,
+                                store: ConversationStore = Depends(get_conversation_store),
+                                engine: QAEngine = Depends(get_qa_engine)) -> StreamingResponse:
+    turn = start_conversation_task(conversation_id, request, store, engine)
+    return StreamingResponse(conversation_task_events(store, conversation_id, turn["task_id"]),
+                             media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+@router.get("/conversations/{conversation_id}/tasks/{task_id}/events")
+async def resume_conversation_task(conversation_id: str, task_id: str, after_seq: int = Query(0, ge=0),
+                                   store: ConversationStore = Depends(get_conversation_store)):
     try:
-        history = store.history_messages(conversation_id)
+        turn = store.task(conversation_id, task_id)
     except Exception as exc:
         raise http_error_from_store(exc) from exc
-
-    thinking_enabled = default_thinking_enabled() if request.thinking_enabled is None else request.thinking_enabled
-    reasoning_effort = request.reasoning_effort or (default_reasoning_effort() if thinking_enabled else "")
-
-    def generate_events() -> Any:
-        result: dict[str, Any] | None = None
-        try:
-            if hasattr(engine, "answer_question_stream"):
-                for event in engine.answer_question_stream(
-                    question,
-                    conversation_history=history,
-                    thinking_enabled=thinking_enabled,
-                    reasoning_effort=reasoning_effort or None,
-                ):
-                    event_type = str(event.get("type") or "message")
-                    if event_type == "final":
-                        result = dict(event.get("result") or {})
-                        continue
-                    if event_type in {"progress", "answer_delta"}:
-                        yield sse_event(event_type, public_stream_payload(event))
-            else:
-                result = engine.answer_question(
-                    question,
-                    conversation_history=history,
-                    thinking_enabled=thinking_enabled,
-                    reasoning_effort=reasoning_effort or None,
-                )
-                yield sse_event("answer_delta", {"content": result.get("answer", "")})
-
-            if result is None:
-                raise RuntimeError("No answer result was generated")
-            diagnostics = result.get("diagnostics")
-            if not isinstance(diagnostics, dict):
-                diagnostics = {}
-                result["diagnostics"] = diagnostics
-            diagnostics["thinking_enabled"] = thinking_enabled
-            diagnostics["reasoning_effort"] = reasoning_effort
-            turn = {
-                "created_at": now_iso(),
-                "question": question,
-                "answer": result["answer"],
-                "thinking_enabled": thinking_enabled,
-                "reasoning_effort": reasoning_effort,
-                "result": result,
-            }
-            conversation = store.append_turn(conversation_id, turn)
-            yield sse_event("final", {"conversation": conversation, "turn": turn})
-        except Exception as exc:
-            yield sse_event("error", {"message": str(exc) or "生成失败"})
-
-    return StreamingResponse(
-        generate_events(),
-        media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
-    )
+    if after_seq > len(turn.get("events", [])):
+        raise HTTPException(status_code=400, detail="事件游标超出范围")
+    return StreamingResponse(conversation_task_events(store, conversation_id, task_id, after_seq),
+                             media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
 @router.get("/conversations/{conversation_id}/export")
@@ -680,7 +854,10 @@ async def export_conversation(
     store: ConversationStore = Depends(get_conversation_store),
 ) -> Response:
     try:
-        content, filename, media_type = store.export(conversation_id, format)
+        conversation = redact_deleted_sources(store.get(conversation_id))
+        filename = f"conversation.{format}"
+        content = conversation_markdown(conversation) if format == "md" else conversation_json(conversation)
+        media_type = "text/markdown; charset=utf-8" if format == "md" else "application/json; charset=utf-8"
     except Exception as exc:
         raise http_error_from_store(exc) from exc
     ascii_fallback = "conversation.md" if format == "md" else "conversation.json"
@@ -787,9 +964,13 @@ async def graph_neighbors(node_id: str, relation_type: str = "", offset: int = Q
 @asynccontextmanager
 async def app_lifespan(_: FastAPI):
     engine = _cached_qa_engine()
+    from aika.conversation_tasks import runtime
+    runtime.reopen()
+    _cached_conversation_store().recover_tasks()
     try:
         yield
     finally:
+        runtime.shutdown()
         engine.close()
         _cached_qa_engine.cache_clear()
 

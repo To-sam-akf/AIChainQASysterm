@@ -10,10 +10,12 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Callable
 
 from aika.agents.executor import ToolExecutor
+from aika.agents.roles import fallback_tool_events, lead_role, role_step
 from aika.cypher_generator import GeneratedCypher
 from aika.graphrag import GraphRagResult, run_graphrag
 from aika.professional_qa import (
@@ -515,7 +517,25 @@ class AgentTools:
         Returns:
             (func_execution_result, AgentToolCall_telemetry) 的元组
         """
-        execution = self.executor.execute(tool, args, func, count_result)
+        role, label = {
+            "contextualize_question": ("chief", "结合会话理解问题"),
+            "plan_question": ("chief", "制定研究方向"),
+            "prepare_cypher": ("industry", "准备图谱检索"),
+            "build_hyde_query": ("analyst", "准备原文检索条件"),
+            "query_graph": ("industry", "查询产业链图谱"),
+            "search_research": ("industry", "检索产业研究证据"),
+            "run_graphrag": ("industry", "分析产业链关系"),
+            "search_rag": ("analyst", "检索研报原文"),
+            "search_semantic": ("analyst", "检索语义相关资料"),
+            "rank_evidence": ("chief", "筛选相关证据"),
+            "verify_answer_support": ("reviewer", "核查回答与引用"),
+        }.get(tool, (lead_role(), "处理研究任务"))
+        scope = role_step(role, label) if fallback_tool_events() else nullcontext({})
+        with scope as outcome:
+            execution = self.executor.execute(tool, args, func, count_result)
+            outcome.update(status="failed" if execution.error and not execution.result_count else "degraded" if execution.error else "completed",
+                           summary=f"{label}：{execution.result_count} 条结果",
+                           reason="工具执行失败或降级，请查看服务配置" if execution.error else "")
         call = AgentToolCall(
             tool=tool,
             args=args,

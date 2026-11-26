@@ -1,5 +1,7 @@
+import { RolePicker, RoleWorkspace } from "./RoleWorkspace";
 import { lazy, Suspense } from "react";
 const GraphExplorer = lazy(() => import("./GraphExplorer"));
+const KnowledgeView = lazy(() => import("./KnowledgeView"));
 import {
   BarChart3,
   Bot,
@@ -41,6 +43,8 @@ import {
   getEvalRun,
   getExamples,
   getStatus,
+  listResearchRoles,
+  resumeTask,
   listAgentTasks,
   listConversations,
   listEvalRuns,
@@ -50,6 +54,8 @@ import {
   updateConversationTitle
 } from "./api";
 import type {
+  ResearchRole,
+  MessageStreamEvent,
   AgentTask,
   AgentTaskSummary,
   AgentTaskType,
@@ -73,7 +79,7 @@ import type {
   VerificationResult
 } from "./types";
 
-type View = "chat" | "overview" | "graph" | "agents" | "eval";
+type View = "chat" | "overview" | "graph" | "agents" | "eval" | "knowledge";
 type DetailTab = "research" | "verification" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
@@ -202,8 +208,22 @@ function updateTurnClaimReview(
   };
 }
 
+function applyTaskEvent(turn: ConversationTurn, event: MessageStreamEvent): ConversationTurn {
+  if (event.type === "final") return event.turn;
+  const seq = "seq" in event ? event.seq : undefined;
+  if (seq && turn.events?.some(item => "seq" in item && item.seq === seq)) return turn;
+  const next = { ...turn, events: [...(turn.events || []), event] };
+  if (event.type === "task") return { ...next, task_id: event.task_id, lead_role_id: event.lead_role_id, status: "running" };
+  if (event.type === "answer_delta") {
+    const answer = turn.answer + event.content;
+    return { ...next, answer, result: { ...turn.result, answer } };
+  }
+  if (event.type === "error") return { ...next, error: event.message };
+  return next;
+}
+
 function App() {
-  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).has("graph_view") ? "graph" : "chat");
+  const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).has("knowledge_document") ? "knowledge" : new URLSearchParams(window.location.search).has("graph_view") ? "graph" : "chat");
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [examples, setExamples] = useState<string[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>(EMPTY_ARRAY);
@@ -216,6 +236,12 @@ function App() {
   const [agentRunning, setAgentRunning] = useState(false);
   const [current, setCurrent] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
+  const [researchRoles, setResearchRoles] = useState<ResearchRole[]>([]);
+  const [selectedRole, setSelectedRole] = useState("");
+  const currentIdRef = useRef<string | undefined>();
+  currentIdRef.current = current?.id;
+  const submissionAbort = useRef<AbortController | null>(null);
+  const activeTask = current?.turns.find(turn => turn.status === "pending" || turn.status === "running");
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
   const [reasoningEffort, setReasoningEffort] = useState("low");
   const [sending, setSending] = useState(false);
@@ -283,9 +309,48 @@ function App() {
 
   useEffect(() => {
     void loadInitial();
+    void listResearchRoles().then(payload => setResearchRoles(payload.roles)).catch(() => setToast("角色资料暂不可用，请重试加载"));
   }, []);
 
+  useEffect(() => {
+    const conversationId = current?.id;
+    const taskId = activeTask?.task_id;
+    if (!conversationId || !taskId) return;
+    const controller = new AbortController();
+    let stopped = false;
+    let cursor = Math.max(0, ...(activeTask.events || []).map(event => "seq" in event ? event.seq || 0 : 0));
+    async function follow() {
+      while (!stopped) {
+        try {
+          await resumeTask(conversationId!, taskId!, cursor, event => {
+            if (stopped) return;
+            if ("seq" in event && event.seq) cursor = Math.max(cursor, event.seq);
+            if (event.type === "final") {
+              setCurrent(previous => previous?.id === conversationId ? event.conversation : previous);
+              void refreshConversations();
+            } else {
+              setCurrent(previous => previous && previous.id === conversationId ? { ...previous,
+                turns: previous.turns.map(turn => turn.task_id === taskId ? applyTaskEvent(turn, event) : turn) } : previous);
+            }
+          }, controller.signal);
+          return;
+        } catch {
+          if (stopped) return;
+          setToast("连接中断，任务仍在后台执行，正在恢复连接…");
+          await new Promise(resolve => window.setTimeout(resolve, 2000));
+        }
+      }
+    }
+    void follow();
+    return () => { stopped = true; controller.abort(); };
+    // Event updates keep the same task ID and must not restart subscriptions.
+  }, [current?.id, activeTask?.task_id]);
+
+  useEffect(() => () => { submissionAbort.current?.abort(); }, []);
+
   async function handleNewConversation() {
+    submissionAbort.current?.abort();
+    setSending(false);
     try {
       const conversation = await createConversation();
       setCurrent(conversation);
@@ -302,6 +367,8 @@ function App() {
   }
 
   async function handleLoadConversation(id: string) {
+    submissionAbort.current?.abort();
+    setSending(false);
     try {
       const conversation = await getConversation(id);
       setCurrent(conversation);
@@ -392,63 +459,67 @@ function App() {
 
   async function handleSubmit(question = input) {
     const trimmed = question.trim();
-    if (!trimmed || sending) return;
+    if (!trimmed || sending || activeTask) return;
     setSending(true);
     setToast("");
-    const submittedThinking = thinkingEnabled;
-    const submittedReasoningEffort = submittedThinking ? reasoningEffort : "";
+    const controller = new AbortController();
+    submissionAbort.current = controller;
+    let conversationId = current?.id;
     try {
       let conversation = current;
       if (!conversation) {
         conversation = await createConversation();
         setCurrent(conversation);
+        currentIdRef.current = conversation.id;
       }
-      const pendingTurn = createPendingTurn(trimmed, submittedThinking, submittedReasoningEffort);
-      setStreamingTurn(pendingTurn);
+      conversationId = conversation.id;
+      const requestId = crypto.randomUUID();
+      setStreamingTurn({ ...createPendingTurn(trimmed, thinkingEnabled, thinkingEnabled ? reasoningEffort : ""),
+        request_id: requestId, status: "running", lead_role_id: selectedRole || "chief", events: [] });
       setStreamingProgress([]);
       setSelectedTurn(null);
       setInput("");
       setView("chat");
-      const updated = await streamMessage(
-        conversation.id,
-        trimmed,
-        submittedThinking,
-        submittedReasoningEffort,
-        (event) => {
-          if (event.type === "progress") {
-            setStreamingProgress((items) => nextProgressItems(items, event.message));
-          } else if (event.type === "answer_delta") {
-            setStreamingTurn((turn) => {
-              if (!turn) return turn;
-              const answer = `${turn.answer}${event.content}`;
-              return {
-                ...turn,
-                answer,
-                result: {
-                  ...turn.result,
-                  answer
-                }
-              };
-            });
-          } else if (event.type === "final") {
+      const updated = await streamMessage(conversationId, trimmed, thinkingEnabled,
+        thinkingEnabled ? reasoningEffort : "", event => {
+          if (currentIdRef.current !== conversationId) return;
+          if (event.type === "final") {
             setCurrent(event.conversation);
             setStreamingTurn(null);
             setStreamingProgress([]);
-          } else if (event.type === "error") {
-            setToast(event.message);
+          } else {
+            setStreamingTurn(turn => turn ? applyTaskEvent(turn, event) : turn);
+            if (event.type === "progress") setStreamingProgress(items => nextProgressItems(items, event.message));
+            if (event.type === "error") setToast(event.message);
           }
-        }
-      );
-      setCurrent(updated);
-      setStreamingTurn(null);
-      setStreamingProgress([]);
+        }, selectedRole, requestId, controller.signal);
+      if (currentIdRef.current === conversationId) {
+        setCurrent(updated);
+        setStreamingTurn(null);
+        setStreamingProgress([]);
+      }
       await refreshConversations();
     } catch (error) {
-      setToast(error instanceof Error ? error.message : "发送失败");
-      setStreamingTurn(null);
-      setStreamingProgress([]);
+      if (!controller.signal.aborted && currentIdRef.current === conversationId) {
+        setToast(error instanceof Error ? error.message : "连接中断，正在恢复任务状态");
+        // Reload the persisted turn; its active task triggers event resubscription.
+        if (conversationId) {
+          while (!controller.signal.aborted && currentIdRef.current === conversationId) {
+            try {
+              const saved = await getConversation(conversationId);
+              if (currentIdRef.current === conversationId) setCurrent(saved);
+              break;
+            } catch {
+              setToast("暂时无法连接，任务状态将在网络恢复后更新…");
+              await new Promise(resolve => window.setTimeout(resolve, 2000));
+            }
+          }
+        }
+        setStreamingTurn(null);
+        setStreamingProgress([]);
+      }
     } finally {
-      setSending(false);
+      if (submissionAbort.current === controller) setSending(false);
     }
   }
 
@@ -516,7 +587,10 @@ function App() {
             conversation={current}
             examples={examples}
             input={input}
-            sending={sending}
+            sending={sending || Boolean(activeTask)}
+            roles={researchRoles}
+            roleId={selectedRole}
+            onRoleChange={setSelectedRole}
             streamingTurn={streamingTurn}
             streamingProgress={streamingProgress}
             thinkingEnabled={thinkingEnabled}
@@ -534,6 +608,7 @@ function App() {
             onExample={(example) => setInput(example)}
           />
         )}
+        {view === "knowledge" && <Suspense fallback={<p>正在加载知识库…</p>}><KnowledgeView /></Suspense>}
         {view === "agents" && (
           <AgentTasksView
             tasks={agentTasks}
@@ -613,6 +688,9 @@ function Sidebar(props: {
           <MessageSquareText size={20} />
           <span>智能问答</span>
         </button>
+        <button className={props.view === "knowledge" ? "active" : ""} type="button" onClick={() => props.onViewChange("knowledge")}>
+          <FileText size={20} /><span>知识库</span>
+        </button>
         <button
           className={props.view === "agents" ? "active" : ""}
           type="button"
@@ -689,6 +767,9 @@ function Sidebar(props: {
 }
 
 function ChatView(props: {
+  roles: ResearchRole[];
+  roleId: string;
+  onRoleChange: (value: string) => void;
   loading: boolean;
   conversation: Conversation | null;
   examples: string[];
@@ -717,6 +798,9 @@ function ChatView(props: {
           <p>面向产业链图谱、研报证据与连续追问的专业问答工作台</p>
           <Composer
             value={props.input}
+            roles={props.roles}
+            roleId={props.roleId}
+            onRoleChange={props.onRoleChange}
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
@@ -761,6 +845,9 @@ function ChatView(props: {
                 key={`${turn.created_at}-${index}`}
                 index={index}
                 turn={turn}
+                roles={props.roles}
+                onRetry={props.onSubmit}
+                isStreaming={turn.status === "pending" || turn.status === "running"}
                 conversationId={props.conversation?.id ?? ""}
                 onOpenDetails={props.onOpenDetails}
                 onFeedback={props.onFeedback}
@@ -770,6 +857,8 @@ function ChatView(props: {
               <MessagePair
                 index={props.conversation?.turns.length ?? 0}
                 turn={props.streamingTurn}
+                roles={props.roles}
+                onRetry={props.onSubmit}
                 isStreaming
                 progressItems={props.streamingProgress}
                 conversationId={props.conversation?.id ?? ""}
@@ -787,6 +876,9 @@ function ChatView(props: {
           <Composer
             compact
             value={props.input}
+            roles={props.roles}
+            roleId={props.roleId}
+            onRoleChange={props.onRoleChange}
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
@@ -1239,6 +1331,9 @@ function StatCard(props: { label: string; value: string }) {
 }
 
 function Composer(props: {
+  roles: ResearchRole[];
+  roleId: string;
+  onRoleChange: (value: string) => void;
   value: string;
   sending: boolean;
   thinkingEnabled: boolean;
@@ -1280,6 +1375,7 @@ function Composer(props: {
 
   return (
     <div className={`composer ${props.compact ? "compact" : ""}`}>
+      <RolePicker roles={props.roles} value={props.roleId} onChange={props.onRoleChange} disabled={props.sending} />
       <textarea
         value={props.value}
         rows={3}
@@ -1331,6 +1427,8 @@ function ExampleRail(props: { examples: string[]; onPick: (value: string) => voi
 }
 
 function MessagePair(props: {
+  roles: ResearchRole[];
+  onRetry: (question: string) => void;
   index: number;
   turn: ConversationTurn;
   conversationId: string;
@@ -1347,6 +1445,7 @@ function MessagePair(props: {
           <p>{props.turn.question}</p>
         </div>
       </div>
+      <RoleWorkspace turn={props.turn} roles={props.roles} onEvidence={props.onOpenDetails} onRetry={props.onRetry} />
       <div className="message assistant-message">
         <div className="avatar">
           <Bot size={18} />
@@ -1355,7 +1454,7 @@ function MessagePair(props: {
           <div className="answer-meta">
             <span>第 {props.index + 1} 轮</span>
             <span>{props.turn.thinking_enabled ? `思考 ${props.turn.reasoning_effort}` : "快速回答"}</span>
-            {props.isStreaming && <span>生成中</span>}
+            {props.isStreaming ? <span>草稿，待核查</span> : <span>{props.turn.status === "failed" ? "任务失败，以下为未完成内容" : "最终回答"}</span>}
           </div>
           {props.turn.thinking_enabled && Boolean(props.progressItems?.length) && (
             <ThoughtProgress items={props.progressItems ?? []} />
@@ -1375,7 +1474,7 @@ function MessagePair(props: {
               <div className="stream-placeholder">本轮未生成答案，请重试；可在证据与诊断中查看详情。</div>
             )}
           </div>
-          {!props.isStreaming && (
+          {!props.isStreaming && props.turn.status !== "failed" && (
             <>
               <div className="answer-action-row">
                 <button className="details-button" type="button" onClick={() => props.onOpenDetails(props.turn)}>
@@ -2827,6 +2926,8 @@ function EvidenceCardView(props: {
   const score = fieldText(row, "score");
   const semanticScore = fieldText(row, "semantic_score");
   const semanticRefId = fieldText(row, "semantic_ref_id");
+  const knowledgeId = fieldText(row, "document_id") || /^knowledge:([0-9a-f]{32}):/.exec(semanticRefId)?.[1] || "";
+  const knowledgeVersion = /^knowledge:[0-9a-f]{32}:(\d+):/.exec(semanticRefId)?.[1];
   const reviewStatus = fieldText(row, "review_status");
   const reviewerNote = fieldText(row, "reviewer_note");
   return (
@@ -2851,6 +2952,7 @@ function EvidenceCardView(props: {
         {confidence && <span>置信度 {confidence}</span>}
         {semanticScore && semanticScore !== "0" && <span>semantic {semanticScore}</span>}
         {semanticRefId && <span>{semanticRefId}</span>}
+        {knowledgeId && !row.source_deleted && <a href={`/?knowledge_document=${encodeURIComponent(knowledgeId)}${knowledgeVersion ? `&knowledge_version=${knowledgeVersion}` : ""}`} target="_blank" rel="noreferrer">查看资料原文</a>}
         {score && <span>score {score}</span>}
       </div>
       {reviewerNote && <div className="review-note">审校备注：{reviewerNote}</div>}

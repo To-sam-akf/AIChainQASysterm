@@ -13,7 +13,8 @@ import type {
   FeedbackResponse,
   GraphSubgraph,
   GraphSummary,
-  MessageStreamEvent
+  MessageStreamEvent,
+  ResearchRole
 } from "./types";
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -114,24 +115,36 @@ export async function sendMessage(
   return payload.conversation;
 }
 
+export function listResearchRoles(): Promise<{ roles: ResearchRole[] }> {
+  return request("/api/agent/roles");
+}
+
 export async function streamMessage(
   id: string,
   question: string,
   thinkingEnabled: boolean,
   reasoningEffort: string,
-  onEvent: (event: MessageStreamEvent) => void
+  onEvent: (event: MessageStreamEvent) => void,
+  roleId?: string,
+  requestId = crypto.randomUUID(),
+  signal?: AbortSignal
 ): Promise<Conversation> {
   const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/messages/stream`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      question,
-      thinking_enabled: thinkingEnabled,
-      reasoning_effort: reasoningEffort
-    })
+    method: "POST", signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, thinking_enabled: thinkingEnabled, reasoning_effort: reasoningEffort,
+      role_id: roleId || null, request_id: requestId })
   });
+  return consumeMessageStream(response, onEvent);
+}
+
+export async function resumeTask(id: string, taskId: string, afterSeq: number,
+  onEvent: (event: MessageStreamEvent) => void, signal?: AbortSignal): Promise<Conversation> {
+  const response = await fetch(`/api/conversations/${encodeURIComponent(id)}/tasks/${encodeURIComponent(taskId)}/events?after_seq=${afterSeq}`, { signal });
+  return consumeMessageStream(response, onEvent);
+}
+
+async function consumeMessageStream(response: Response, onEvent: (event: MessageStreamEvent) => void): Promise<Conversation> {
   if (!response.ok) {
     let message = `${response.status} ${response.statusText}`;
     try {
@@ -189,7 +202,7 @@ export async function streamMessage(
   }
   const tail = buffer.trim();
   if (tail) dispatchBlock(tail);
-  if (streamError) throw streamError;
+  if (!finalConversation && streamError) throw streamError;
   if (!finalConversation) throw new Error("流式响应未返回最终结果");
   return finalConversation;
 }
