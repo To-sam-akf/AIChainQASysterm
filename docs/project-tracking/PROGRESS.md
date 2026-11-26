@@ -5,7 +5,7 @@
 ## 当前交付
 
 **功能二：同一会话中的多 Agent 协作，AG-01～AG-07 已实现。**
-需求来源：[需求说明第 5 节](docs/knowledge-agent-requirements.md)。当前为本地单用户、单后端进程版本。
+需求来源：[需求说明第 5 节](../knowledge-agent-requirements.md)。当前为本地单用户、单后端进程版本。
 
 | 能力 | 当前行为 | 主要实现位置 |
 | --- | --- | --- |
@@ -43,9 +43,9 @@
 
 实现检查点：`f466506`（完整 ID：`f46650606a6aa38d19182c5d9a10a61f805db6b8`）。包含功能二及工作区已有的知识库依赖，不包含密钥、会话数据或数据库运行数据。文档和接手脚本随后单独提交。
 
-查看实际修改：`git show --stat f466506`，查看完整内容：`git show f466506`。文档检查点可通过 `git log --oneline -- PROGRESS.md DECISIONS.md AGENTS.md init.sh` 定位。
+查看实际修改：`git show --stat f466506`，查看完整内容：`git show f466506`。文档检查点可通过 `git log --oneline -- docs/project-tracking PROGRESS.md DECISIONS.md AGENTS.md init.sh` 定位。
 
-本次记录阶段新增根目录 `PROGRESS.md`、`DECISIONS.md`、`AGENTS.md` 与 `init.sh`，并在 README 提供入口。已实际运行 `bash -n init.sh`、`./init.sh status`、`./init.sh check`：**36 项相关测试通过，前端构建通过，差异空白检查通过**。本阶段没有重跑全量测试或在线集成。
+本次记录阶段新增根目录 `PROGRESS.md`、`DECISIONS.md`、`AGENTS.md` 与 `init.sh`，并在 README 提供入口。已实际运行 `bash -n init.sh`、`./docs/project-tracking/init.sh status`、`./docs/project-tracking/init.sh check`：**36 项相关测试通过，前端构建通过，差异空白检查通过**。本阶段没有重跑全量测试或在线集成。
 
 ## 下一步设计与验收建议（尚未实施）
 
@@ -57,3 +57,7 @@
 ## 后续维护格式
 
 每次交付补充：日期、用户需求、完成/未完成项、真实验证结果、实现 commit ID、尚待确认的产品问题。不要将建议、未运行的测试或未验证的外部集成写成已完成。
+
+## 记录目录调整
+
+按用户要求，四个跟进文件统一迁入 `docs/project-tracking/`，根目录通过 README 提供入口。脚本从自身位置定位仓库根目录，调用命令更新为 `./docs/project-tracking/init.sh`。本次仅调整文件组织及路径，验证脚本语法、状态命令和文档链接，不重复运行功能测试。

@@ -5,7 +5,7 @@
 ## 开始工作
 
 1. 读取 `PROGRESS.md` 了解完成情况与验证边界，读取 `DECISIONS.md` 了解设计理由与未决问题。
-2. 执行 `./init.sh status`，检查 Git 分支、最近提交、未提交改动和依赖是否存在。
+2. 执行 `./docs/project-tracking/init.sh status`，检查 Git 分支、最近提交、未提交改动和依赖是否存在。
 3. 根据当前任务阅读需求及代码；不要假定文档中的已完成测试在新的工作区仍然有效。
 4. 保留用户已有改动。涉及功能一/功能二的共有文件时，先确认现有差异的来源。
 
@@ -21,7 +21,7 @@
 ## 验证与结束工作
 
 - 首次准备环境按 README 执行 `uv sync`、`cd web && npm ci`；`init.sh` 不自动安装依赖或改写环境文件。
-- `./init.sh check` 执行角色、会话、API 相关回归及前端构建。更大改动还需有针对性地扩大测试。
+- `./docs/project-tracking/init.sh check` 执行角色、会话、API 相关回归及前端构建。更大改动还需有针对性地扩大测试。
 - 全量回归的本地配置影响及隔离方式见 `PROGRESS.md`；不得删除 `.codex/config.toml` 来消除测试失败。
 - 完成后更新进度；新增或改变设计选择时更新决策记录。把实际运行的验证与待验证事项分开。
 - 用户授权保存检查点时，使用明确的文件列表提交，注明修改范围。不要提交 `.env`、密钥、数据库目录或个人会话数据。
@@ -31,4 +31,4 @@
 
 通过 `git log --oneline` 和 `git show <commit>` 查看检查点。若需要运行旧版本，优先在独立目录使用 `git worktree add --detach <目录> <commit>`，不要覆盖当前工作区。旧版本也需要自己的依赖、环境配置和数据。
 
-离线启动：`./init.sh offline-api`；另开终端执行 `./init.sh web`。离线模式用于问答界面与本地证据验证，不能替代真实 PostgreSQL 知识库验收。完整服务启动及迁移命令见 README，脚本不会自动迁移数据库。
+离线启动：`./docs/project-tracking/init.sh offline-api`；另开终端执行 `./docs/project-tracking/init.sh web`。离线模式用于问答界面与本地证据验证，不能替代真实 PostgreSQL 知识库验收。完整服务启动及迁移命令见 README，脚本不会自动迁移数据库。

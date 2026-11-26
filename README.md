@@ -148,7 +148,7 @@ npm run dev
 
 ## 项目跟进记录
 
-- [进度与验收边界](PROGRESS.md)：当前完成情况、验证记录和下一步。
-- [设计决策](DECISIONS.md)：关键选择、原因、代价和未决事项。
-- [接手与恢复流程](AGENTS.md)：如何继续工作、保存与查看检查点。
-- `./init.sh status` 查看状态；`./init.sh check` 执行相关回归和前端构建。实现检查点为 `f466506`，可用 `git show --stat f466506` 查看修改范围。
+- [进度与验收边界](docs/project-tracking/PROGRESS.md)：当前完成情况、验证记录和下一步。
+- [设计决策](docs/project-tracking/DECISIONS.md)：关键选择、原因、代价和未决事项。
+- [接手与恢复流程](docs/project-tracking/AGENTS.md)：如何继续工作、保存与查看检查点。
+- `./docs/project-tracking/init.sh status` 查看状态；`./docs/project-tracking/init.sh check` 执行相关回归和前端构建。实现检查点为 `f466506`，可用 `git show --stat f466506` 查看修改范围。
