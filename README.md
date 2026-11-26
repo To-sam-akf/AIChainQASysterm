@@ -144,3 +144,11 @@ npm run dev
 任务和事件随会话保存在 `data/conversations`。刷新、断线或切换会话不会终止后台任务；返回会话后自动恢复事件及最终结果。服务停止或重启导致的中断显示失败，需主动重新提交；同一会话同时执行一个任务，执行期间不能删除会话。当前运行方式为本地单用户、单后端进程，不支持多个进程同时写入同一会话目录。
 
 消息接口支持可选的 `role_id`、`request_id`；重复提交相同请求 ID 会返回原任务。`GET /api/agent/roles` 提供角色资料，`GET /api/conversations/{conversation_id}/tasks/{task_id}/events?after_seq=…` 支持已保存事件重放及后续 SSE 订阅。新增字段兼容已有会话记录，Markdown/JSON 导出包含角色执行记录。
+
+
+## 项目跟进记录
+
+- [进度与验收边界](PROGRESS.md)：当前完成情况、验证记录和下一步。
+- [设计决策](DECISIONS.md)：关键选择、原因、代价和未决事项。
+- [接手与恢复流程](AGENTS.md)：如何继续工作、保存与查看检查点。
+- `./init.sh status` 查看状态；`./init.sh check` 执行相关回归和前端构建。实现检查点为 `f466506`，可用 `git show --stat f466506` 查看修改范围。
