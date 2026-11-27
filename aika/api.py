@@ -58,6 +58,10 @@ class ConversationTitleRequest(BaseModel):
     title: str
 
 
+class ConversationPinRequest(BaseModel):
+    pinned: bool
+
+
 class MessageCreateRequest(BaseModel):
     question: str
     thinking_enabled: bool | None = None
@@ -767,6 +771,15 @@ async def delete_conversation(
     except Exception as exc:
         raise http_error_from_store(exc) from exc
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/conversations/{conversation_id}/pin")
+async def pin_conversation(conversation_id: str, request: ConversationPinRequest,
+                           store: ConversationStore = Depends(get_conversation_store)) -> dict[str, Any]:
+    try:
+        return redact_deleted_sources(store.update_pinned(conversation_id, request.pinned))
+    except Exception as exc:
+        raise http_error_from_store(exc) from exc
 
 
 @router.get("/agent/roles")

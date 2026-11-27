@@ -389,3 +389,19 @@ async def test_api_reviews_claim_through_research_store(tmp_path: Path) -> None:
     finally:
         await client.aclose()
         app.dependency_overrides.clear()
+
+
+@pytest.mark.anyio
+async def test_conversation_pin_api_preserves_title_and_order(tmp_path: Path) -> None:
+    async with make_test_client(tmp_path, FakeEngine()) as client:
+        first = (await client.post('/api/conversations', json={'title': '第一份'})).json()
+        second = (await client.post('/api/conversations', json={'title': '第二份'})).json()
+        response = await client.patch(f"/api/conversations/{first['id']}/pin", json={'pinned': True})
+        assert response.status_code == 200
+        assert response.json()['pinned'] is True
+        assert response.json()['title'] == '第一份'
+        items = (await client.get('/api/conversations')).json()['conversations']
+        assert items[0]['id'] == first['id'] and items[0]['pinned'] is True
+        assert (await client.patch(f"/api/conversations/{first['id']}/pin", json={'pinned': False})).json()['pinned'] is False
+        assert (await client.patch('/api/conversations/missing/pin', json={'pinned': True})).status_code == 404
+        assert (await client.patch(f"/api/conversations/{second['id']}/pin", json={'pinned': {'invalid': True}})).status_code == 422

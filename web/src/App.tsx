@@ -1,4 +1,7 @@
-import { RolePicker, RoleWorkspace } from "./RoleWorkspace";
+import { RoleWorkspace } from "./RoleWorkspace";
+import { ContextMenu } from "./workspace/ContextMenu";
+import { Inspector } from "./workspace/Inspector";
+import { useWorkspaceLayout } from "./workspace/useWorkspaceLayout";
 import { lazy, Suspense } from "react";
 const GraphExplorer = lazy(() => import("./GraphExplorer"));
 const KnowledgeView = lazy(() => import("./KnowledgeView"));
@@ -34,39 +37,28 @@ import {
 import { FormEvent, KeyboardEvent, PointerEvent, WheelEvent, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
-  createAgentTask,
   createConversation,
   deleteConversation,
-  exportAgentTaskUrl,
-  getAgentTask,
   getConversation,
-  getEvalRun,
   getExamples,
   getStatus,
   listResearchRoles,
   resumeTask,
-  listAgentTasks,
   listConversations,
-  listEvalRuns,
   reviewClaim,
   streamMessage,
   submitFeedback,
+  updateConversationPin,
   updateConversationTitle
 } from "./api";
 import type {
   ResearchRole,
   MessageStreamEvent,
-  AgentTask,
-  AgentTaskSummary,
-  AgentTaskType,
   ApiStatus,
   ConflictGroup,
   Conversation,
   ConversationSummary,
   ConversationTurn,
-  EvalCaseResult,
-  EvalRun,
-  EvalRunSummary,
   FeedbackCreateRequest,
   GraphEdge,
   ClaimReviewRequest,
@@ -79,17 +71,10 @@ import type {
   VerificationResult
 } from "./types";
 
-type View = "chat" | "overview" | "graph" | "agents" | "eval" | "knowledge";
-type DetailTab = "research" | "verification" | "evidence" | "cypher" | "diagnostics" | "graph";
+type View = "chat" | "overview" | "graph" | "knowledge";
+type DetailTab = "collaboration" | "research" | "verification" | "evidence" | "cypher" | "diagnostics" | "graph";
 
 const EMPTY_ARRAY: ConversationSummary[] = [];
-const AGENT_TASK_TYPES: Array<{ value: AgentTaskType; label: string; description: string }> = [
-  { value: "research_brief", label: "投研简报", description: "主题研究、公司排序、指标、风险与缺口" },
-  { value: "company_compare", label: "公司对比", description: "业务卡位、差异点、指标和风险差异" },
-  { value: "company_profile", label: "公司画像", description: "公司业务、产品技术、产业链位置和风险" },
-  { value: "risk_review", label: "风险审查", description: "主要风险、反证、不确定性和跟踪指标" },
-  { value: "evidence_gap_audit", label: "证据缺口", description: "缺失公司、指标、风险和建议数据源" }
-];
 const GRAPH_VIEWPORTS = {
   large: { width: 1040, height: 560 },
   compact: { width: 640, height: 360 }
@@ -224,20 +209,16 @@ function applyTaskEvent(turn: ConversationTurn, event: MessageStreamEvent): Conv
 
 function App() {
   const [view, setView] = useState<View>(() => new URLSearchParams(window.location.search).has("knowledge_document") ? "knowledge" : new URLSearchParams(window.location.search).has("graph_view") ? "graph" : "chat");
+  const [knowledgeVisited, setKnowledgeVisited] = useState(view === "knowledge");
+  useEffect(() => { if (view === "knowledge") setKnowledgeVisited(true); }, [view]);
+  const [graphVisited, setGraphVisited] = useState(view === "graph");
+  useEffect(() => { if (view === "graph") setGraphVisited(true); }, [view]);
   const [status, setStatus] = useState<ApiStatus | null>(null);
   const [examples, setExamples] = useState<string[]>([]);
   const [conversations, setConversations] = useState<ConversationSummary[]>(EMPTY_ARRAY);
-  const [agentTasks, setAgentTasks] = useState<AgentTaskSummary[]>([]);
-  const [selectedAgentTask, setSelectedAgentTask] = useState<AgentTask | null>(null);
-  const [evalRuns, setEvalRuns] = useState<EvalRunSummary[]>([]);
-  const [selectedEvalRun, setSelectedEvalRun] = useState<EvalRun | null>(null);
-  const [agentGoal, setAgentGoal] = useState("");
-  const [agentTaskType, setAgentTaskType] = useState<AgentTaskType>("research_brief");
-  const [agentRunning, setAgentRunning] = useState(false);
   const [current, setCurrent] = useState<Conversation | null>(null);
   const [input, setInput] = useState("");
   const [researchRoles, setResearchRoles] = useState<ResearchRole[]>([]);
-  const [selectedRole, setSelectedRole] = useState("");
   const currentIdRef = useRef<string | undefined>();
   currentIdRef.current = current?.id;
   const submissionAbort = useRef<AbortController | null>(null);
@@ -251,7 +232,26 @@ function App() {
   const [toast, setToast] = useState("");
   const [selectedTurn, setSelectedTurn] = useState<ConversationTurn | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>("research");
+  const [selectedCitation, setSelectedCitation] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const layout = useWorkspaceLayout();
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [focusMode, setFocusMode] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
+  const priorTurn = useRef<ConversationTurn | null>(null);
+  const hiddenTurn = useRef<ConversationTurn | null>(null);
+  const commandTrigger = useRef<HTMLElement | null>(null);
+  const previousMode = useRef(layout.mode);
+  const sidebarDrag = useRef<{ x: number; width: number } | null>(null);
+  useEffect(() => {
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); if (!commandOpen) commandTrigger.current = document.activeElement as HTMLElement; setCommandOpen(value => !value); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") { event.preventDefault(); layout.setMode(layout.mode === "hidden" ? "expanded" : "hidden"); }
+      if (event.key === "Escape") { if (document.querySelector(".knowledge-dialog")) return; if (commandOpen) { setCommandOpen(false); commandTrigger.current?.focus(); } else if (sidebarOpen) setSidebarOpen(false); }
+    };
+    window.addEventListener("keydown", onKey); return () => window.removeEventListener("keydown", onKey);
+  }, [layout.mode, commandOpen, sidebarOpen, selectedTurn, view]);
   const [editingId, setEditingId] = useState("");
   const [editingTitle, setEditingTitle] = useState("");
 
@@ -260,45 +260,22 @@ function App() {
     setConversations(items);
   }
 
-  async function refreshAgentTasks() {
-    const items = await listAgentTasks();
-    setAgentTasks(items);
-  }
-
-  async function refreshEvalRuns() {
-    const items = await listEvalRuns();
-    setEvalRuns(items);
-    return items;
-  }
-
   async function loadInitial() {
     setLoading(true);
     try {
-      const [statusPayload, examplePayload, conversationPayload, agentTaskPayload, evalRunPayload] = await Promise.all([
+      const [statusPayload, examplePayload, conversationPayload] = await Promise.all([
         getStatus(),
         getExamples(),
-        listConversations(),
-        listAgentTasks(),
-        listEvalRuns()
+        listConversations()
       ]);
       setStatus(statusPayload);
       setExamples(examplePayload);
       setConversations(conversationPayload);
-      setAgentTasks(agentTaskPayload);
-      setEvalRuns(evalRunPayload);
       setThinkingEnabled(statusPayload.settings.thinking_enabled);
       setReasoningEffort(statusPayload.settings.reasoning_effort);
       if (conversationPayload.length > 0) {
         const latest = await getConversation(conversationPayload[0].id);
         setCurrent(latest);
-      }
-      if (agentTaskPayload.length > 0) {
-        const latestTask = await getAgentTask(agentTaskPayload[0].task_id);
-        setSelectedAgentTask(latestTask);
-      }
-      if (evalRunPayload.length > 0) {
-        const latestRun = await getEvalRun(evalRunPayload[0].run_id);
-        setSelectedEvalRun(latestRun);
       }
     } catch (error) {
       setToast(error instanceof Error ? error.message : "加载系统状态失败");
@@ -382,51 +359,6 @@ function App() {
     }
   }
 
-  async function handleLoadAgentTask(id: string) {
-    try {
-      const task = await getAgentTask(id);
-      setSelectedAgentTask(task);
-      setView("agents");
-      setSidebarOpen(false);
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "读取 Agent 任务失败");
-    }
-  }
-
-  async function handleLoadEvalRun(id: string) {
-    try {
-      const run = await getEvalRun(id);
-      setSelectedEvalRun(run);
-      setView("eval");
-      setSidebarOpen(false);
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "读取评测报告失败");
-    }
-  }
-
-  async function handleCreateAgentTask(goal = agentGoal) {
-    const trimmed = goal.trim();
-    if (!trimmed || agentRunning) return;
-    setAgentRunning(true);
-    setToast("");
-    try {
-      const task = await createAgentTask({
-        task_type: agentTaskType,
-        goal: trimmed,
-        thinking_enabled: thinkingEnabled,
-        reasoning_effort: thinkingEnabled ? reasoningEffort : ""
-      });
-      setSelectedAgentTask(task);
-      setAgentGoal("");
-      setView("agents");
-      await refreshAgentTasks();
-    } catch (error) {
-      setToast(error instanceof Error ? error.message : "创建 Agent 任务失败");
-    } finally {
-      setAgentRunning(false);
-    }
-  }
-
   async function handleDeleteConversation(id: string) {
     if (!window.confirm("删除这段对话？")) return;
     try {
@@ -439,6 +371,10 @@ function App() {
     } catch (error) {
       setToast(error instanceof Error ? error.message : "删除失败");
     }
+  }
+
+  async function handlePin(item: ConversationSummary) {
+    try { const updated = await updateConversationPin(item.id, !item.pinned); if (current?.id === item.id) setCurrent(updated); await refreshConversations(); } catch (error) { setToast(error instanceof Error ? error.message : "更新置顶失败"); }
   }
 
   async function handleRename(id: string) {
@@ -475,7 +411,7 @@ function App() {
       conversationId = conversation.id;
       const requestId = crypto.randomUUID();
       setStreamingTurn({ ...createPendingTurn(trimmed, thinkingEnabled, thinkingEnabled ? reasoningEffort : ""),
-        request_id: requestId, status: "running", lead_role_id: selectedRole || "chief", events: [] });
+        request_id: requestId, status: "running", lead_role_id: "chief", events: [] });
       setStreamingProgress([]);
       setSelectedTurn(null);
       setInput("");
@@ -492,7 +428,7 @@ function App() {
             if (event.type === "progress") setStreamingProgress(items => nextProgressItems(items, event.message));
             if (event.type === "error") setToast(event.message);
           }
-        }, selectedRole, requestId, controller.signal);
+        }, requestId, controller.signal);
       if (currentIdRef.current === conversationId) {
         setCurrent(updated);
         setStreamingTurn(null);
@@ -543,14 +479,42 @@ function App() {
     }
   }
 
-  const shellClassName = `app-shell ${sidebarOpen ? "sidebar-open" : ""}`;
+  const shellClassName = `app-shell sidebar-${layout.mode} view-${view} ${sidebarOpen ? "sidebar-open" : ""} ${selectedTurn && view === "chat" ? "has-inspector" : ""}`;
+  const pageNames: Record<View, string> = { chat: "智能问答", knowledge: "知识库", overview: "数据概览", graph: "产业链图谱" };
+  const pageEnglish: Record<View, string> = { chat: "RESEARCH WORKSPACE", knowledge: "KNOWLEDGE BASE", overview: "SYSTEM OVERVIEW", graph: "KNOWLEDGE UNIVERSE" };
+  function toggleFocus() {
+    if (!focusMode) { previousMode.current = layout.mode; priorTurn.current = selectedTurn; layout.setMode("hidden"); setSelectedTurn(null); }
+    else { layout.setMode(previousMode.current); setSelectedTurn(priorTurn.current); }
+    window.dispatchEvent(new CustomEvent("aika:focus", { detail: !focusMode }));
+    setFocusMode(!focusMode);
+  }
+
+  const commands: { label: string; category: string; run: () => void }[] = [
+    { label: "新建对话", category: "会话", run: () => void handleNewConversation() },
+    ...([ ["智能问答", "chat"], ["知识库", "knowledge"], ["数据概览", "overview"], ["产业链图谱", "graph"] ] as [string, View][]).map(([label, target]) => ({ label, category: "导航", run: () => setView(target) })),
+    { label: "搜索历史对话", category: "搜索", run: () => { layout.setMode("expanded"); window.setTimeout(() => document.querySelector<HTMLInputElement>(".history-search")?.focus(), 50); } },
+    { label: "搜索资料", category: "搜索", run: () => { setView("knowledge"); window.setTimeout(() => document.querySelector<HTMLInputElement>('[aria-label="搜索资料"]')?.focus(), 200); } },
+    { label: "搜索图谱实体", category: "搜索", run: () => { setView("graph"); window.setTimeout(() => document.querySelector<HTMLInputElement>("#graph-search")?.focus(), 200); } },
+    { label: "导入资料", category: "资料", run: () => { setView("knowledge"); window.setTimeout(() => document.querySelector<HTMLButtonElement>(".knowledge-heading .knowledge-primary")?.click(), 200); } },
+    { label: "展开侧栏", category: "布局", run: () => layout.setMode("expanded") },
+    { label: "折叠侧栏", category: "布局", run: () => layout.setMode("collapsed") },
+    { label: "隐藏侧栏", category: "布局", run: () => layout.setMode("hidden") },
+    { label: "显示或隐藏详情", category: "布局", run: () => { if (view === "chat") { if (selectedTurn) { hiddenTurn.current = selectedTurn; setSelectedTurn(null); } else if (hiddenTurn.current) setSelectedTurn(hiddenTurn.current); } else window.dispatchEvent(new Event("aika:toggle-inspector")); } },
+    { label: focusMode ? "退出专注模式" : "进入专注模式", category: "布局", run: toggleFocus },
+    { label: "恢复默认布局", category: "布局", run: () => { layout.setMode("expanded"); layout.setWidth(240); layout.setInspectorWidth(440); window.dispatchEvent(new Event("aika:reset-layout")); setToast("已恢复默认布局"); } },
+  ];
+  const filteredCommands = commands.filter(command => `${command.label} ${command.category}`.toLowerCase().includes(commandQuery.trim().toLowerCase()));
+  function executeCommand(index: number) { const command = filteredCommands[index]; if (!command) return; setCommandOpen(false); setCommandQuery(""); setCommandIndex(0); command.run(); }
 
   return (
-    <div className={shellClassName}>
+    <div className={shellClassName} style={{ "--sidebar-width": `${layout.mode === "expanded" ? layout.width : layout.mode === "collapsed" ? 64 : 0}px` } as React.CSSProperties}>
       <button className="mobile-menu" type="button" onClick={() => setSidebarOpen(true)} aria-label="打开侧栏">
         <Menu size={20} />
       </button>
+      {sidebarOpen && <button className="sidebar-scrim" type="button" aria-label="关闭侧栏遮罩" onClick={() => setSidebarOpen(false)} />}
       <Sidebar
+        mode={layout.mode}
+        onMode={layout.setMode}
         conversations={conversations}
         currentId={current?.id ?? ""}
         view={view}
@@ -560,6 +524,7 @@ function App() {
         onNewConversation={handleNewConversation}
         onLoadConversation={handleLoadConversation}
         onDeleteConversation={handleDeleteConversation}
+        onPin={handlePin}
         onStartRename={(item) => {
           setEditingId(item.id);
           setEditingTitle(item.title);
@@ -571,7 +536,16 @@ function App() {
           setSidebarOpen(false);
         }}
       />
+      {layout.mode === "expanded" && <div className="sidebar-resize" role="separator" aria-label="调整侧栏宽度" aria-orientation="vertical" aria-valuemin={180} aria-valuemax={340} aria-valuenow={layout.width} tabIndex={0}
+        onPointerDown={event => { sidebarDrag.current = { x: event.clientX, width: layout.width }; event.currentTarget.setPointerCapture(event.pointerId); }}
+        onPointerMove={event => { if (!sidebarDrag.current) return; const next = sidebarDrag.current.width + event.clientX - sidebarDrag.current.x; if (next < 145) { layout.setMode("collapsed"); sidebarDrag.current = null; } else layout.setWidth(Math.max(180, Math.min(340, next))); }}
+        onPointerUp={() => { sidebarDrag.current = null; }} onPointerCancel={() => { sidebarDrag.current = null; }}
+        onDoubleClick={() => layout.setWidth(240)} onKeyDown={event => { if (event.key === "ArrowLeft" || event.key === "ArrowRight") { event.preventDefault(); layout.setWidth(Math.max(180, Math.min(340, layout.width + (event.key === "ArrowLeft" ? -10 : 10)))); } }} />}
       <main className="workspace">
+        <header className="workspace-header">
+          <div className="workspace-heading"><button type="button" className="header-icon" title="切换侧栏 (Ctrl+B)" aria-label="切换侧栏" onClick={() => { if (window.innerWidth <= 860) setSidebarOpen(true); else layout.setMode(layout.mode === "hidden" ? "expanded" : layout.mode === "expanded" ? "collapsed" : "expanded"); }}><Menu size={17} /></button><span className="header-name">{pageNames[view]}</span><span className="header-breadcrumb">/ {view === "chat" && current?.title ? current.title : pageEnglish[view]}</span></div>
+          <div className="header-actions">{view === "chat" && current && <><a href={`/api/conversations/${current.id}/export?format=md`}>MD</a><a href={`/api/conversations/${current.id}/export?format=json`}>JSON</a></>}{view === "overview" && <button type="button" onClick={() => void getStatus().then(setStatus).catch(() => setToast("刷新系统状态失败"))}>刷新</button>}<button type="button" onClick={(event) => { commandTrigger.current = event.currentTarget; setCommandOpen(true); }} title="命令面板 Ctrl+K">搜索 <kbd>⌘ K</kbd></button><button type="button" onClick={toggleFocus}>{focusMode ? "退出专注" : "专注"}</button><button type="button" onClick={() => layout.setMode(layout.mode === "hidden" ? "expanded" : "hidden")}>{layout.mode === "hidden" ? "显示侧栏" : "隐藏侧栏"}</button></div>
+        </header>
         <GeometricBackdrop />
         {toast && (
           <div className="toast" role="alert">
@@ -589,8 +563,6 @@ function App() {
             input={input}
             sending={sending || Boolean(activeTask)}
             roles={researchRoles}
-            roleId={selectedRole}
-            onRoleChange={setSelectedRole}
             streamingTurn={streamingTurn}
             streamingProgress={streamingProgress}
             thinkingEnabled={thinkingEnabled}
@@ -600,45 +572,26 @@ function App() {
             onSubmit={handleSubmit}
             onThinkingChange={setThinkingEnabled}
             onReasoningChange={setReasoningEffort}
-            onOpenDetails={(turn) => {
+            onOpenDetails={(turn, citation, tab) => {
+              setSelectedCitation(citation || "");
               setSelectedTurn(turn);
-              setDetailTab("research");
+              setDetailTab(tab || "evidence");
             }}
             onFeedback={handleFeedback}
             onExample={(example) => setInput(example)}
           />
         )}
-        {view === "knowledge" && <Suspense fallback={<p>正在加载知识库…</p>}><KnowledgeView /></Suspense>}
-        {view === "agents" && (
-          <AgentTasksView
-            tasks={agentTasks}
-            selectedTask={selectedAgentTask}
-            goal={agentGoal}
-            taskType={agentTaskType}
-            running={agentRunning}
-            thinkingEnabled={thinkingEnabled}
-            reasoningEffort={reasoningEffort}
-            reasoningEfforts={status?.settings.reasoning_efforts ?? ["low", "medium", "high"]}
-            onGoal={setAgentGoal}
-            onTaskType={setAgentTaskType}
-            onCreate={handleCreateAgentTask}
-            onSelectTask={handleLoadAgentTask}
-            onThinkingChange={setThinkingEnabled}
-            onReasoningChange={setReasoningEffort}
-          />
-        )}
-        {view === "eval" && (
-          <EvalView
-            runs={evalRuns}
-            selectedRun={selectedEvalRun}
-            onSelectRun={handleLoadEvalRun}
-            onRefresh={refreshEvalRuns}
-          />
-        )}
+        <div hidden={view !== "knowledge"}>{knowledgeVisited && <Suspense fallback={<p>正在加载知识库…</p>}><KnowledgeView active={view === "knowledge"} /></Suspense>}</div>
         {view === "overview" && <OverviewView status={status} />}
-        {view === "graph" && <GraphView />}
+        <div hidden={view !== "graph"}>{graphVisited && <GraphView active={view === "graph"} />}</div>
       </main>
+      {commandOpen && <div className="command-backdrop" onMouseDown={() => { setCommandOpen(false); commandTrigger.current?.focus(); }}><div className="command-dialog" role="dialog" aria-modal="true" aria-label="命令面板" onMouseDown={event => event.stopPropagation()}><input autoFocus placeholder="搜索页面或操作…" value={commandQuery} onChange={event => { setCommandQuery(event.target.value); setCommandIndex(0); }} onKeyDown={event => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setCommandIndex(index => Math.max(0, Math.min(filteredCommands.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)))); } else if (event.key === "Enter") { event.preventDefault(); executeCommand(commandIndex); } }} />{filteredCommands.map((command, index) => <button key={command.label} className={index === commandIndex ? "selected" : ""} type="button" onMouseEnter={() => setCommandIndex(index)} onClick={() => executeCommand(index)}>{command.label}<span>{command.category}</span></button>)}{!filteredCommands.length && <p>没有匹配的命令</p>}</div></div>}
       <DetailDrawer
+        citation={selectedCitation}
+        width={layout.inspectorWidth}
+        onWidth={layout.setInspectorWidth}
+        roles={researchRoles}
+        onRetry={handleSubmit}
         turn={selectedTurn}
         open={Boolean(selectedTurn) && view === "chat"}
         tab={detailTab}
@@ -651,6 +604,8 @@ function App() {
 }
 
 function Sidebar(props: {
+  mode: "expanded" | "collapsed" | "hidden";
+  onMode: (mode: "expanded" | "collapsed" | "hidden") => void;
   conversations: ConversationSummary[];
   currentId: string;
   view: View;
@@ -660,11 +615,13 @@ function Sidebar(props: {
   onNewConversation: () => void;
   onLoadConversation: (id: string) => void;
   onDeleteConversation: (id: string) => void;
+  onPin: (item: ConversationSummary) => void;
   onStartRename: (item: ConversationSummary) => void;
   onRename: (id: string) => void;
   onEditTitle: (title: string) => void;
   onViewChange: (view: View) => void;
 }) {
+  const [historyQuery, setHistoryQuery] = useState("");
   return (
     <aside className="sidebar">
       <button className="mobile-close" type="button" onClick={props.onClose} aria-label="关闭侧栏">
@@ -678,58 +635,45 @@ function Sidebar(props: {
         <div className="brand-text">AIKA</div>
       </div>
 
-      <button className="new-chat" type="button" onClick={props.onNewConversation}>
+      <button className="new-chat" title="新对话" type="button" onClick={props.onNewConversation}>
         <Plus size={19} />
         <span>新对话</span>
       </button>
 
       <nav className="nav-list" aria-label="主导航">
-        <button className={props.view === "chat" ? "active" : ""} type="button" onClick={() => props.onViewChange("chat")}>
+        <button className={props.view === "chat" ? "active" : ""} title="智能问答" type="button" onClick={() => props.onViewChange("chat")}>
           <MessageSquareText size={20} />
           <span>智能问答</span>
         </button>
-        <button className={props.view === "knowledge" ? "active" : ""} type="button" onClick={() => props.onViewChange("knowledge")}>
+        <button className={props.view === "knowledge" ? "active" : ""} title="知识库" type="button" onClick={() => props.onViewChange("knowledge")}>
           <FileText size={20} /><span>知识库</span>
         </button>
         <button
-          className={props.view === "agents" ? "active" : ""}
-          type="button"
-          onClick={() => props.onViewChange("agents")}
-        >
-          <Bot size={20} />
-          <span>Agent 任务</span>
-        </button>
-        <button
-          className={props.view === "eval" ? "active" : ""}
-          type="button"
-          onClick={() => props.onViewChange("eval")}
-        >
-          <ClipboardList size={20} />
-          <span>评测报告</span>
-        </button>
-        <button
           className={props.view === "overview" ? "active" : ""}
+          title="数据概览"
           type="button"
           onClick={() => props.onViewChange("overview")}
         >
           <BarChart3 size={20} />
           <span>数据概览</span>
         </button>
-        <button className={props.view === "graph" ? "active" : ""} type="button" onClick={() => props.onViewChange("graph")}>
+        <button className={props.view === "graph" ? "active" : ""} title="产业链图谱" type="button" onClick={() => props.onViewChange("graph")}>
           <Boxes size={20} />
           <span>产业链图谱</span>
         </button>
       </nav>
 
+      <button className="collapsed-history" type="button" title="展开历史记录" aria-label="展开历史记录" onClick={() => props.onMode("expanded")}><History size={19} /></button>
       <section className="history-panel">
         <div className="section-title">
           <History size={16} />
           <span>问答历史</span>
         </div>
+        <input className="history-search" aria-label="搜索历史对话" placeholder="搜索历史对话" value={historyQuery} onChange={event => setHistoryQuery(event.target.value)} />
         <div className="history-list">
           {props.conversations.length === 0 && <div className="empty-history">暂无历史对话</div>}
-          {props.conversations.map((item) => (
-            <article className={`history-item ${props.currentId === item.id ? "selected" : ""}`} key={item.id}>
+          {props.conversations.filter(item => `${item.title} ${item.preview}`.toLowerCase().includes(historyQuery.toLowerCase())).map((item) => (
+            <article className={`history-item ${props.currentId === item.id ? "selected" : ""}`} key={item.id}><ContextMenu label={`对话操作：${item.title}`} actions={[{ label: item.pinned ? "取消置顶" : "置顶", run: () => props.onPin(item) }, { label: "重命名", run: () => props.onStartRename(item) }, { label: "删除", run: () => props.onDeleteConversation(item.id) }]}>
               {props.editingId === item.id ? (
                 <form
                   onSubmit={(event) => {
@@ -745,12 +689,13 @@ function Sidebar(props: {
                   />
                 </form>
               ) : (
-                <button className="history-open" type="button" onClick={() => props.onLoadConversation(item.id)}>
-                  <strong>{item.title}</strong>
+                <button className="history-open" title={item.title} type="button" onClick={() => props.onLoadConversation(item.id)}>
+                  <strong>{item.pinned ? "📌 " : ""}{item.title}</strong>
                   <span>{item.preview}</span>
                 </button>
               )}
-              <div className="history-actions">
+              </ContextMenu><div className="history-actions">
+                <button type="button" title={item.pinned ? "取消置顶" : "置顶"} aria-label={item.pinned ? "取消置顶" : "置顶"} onClick={() => props.onPin(item)}>{item.pinned ? "★" : "☆"}</button>
                 <button type="button" onClick={() => props.onStartRename(item)} aria-label="重命名">
                   <Pencil size={14} />
                 </button>
@@ -762,14 +707,13 @@ function Sidebar(props: {
           ))}
         </div>
       </section>
+      <div className="sidebar-bottom"><span>AIKA / RESEARCH</span><button type="button" title="折叠侧栏" onClick={() => props.onMode(props.mode === "expanded" ? "collapsed" : "expanded")}>↔</button></div>
     </aside>
   );
 }
 
 function ChatView(props: {
   roles: ResearchRole[];
-  roleId: string;
-  onRoleChange: (value: string) => void;
   loading: boolean;
   conversation: Conversation | null;
   examples: string[];
@@ -784,7 +728,7 @@ function ChatView(props: {
   onSubmit: (question?: string) => void;
   onThinkingChange: (value: boolean) => void;
   onReasoningChange: (value: string) => void;
-  onOpenDetails: (turn: ConversationTurn) => void;
+  onOpenDetails: (turn: ConversationTurn, citation?: string, tab?: DetailTab) => void;
   onFeedback: (payload: FeedbackCreateRequest) => Promise<void>;
   onExample: (value: string) => void;
 }) {
@@ -793,14 +737,11 @@ function ChatView(props: {
     <section className={`chat-page ${hasTurns ? "with-turns" : "empty"}`}>
       {!hasTurns ? (
         <div className="hero-chat">
-          <div className="hero-kicker">AI 算力链产业智能问答系统</div>
+          <div className="hero-mark" aria-hidden="true"><span /><i /></div><div className="hero-kicker">AI RESEARCH WORKSPACE</div>
           <h1>AIKA</h1>
           <p>面向产业链图谱、研报证据与连续追问的专业问答工作台</p>
           <Composer
             value={props.input}
-            roles={props.roles}
-            roleId={props.roleId}
-            onRoleChange={props.onRoleChange}
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
@@ -876,9 +817,6 @@ function ChatView(props: {
           <Composer
             compact
             value={props.input}
-            roles={props.roles}
-            roleId={props.roleId}
-            onRoleChange={props.onRoleChange}
             sending={props.sending}
             thinkingEnabled={props.thinkingEnabled}
             reasoningEffort={props.reasoningEffort}
@@ -895,417 +833,12 @@ function ChatView(props: {
   );
 }
 
-function AgentTasksView(props: {
-  tasks: AgentTaskSummary[];
-  selectedTask: AgentTask | null;
-  goal: string;
-  taskType: AgentTaskType;
-  running: boolean;
-  thinkingEnabled: boolean;
-  reasoningEffort: string;
-  reasoningEfforts: string[];
-  onGoal: (value: string) => void;
-  onTaskType: (value: AgentTaskType) => void;
-  onCreate: (goal?: string) => void;
-  onSelectTask: (id: string) => void;
-  onThinkingChange: (value: boolean) => void;
-  onReasoningChange: (value: string) => void;
-}) {
-  const reasoningEfforts = props.reasoningEfforts.length ? props.reasoningEfforts : ["low", "medium", "high"];
-  const activeReasoningEffort = reasoningEfforts.includes(props.reasoningEffort)
-    ? props.reasoningEffort
-    : reasoningEfforts[0];
-  const task = props.selectedTask;
-
-  function submit(event: FormEvent) {
-    event.preventDefault();
-    props.onCreate();
-  }
-
-  function toggleThinking() {
-    props.onThinkingChange(!props.thinkingEnabled);
-  }
-
-  function cycleReasoningEffort() {
-    if (!props.thinkingEnabled) {
-      props.onReasoningChange(activeReasoningEffort);
-      props.onThinkingChange(true);
-      return;
-    }
-    const currentIndex = reasoningEfforts.indexOf(activeReasoningEffort);
-    props.onReasoningChange(reasoningEfforts[(currentIndex + 1) % reasoningEfforts.length]);
-  }
-
-  return (
-    <section className="page-panel agent-page">
-      <div className="page-heading">
-        <span className="eyebrow">Agent Workspace</span>
-        <h2>投研任务工作台</h2>
-      </div>
-      <div className="agent-layout">
-        <aside className="agent-list-panel">
-          <form className="agent-create" onSubmit={submit}>
-            <label htmlFor="agent-task-type">任务类型</label>
-            <select
-              id="agent-task-type"
-              value={props.taskType}
-              disabled={props.running}
-              onChange={(event) => props.onTaskType(event.target.value as AgentTaskType)}
-            >
-              {AGENT_TASK_TYPES.map((item) => (
-                <option key={item.value} value={item.value}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
-            <p className="agent-task-type-hint">
-              {AGENT_TASK_TYPES.find((item) => item.value === props.taskType)?.description}
-            </p>
-            <label htmlFor="agent-goal">研究目标</label>
-            <textarea
-              id="agent-goal"
-              value={props.goal}
-              rows={5}
-              placeholder="例如：液冷产业链投研简报"
-              onChange={(event) => props.onGoal(event.target.value)}
-            />
-            <div className="agent-controls">
-              <button
-                className={props.thinkingEnabled ? "pill active" : "pill"}
-                type="button"
-                disabled={props.running}
-                onClick={toggleThinking}
-              >
-                思考模式：{props.thinkingEnabled ? "开" : "关"}
-              </button>
-              <button
-                className={props.thinkingEnabled ? "pill active" : "pill"}
-                type="button"
-                disabled={props.running}
-                onClick={cycleReasoningEffort}
-              >
-                强度：{props.thinkingEnabled ? activeReasoningEffort : "关闭"}
-              </button>
-            </div>
-            <button className="agent-run-button" type="submit" disabled={!props.goal.trim() || props.running}>
-              {props.running ? <Loader2 size={17} className="spin" /> : <Sparkles size={17} />}
-              <span>创建{agentTaskTypeLabel(props.taskType)}任务</span>
-            </button>
-          </form>
-
-          <div className="agent-task-list">
-            <div className="section-title">
-              <ClipboardList size={16} />
-              <span>任务历史</span>
-            </div>
-            {props.tasks.length === 0 && <div className="empty-table">暂无 Agent 任务</div>}
-            {props.tasks.map((item) => (
-              <button
-                className={`agent-task-item ${task?.task_id === item.task_id ? "selected" : ""}`}
-                key={item.task_id}
-                type="button"
-                onClick={() => props.onSelectTask(item.task_id)}
-              >
-                <strong>{item.title}</strong>
-                <span>{item.preview || item.goal}</span>
-                <em>{agentStatusLabel(item.status)} · {item.evidence_card_count} 证据 · {item.evidence_gap_count} 缺口</em>
-              </button>
-            ))}
-          </div>
-        </aside>
-
-        <div className="agent-detail-panel">
-          {!task ? (
-            <div className="agent-empty">
-              <Bot size={34} />
-              <span>选择一个历史任务，或创建新的投研简报任务</span>
-            </div>
-          ) : (
-            <>
-              <div className="agent-detail-header">
-                <div>
-                  <span className={`task-status ${task.status}`}>{agentStatusLabel(task.status)}</span>
-                  <span className="task-type-label">{task.final_outputs.task_label || agentTaskTypeLabel(task.task_type as AgentTaskType)}</span>
-                  <h3>{task.final_outputs.report_title || task.title}</h3>
-                  <p>{task.goal}</p>
-                </div>
-                <div className="export-group">
-                  <a className="export-link" href={exportAgentTaskUrl(task.task_id, "md")}>
-                    <Download size={16} />
-                    <span>MD</span>
-                  </a>
-                  <a className="export-link" href={exportAgentTaskUrl(task.task_id, "json")}>
-                    <Download size={16} />
-                    <span>JSON</span>
-                  </a>
-                </div>
-              </div>
-
-              <div className="agent-stat-grid">
-                <StatCard label="证据卡" value={String(task.final_outputs.evidence_card_count ?? task.evidence_cards.length)} />
-                <StatCard label="证据缺口" value={String(task.final_outputs.evidence_gap_count ?? 0)} />
-                <StatCard label="验证状态" value={verificationStatusLabel(task.final_outputs.verification_status)} />
-                <StatCard label="冲突证据" value={String(task.final_outputs.conflict_group_count ?? 0)} />
-                <StatCard label="执行步骤" value={String(task.steps.length)} />
-                <StatCard label="工具调用" value={String(task.tool_calls.length)} />
-              </div>
-
-              <VerificationPanel verification={verificationFromTask(task)} />
-
-              <ResearchOutputsView outputs={task.research_outputs} />
-
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <ClipboardList size={16} />
-                  <span>执行轨迹</span>
-                </div>
-                <div className="agent-step-list">
-                  {task.steps.map((step, index) => (
-                    <article className="agent-step" key={`${step.phase ?? "step"}-${index}`}>
-                      <span>{String(step.step ?? index + 1)}</span>
-                      <div>
-                        <strong>{String(step.phase ?? "step")}</strong>
-                        <p>{String(step.observation ?? step.thought ?? "")}</p>
-                      </div>
-                      <ChevronRight size={16} />
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <FileText size={16} />
-                  <span>QA 答案摘要</span>
-                </div>
-                <div className="answer-text">
-                  {renderAnswerMarkdown(task.final_outputs.qa_answer || "当前任务没有生成问答摘要")}
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function EvalView(props: {
-  runs: EvalRunSummary[];
-  selectedRun: EvalRun | null;
-  onSelectRun: (id: string) => void;
-  onRefresh: () => Promise<EvalRunSummary[]>;
-}) {
-  const [refreshing, setRefreshing] = useState(false);
-  const run = props.selectedRun;
-
-  async function refresh() {
-    setRefreshing(true);
-    try {
-      await props.onRefresh();
-    } finally {
-      setRefreshing(false);
-    }
-  }
-
-  return (
-    <section className="page-panel eval-page">
-      <div className="page-heading eval-heading">
-        <div>
-          <span className="eyebrow">Evaluation</span>
-          <h2>评测报告</h2>
-        </div>
-        <button className="eval-refresh" type="button" onClick={refresh} disabled={refreshing}>
-          {refreshing ? <Loader2 size={16} className="spin" /> : <BarChart3 size={16} />}
-          <span>刷新</span>
-        </button>
-      </div>
-      <div className="eval-layout">
-        <aside className="eval-run-list">
-          <div className="section-title">
-            <ClipboardList size={16} />
-            <span>历史 Run</span>
-          </div>
-          {props.runs.length === 0 && <div className="empty-table">暂无评测报告</div>}
-          {props.runs.map((item) => (
-            <button
-              className={`eval-run-item ${run?.run_id === item.run_id ? "selected" : ""}`}
-              type="button"
-              key={item.run_id}
-              onClick={() => props.onSelectRun(item.run_id)}
-            >
-              <strong>{item.run_id}</strong>
-              <span>{item.dataset_name || "qa_benchmark"} · {item.cases} cases</span>
-              <em>{formatPercent(item.overall_score)} · pass {formatPercent((item.passed || 0) / Math.max(item.cases || 1, 1))}</em>
-            </button>
-          ))}
-        </aside>
-        <div className="eval-report-panel">
-          {!run ? (
-            <div className="agent-empty">
-              <ClipboardList size={34} />
-              <span>暂无可展示的评测报告</span>
-            </div>
-          ) : (
-            <>
-              <div className="eval-report-header">
-                <div>
-                  <span className="task-status completed">{run.dataset.name}</span>
-                  <h3>{run.run_id}</h3>
-                  <p>{run.created_at} · dataset {run.dataset.hash} · git {String(run.environment.git_commit ?? "") || "unknown"}</p>
-                </div>
-              </div>
-              <div className="agent-stat-grid">
-                <StatCard label="总分" value={formatPercent(run.summary.overall_score)} />
-                <StatCard label="通过率" value={formatPercent(run.summary.pass_rate)} />
-                <StatCard label="用例" value={String(run.summary.cases)} />
-                <StatCard label="失败" value={String(run.summary.failed)} />
-                <StatCard label="警告" value={String(run.summary.warned)} />
-                <StatCard label="K" value={String(run.environment.k ?? 6)} />
-              </div>
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <BarChart3 size={16} />
-                  <span>分维指标</span>
-                </div>
-                <div className="eval-metric-grid">
-                  {Object.entries(run.summary.metrics).map(([key, value]) => (
-                    <StatCard key={key} label={metricLabel(key)} value={formatMetricValue(key, value)} />
-                  ))}
-                </div>
-              </section>
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <Table2 size={16} />
-                  <span>分类得分</span>
-                </div>
-                <div className="eval-category-list">
-                  {run.category_scores.map((row) => (
-                    <article className="eval-category-row" key={row.category}>
-                      <strong>{categoryLabel(row.category)}</strong>
-                      <span>{row.cases} cases</span>
-                      <b>{formatPercent(row.overall_score)}</b>
-                      <em>pass {formatPercent(row.pass_rate)}</em>
-                    </article>
-                  ))}
-                </div>
-              </section>
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <CircleSlash size={16} />
-                  <span>失败样例</span>
-                </div>
-                <FailedExamples rows={run.failed_examples} />
-              </section>
-              <section className="agent-section">
-                <div className="research-section-title">
-                  <FileText size={16} />
-                  <span>Case 明细</span>
-                </div>
-                <EvalCaseTable rows={run.results} />
-              </section>
-            </>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function FailedExamples(props: { rows: EvalRun["failed_examples"] }) {
-  if (!props.rows.length) return <div className="empty-table">当前 run 没有失败样例</div>;
-  return (
-    <div className="failed-example-list">
-      {props.rows.map((row) => (
-        <article className="failed-example" key={row.case_id}>
-          <div>
-            <strong>{row.case_id}</strong>
-            <span>{categoryLabel(row.category)} · {formatPercent(row.score)}</span>
-          </div>
-          <p>{row.question}</p>
-          <div className="failure-tags">
-            {row.failures.map((failure) => (
-              <span key={failure}>{failure}</span>
-            ))}
-          </div>
-          <ResearchList rows={arrayRecords(row.evidence_gaps)} primaryKey="gap" secondaryKeys={["priority", "suggested_source"]} empty="未记录证据缺口" />
-        </article>
-      ))}
-    </div>
-  );
-}
-
-function EvalCaseTable(props: { rows: EvalCaseResult[] }) {
-  if (!props.rows.length) return <div className="empty-table">当前 run 没有 case 明细</div>;
-  const rows = props.rows.slice(0, 50).map((row) => ({
-    case_id: row.case_id,
-    category: categoryLabel(row.category),
-    status: row.status,
-    score: formatPercent(row.score),
-    question: row.question,
-    answer_type: row.answer_type || "unknown",
-    failures: row.failures.join(", ") || "-"
-  }));
-  return <DataTable rows={rows} empty="当前 run 没有 case 明细" />;
-}
-
-function metricLabel(key: string) {
-  const labels: Record<string, string> = {
-    "claim_recall@k": "Claim Recall",
-    "evidence_precision@k": "Evidence Precision",
-    citation_validity: "Citation Validity",
-    answer_groundedness: "Groundedness",
-    unsupported_claim_rate: "Unsupported Rate",
-    human_score: "Human Score"
-  };
-  return labels[key] ?? key;
-}
-
-function categoryLabel(category: string) {
-  const labels: Record<string, string> = {
-    company_compare: "公司对比",
-    supply_chain: "产业传导",
-    risk: "风险/反证",
-    metric: "指标",
-    refusal: "拒答"
-  };
-  return labels[category] ?? category;
-}
-
-function formatMetricValue(key: string, value: number | null) {
-  if (value === null || value === undefined) return "未评分";
-  if (key === "human_score") return `${Number(value).toFixed(1)}/5`;
-  return formatPercent(Number(value));
-}
-
-function formatPercent(value: number) {
-  return `${Math.round(Number(value || 0) * 100)}%`;
-}
-
-function agentStatusLabel(status: AgentTask["status"]) {
-  const labels = {
-    pending: "等待中",
-    running: "执行中",
-    completed: "已完成",
-    failed: "失败"
-  };
-  return labels[status] ?? status;
-}
-
-function agentTaskTypeLabel(taskType: AgentTaskType | string) {
-  return AGENT_TASK_TYPES.find((item) => item.value === taskType)?.label ?? String(taskType || "Agent");
-}
-
 function verificationFromResult(result: ConversationTurn["result"]): VerificationResult | undefined {
   return (
     asVerification(result.verification) ??
     asVerification(result.research_outputs?.verification) ??
     asVerification(result.diagnostics?.agent_verification)
   );
-}
-
-function verificationFromTask(task: AgentTask): VerificationResult | undefined {
-  return asVerification(task.research_outputs?.verification) ?? asVerification(task.diagnostics?.agent_verification);
 }
 
 function asVerification(value: unknown): VerificationResult | undefined {
@@ -1321,19 +854,7 @@ function verificationStatusLabel(status?: string) {
   return "未校验";
 }
 
-function StatCard(props: { label: string; value: string }) {
-  return (
-    <article className="stat-card">
-      <span>{props.label}</span>
-      <strong>{props.value}</strong>
-    </article>
-  );
-}
-
 function Composer(props: {
-  roles: ResearchRole[];
-  roleId: string;
-  onRoleChange: (value: string) => void;
   value: string;
   sending: boolean;
   thinkingEnabled: boolean;
@@ -1346,6 +867,14 @@ function Composer(props: {
   onThinkingChange: (value: boolean) => void;
   onReasoningChange: (value: string) => void;
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 144)}px`;
+  }, [props.value]);
+
   const reasoningEfforts = props.reasoningEfforts.length ? props.reasoningEfforts : ["low", "medium", "high"];
   const activeReasoningEffort = reasoningEfforts.includes(props.reasoningEffort)
     ? props.reasoningEffort
@@ -1375,10 +904,11 @@ function Composer(props: {
 
   return (
     <div className={`composer ${props.compact ? "compact" : ""}`}>
-      <RolePicker roles={props.roles} value={props.roleId} onChange={props.onRoleChange} disabled={props.sending} />
       <textarea
+        ref={textareaRef}
+        aria-label="输入问题"
         value={props.value}
-        rows={3}
+        rows={1}
         placeholder={props.placeholder}
         onChange={(event) => props.onChange(event.target.value)}
         onKeyDown={onKeyDown}
@@ -1397,15 +927,15 @@ function Composer(props: {
           <button
             className={props.thinkingEnabled ? "pill active" : "pill"}
             type="button"
-            disabled={props.sending}
+            disabled={props.sending || !props.thinkingEnabled}
             aria-pressed={props.thinkingEnabled}
-            title={props.thinkingEnabled ? "点击切换思考强度" : "点击开启思考模式"}
+            title={props.thinkingEnabled ? "点击切换思考强度" : "开启思考模式后可设置"}
             onClick={cycleReasoningEffort}
           >
-            强度：{props.thinkingEnabled ? activeReasoningEffort : "关闭"}
+            强度：{props.thinkingEnabled ? activeReasoningEffort : "不可用"}
           </button>
         </div>
-        <button className="send-button" type="button" disabled={!props.value.trim() || props.sending} onClick={() => props.onSubmit()}>
+        <button className="send-button" type="button" aria-label="发送问题" disabled={!props.value.trim() || props.sending} onClick={() => props.onSubmit()}>
           {props.sending ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
         </button>
       </div>
@@ -1434,18 +964,17 @@ function MessagePair(props: {
   conversationId: string;
   isStreaming?: boolean;
   progressItems?: string[];
-  onOpenDetails: (turn: ConversationTurn) => void;
+  onOpenDetails: (turn: ConversationTurn, citation?: string, tab?: DetailTab) => void;
   onFeedback: (payload: FeedbackCreateRequest) => Promise<void>;
 }) {
   return (
     <article className="turn">
-      <div className="message user-message">
-        <div className="avatar">U</div>
+      <div className="message user-message" aria-label="用户问题">
         <div className="bubble">
           <p>{props.turn.question}</p>
         </div>
       </div>
-      <RoleWorkspace turn={props.turn} roles={props.roles} onEvidence={props.onOpenDetails} onRetry={props.onRetry} />
+      <RoleWorkspace turn={props.turn} roles={props.roles} onEvidence={props.onOpenDetails} onCollaboration={() => props.onOpenDetails(props.turn, "", "collaboration")} onRetry={props.onRetry} />
       <div className="message assistant-message">
         <div className="avatar">
           <Bot size={18} />
@@ -1459,7 +988,7 @@ function MessagePair(props: {
           {props.turn.thinking_enabled && Boolean(props.progressItems?.length) && (
             <ThoughtProgress items={props.progressItems ?? []} />
           )}
-          <div className="answer-text">
+          <div className="answer-text" onClick={(event) => { const target = event.target as HTMLElement; const citation = target.closest<HTMLElement>("[data-citation]"); if (citation) props.onOpenDetails(props.turn, citation.dataset.citation); }}>
             {props.turn.answer ? (
               <>
                 {renderAnswerMarkdown(props.turn.answer)}
@@ -1616,24 +1145,22 @@ function ThoughtProgress(props: { items: string[] }) {
 
 function DetailDrawer(props: {
   turn: ConversationTurn | null;
+  citation: string;
+  roles: ResearchRole[];
+  onRetry: (question: string) => void;
+  width: number;
+  onWidth: (width: number) => void;
   open: boolean;
   tab: DetailTab;
   onTab: (tab: DetailTab) => void;
   onClose: () => void;
   onClaimReview: (claimId: string, payload: ClaimReviewRequest) => Promise<void>;
 }) {
-  const [drawerWidth, setDrawerWidth] = useState(480);
-  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
-  const resizeRef = useRef<{ pointerId: number; startX: number; startWidth: number } | null>(null);
-  const minWidth = Math.min(320, viewportWidth);
-  const maxWidth = Math.max(minWidth, viewportWidth - (viewportWidth > 600 ? 80 : 0));
-  const width = Math.min(maxWidth, Math.max(minWidth, drawerWidth));
-
   useEffect(() => {
-    const updateViewport = () => setViewportWidth(window.innerWidth);
-    window.addEventListener("resize", updateViewport);
-    return () => window.removeEventListener("resize", updateViewport);
-  }, []);
+    if (!props.open || props.tab !== "evidence" || !props.citation) return;
+    const timer = window.setTimeout(() => { const cards = document.querySelectorAll<HTMLElement>(".evidence-card[data-citation-id]"); [...cards].find(card => card.dataset.citationId === props.citation)?.scrollIntoView({ block: "nearest" }); }, 50);
+    return () => window.clearTimeout(timer);
+  }, [props.open, props.tab, props.citation, props.turn]);
 
   if (!props.turn || !props.open) return null;
   const result = props.turn.result;
@@ -1641,51 +1168,13 @@ function DetailDrawer(props: {
   const verification = verificationFromResult(result);
 
   return (
-    <aside className="detail-drawer" style={{ width }}>
-      <div
-        className="drawer-resize-handle"
-        role="separator"
-        aria-label="调整证据侧栏宽度"
-        aria-orientation="vertical"
-        aria-valuemin={minWidth}
-        aria-valuemax={maxWidth}
-        aria-valuenow={width}
-        tabIndex={0}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
-          resizeRef.current = { pointerId: event.pointerId, startX: event.clientX, startWidth: width };
-          event.currentTarget.setPointerCapture(event.pointerId);
-          event.preventDefault();
-        }}
-        onPointerMove={(event) => {
-          const drag = resizeRef.current;
-          if (!drag || drag.pointerId !== event.pointerId) return;
-          setDrawerWidth(Math.min(maxWidth, Math.max(minWidth, drag.startWidth + drag.startX - event.clientX)));
-        }}
-        onPointerUp={() => { resizeRef.current = null; }}
-        onPointerCancel={() => { resizeRef.current = null; }}
-        onLostPointerCapture={() => { resizeRef.current = null; }}
-        onKeyDown={(event) => {
-          if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
-          event.preventDefault();
-          const next = event.key === "Home" ? minWidth : event.key === "End" ? maxWidth : width + (event.key === "ArrowLeft" ? 24 : -24);
-          setDrawerWidth(Math.min(maxWidth, Math.max(minWidth, next)));
-        }}
-      ><span /></div>
-      <div className="drawer-header">
-        <div>
-          <span className="eyebrow">证据详情</span>
-          <h3>{result.answer_type || "问答诊断"}</h3>
-        </div>
-        <button type="button" onClick={props.onClose} aria-label="关闭详情">
-          <X size={18} />
-        </button>
-      </div>
+    <Inspector title={result.answer_type || "问答诊断"} label="证据详情" width={props.width} onWidth={props.onWidth} onClose={props.onClose}>
       {result.contextual_question && result.contextual_question !== result.question && (
         <div className="context-note">上下文改写：{result.contextual_question}</div>
       )}
       <div className="drawer-tabs">
         {[
+          ["collaboration", "协作"],
           ["research", "投研"],
           ["verification", "验证"],
           ["evidence", "证据"],
@@ -1704,6 +1193,7 @@ function DetailDrawer(props: {
         ))}
       </div>
       <div className="drawer-body">
+        {props.tab === "collaboration" && <RoleWorkspace turn={props.turn} roles={props.roles} onEvidence={() => props.onTab("evidence")} onRetry={props.onRetry} defaultExpanded />}
         {props.tab === "research" && <ResearchOutputsView outputs={result.research_outputs} />}
         {props.tab === "verification" && <VerificationPanel verification={verification} />}
         {props.tab === "evidence" && (
@@ -1728,7 +1218,7 @@ function DetailDrawer(props: {
         )}
         {props.tab === "graph" && <SubgraphMini edges={result.subgraph} />}
       </div>
-    </aside>
+    </Inspector>
   );
 }
 
@@ -1788,7 +1278,8 @@ function renderAnswerMarkdown(markdown: string): ReactNode[] {
 }
 
 function renderInlineMarkdown(text: string): ReactNode[] {
-  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+  return text.split(/(\*\*[^*]+\*\*|\[E\d+\])/g).filter(Boolean).map((part, index) => {
+    if (/^\[E\d+\]$/.test(part)) return <button type="button" className="inline-citation" data-citation={part.slice(1, -1)} key={index} title="查看证据">{part}</button>;
     if (part.startsWith("**") && part.endsWith("**")) {
       return <strong key={index}>{part.slice(2, -2)}</strong>;
     }
@@ -1802,19 +1293,19 @@ function OverviewView(props: { status: ApiStatus | null }) {
   return (
     <section className="page-panel">
       <div className="page-header">
-        <span className="eyebrow">Knowledge Base</span>
+        <span className="eyebrow">SYSTEM OVERVIEW</span>
         <h1>数据概览</h1>
         <p>图谱、RAG、Embedding 和 LLM 状态集中展示，便于演示前快速确认系统健康度。</p>
       </div>
       <div className="metric-grid">
-        <MetricCard label="公司" value={stats?.companies ?? 0} />
-        <MetricCard label="报告" value={stats?.reports ?? 0} />
-        <MetricCard label="实体" value={stats?.entities ?? 0} />
-        <MetricCard label="关系" value={stats?.relations ?? 0} />
-        <MetricCard label="Claim" value={researchStats?.claims ?? 0} />
-        <MetricCard label="Dossier" value={researchStats?.dossiers ?? 0} />
-        <MetricCard label="已审校 Claim" value={researchStats?.reviewed_claims ?? 0} />
-        <MetricCard label="直接敞口公司" value={researchStats?.direct_exposure_companies ?? 0} />
+        <MetricCard label="公司" value={stats?.companies} />
+        <MetricCard label="报告" value={stats?.reports} />
+        <MetricCard label="实体" value={stats?.entities} />
+        <MetricCard label="关系" value={stats?.relations} />
+        <MetricCard label="Claim" value={researchStats?.claims} />
+        <MetricCard label="Dossier" value={researchStats?.dossiers} />
+        <MetricCard label="已审校 Claim" value={researchStats?.reviewed_claims} />
+        <MetricCard label="直接敞口公司" value={researchStats?.direct_exposure_companies} />
       </div>
       <div className="status-strip">
         <StatusPill label="图谱后端" value={props.status?.graph_backend?.toUpperCase() ?? "UNKNOWN"} />
@@ -1832,15 +1323,15 @@ function OverviewView(props: { status: ApiStatus | null }) {
   );
 }
 
-function GraphView() {
-  return <Suspense fallback={<div>正在加载图谱…</div>}><GraphExplorer /></Suspense>;
+function GraphView(props: { active: boolean }) {
+  return <Suspense fallback={<div>正在加载图谱…</div>}><GraphExplorer active={props.active} /></Suspense>;
 }
 
-function MetricCard(props: { label: string; value: number }) {
+function MetricCard(props: { label: string; value?: number }) {
   return (
     <div className="metric-card">
       <span>{props.label}</span>
-      <strong>{props.value.toLocaleString()}</strong>
+      <strong>{props.value?.toLocaleString() ?? "—"}</strong>
     </div>
   );
 }
@@ -2329,7 +1820,7 @@ function ResearchOutputsView(props: { outputs?: ResearchOutputs }) {
       <section className="research-section">
         <div className="research-section-title">
           <FileText size={16} />
-          <span>{report?.title || "投研简报"}</span>
+          {report?.markdown ? <ContextMenu label="研究报告操作" actions={[{ label: "复制报告", run: () => { void navigator.clipboard.writeText(report.markdown).catch(() => window.alert("复制失败，请检查浏览器权限")); } }]}><span>{report.title || "投研简报"}</span></ContextMenu> : <span>{report?.title || "投研简报"}</span>}
         </div>
         <div className="research-report">
           {report?.sections?.length ? (
@@ -2931,7 +2422,7 @@ function EvidenceCardView(props: {
   const reviewStatus = fieldText(row, "review_status");
   const reviewerNote = fieldText(row, "reviewer_note");
   return (
-    <article className="evidence-card">
+    <article className="evidence-card" data-citation-id={citationId}>
       <div className="evidence-card-head">
         <div>
           <span className="citation-pill">{citationId || "E?"}</span>
@@ -2967,33 +2458,6 @@ function fieldText(row: Record<string, unknown>, key: string) {
   const value = row[key];
   if (value === null || value === undefined) return "";
   return String(value);
-}
-
-function DataTable(props: { rows: Record<string, unknown>[]; empty: string }) {
-  if (!props.rows.length) return <div className="empty-table">{props.empty}</div>;
-  const columns = Object.keys(props.rows[0]).slice(0, 7);
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column}>{column}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.slice(0, 24).map((row, index) => (
-            <tr key={index}>
-              {columns.map((column) => (
-                <td key={column}>{String(row[column] ?? "")}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
 }
 
 function JsonBlock(props: { value: unknown; title?: string }) {

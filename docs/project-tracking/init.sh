@@ -18,7 +18,7 @@ case "${1:-status}" in
       exit 1
     fi
     .venv/bin/python -m pytest -q tests/test_conversation_roles.py tests/test_conversation_store.py tests/test_api.py tests/test_centralized_multi_agent.py tests/test_dynamic_knowledge.py
-    (cd web && npm run build)
+    (cd web && npm run lint && npm run build)
     git diff --check
     ;;
   offline-api)

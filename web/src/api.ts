@@ -1,14 +1,9 @@
 import type {
-  AgentTask,
-  AgentTaskCreateRequest,
-  AgentTaskSummary,
   ApiStatus,
   ClaimReviewRequest,
   ClaimReviewResponse,
   Conversation,
   ConversationSummary,
-  EvalRun,
-  EvalRunSummary,
   FeedbackCreateRequest,
   FeedbackResponse,
   GraphSubgraph,
@@ -50,15 +45,6 @@ export async function getExamples(): Promise<string[]> {
   return payload.examples;
 }
 
-export async function listEvalRuns(): Promise<EvalRunSummary[]> {
-  const payload = await request<{ runs: EvalRunSummary[] }>("/api/eval/runs");
-  return payload.runs;
-}
-
-export function getEvalRun(id: string): Promise<EvalRun> {
-  return request<EvalRun>(`/api/eval/runs/${encodeURIComponent(id)}`);
-}
-
 export function submitFeedback(payload: FeedbackCreateRequest): Promise<FeedbackResponse> {
   return request<FeedbackResponse>("/api/feedback", {
     method: "POST",
@@ -86,6 +72,12 @@ export function updateConversationTitle(id: string, title: string): Promise<Conv
   return request<Conversation>(`/api/conversations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     body: JSON.stringify({ title })
+  });
+}
+
+export function updateConversationPin(id: string, pinned: boolean): Promise<Conversation> {
+  return request<Conversation>(`/api/conversations/${encodeURIComponent(id)}/pin`, {
+    method: "PATCH", body: JSON.stringify({ pinned })
   });
 }
 
@@ -125,7 +117,6 @@ export async function streamMessage(
   thinkingEnabled: boolean,
   reasoningEffort: string,
   onEvent: (event: MessageStreamEvent) => void,
-  roleId?: string,
   requestId = crypto.randomUUID(),
   signal?: AbortSignal
 ): Promise<Conversation> {
@@ -133,7 +124,7 @@ export async function streamMessage(
     method: "POST", signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question, thinking_enabled: thinkingEnabled, reasoning_effort: reasoningEffort,
-      role_id: roleId || null, request_id: requestId })
+      request_id: requestId })
   });
   return consumeMessageStream(response, onEvent);
 }
@@ -228,25 +219,4 @@ export function reviewClaim(claimId: string, payload: ClaimReviewRequest): Promi
     method: "POST",
     body: JSON.stringify(payload)
   });
-}
-
-export async function listAgentTasks(): Promise<AgentTaskSummary[]> {
-  const payload = await request<{ tasks: AgentTaskSummary[] }>("/api/agent/tasks");
-  return payload.tasks;
-}
-
-export async function createAgentTask(payload: AgentTaskCreateRequest): Promise<AgentTask> {
-  const response = await request<{ task: AgentTask }>("/api/agent/tasks", {
-    method: "POST",
-    body: JSON.stringify(payload)
-  });
-  return response.task;
-}
-
-export function getAgentTask(id: string): Promise<AgentTask> {
-  return request<AgentTask>(`/api/agent/tasks/${encodeURIComponent(id)}`);
-}
-
-export function exportAgentTaskUrl(id: string, format: "md" | "json"): string {
-  return `/api/agent/tasks/${encodeURIComponent(id)}/export?format=${format}`;
 }

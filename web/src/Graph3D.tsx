@@ -9,7 +9,7 @@ export type Graph3DHandle = { reset: () => void; zoom: (factor: number) => void;
 const palette: Record<string, string> = { Company: '#257e73', Technology: '#447db7', Product: '#8b66a8', IndustryChain: '#c18a41', ValueChainSegment: '#c18a41', IndustryConcept: '#378b96', Risk: '#ba6567', Metric: '#6c966b', Report: '#7989a4' };
 export const nodeColor = (type: string) => palette[type] || '#76898b';
 
-type Props = { nodes: GraphNode[]; edges: GraphRelation[]; selectedNode?: string; selectedEdge?: string; onNode: (node: GraphNode) => void; onEdge: (edge: GraphRelation) => void; onBackground: () => void; onUnavailable: () => void };
+type Props = { nodes: GraphNode[]; edges: GraphRelation[]; selectedNode?: string; selectedEdge?: string; onNode: (node: GraphNode) => void; onEdge: (edge: GraphRelation) => void; onBackground: () => void; onNodeContext: (node: GraphNode, event: MouseEvent) => void; onEdgeContext: (edge: GraphRelation, event: MouseEvent) => void; onUnavailable: () => void };
 
 const Graph3D = forwardRef<Graph3DHandle, Props>(function Graph3D(props, ref) {
   const host = useRef<HTMLDivElement>(null);
@@ -36,7 +36,7 @@ const Graph3D = forwardRef<Graph3DHandle, Props>(function Graph3D(props, ref) {
         .linkSource('source').linkTarget('target').linkWidth(0.7).linkDirectionalArrowLength(4).linkDirectionalArrowRelPos(0.86)
         .linkLabel(l => { const label = document.createElement('span'); label.textContent = `${l.relation.head_name} → ${l.relation.tail_name} · ${l.relation.label}`; return label; })
         .enableNodeDrag(false).cooldownTicks(110)
-        .onNodeClick(n => current.current.onNode(n)).onLinkClick(l => current.current.onEdge(l.relation)).onBackgroundClick(() => current.current.onBackground());
+        .onNodeClick(n => current.current.onNode(n)).onNodeRightClick((n, event) => current.current.onNodeContext(n, event)).onLinkClick(l => current.current.onEdge(l.relation)).onLinkRightClick((l, event) => current.current.onEdgeContext(l.relation, event)).onBackgroundClick(() => current.current.onBackground());
       const linkForce = g.d3Force('link') as unknown as { distance: (value: number) => void } | undefined;
       const chargeForce = g.d3Force('charge') as unknown as { strength: (value: number) => void } | undefined;
       linkForce?.distance(60); chargeForce?.strength(-140);

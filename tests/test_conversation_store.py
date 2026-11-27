@@ -79,3 +79,18 @@ def test_conversation_messages_from_turns_keeps_user_assistant_order() -> None:
         {"role": "user", "content": "第二问"},
         {"role": "assistant", "content": "第二答"},
     ]
+
+
+def test_pinned_conversations_are_compatible_sorted_and_persisted(tmp_path: Path) -> None:
+    store = ConversationStore(tmp_path)
+    first = store.create(title="较早的会话")
+    second = store.create(title="较新的会话")
+    assert store.get(first["id"])["pinned"] is False
+    store.update_pinned(first["id"], True)
+    assert store.list(limit=1)[0]["id"] == first["id"]
+    assert ConversationStore(tmp_path).get(first["id"])["pinned"] is True
+    store.update_title(first["id"], "已重命名")
+    assert store.get(first["id"])["pinned"] is True
+    store.update_pinned(first["id"], False)
+    assert all(not item["pinned"] for item in store.list())
+    assert {item["id"] for item in store.list()} == {first["id"], second["id"]}

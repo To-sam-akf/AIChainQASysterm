@@ -5,27 +5,11 @@ export const statusLabels: Record<string, string> = {
   pending: "等待", running: "执行中", completed: "已完成", failed: "失败", skipped: "跳过", degraded: "降级"
 };
 
-export function RolePicker({ roles, value, onChange, disabled }: {
-  roles: ResearchRole[]; value: string; onChange: (value: string) => void; disabled: boolean;
-}) {
-  return <div className="role-picker">
-    <label>牵头角色 <select aria-label="牵头角色" value={value} disabled={disabled} onChange={e => onChange(e.target.value)}>
-      <option value="">自动分工</option>
-      {roles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-    </select></label>
-    <details className="role-directory"><summary>了解角色</summary>
-      <div className="role-directory-cards">{roles.map(role => <article key={role.id}>
-        <strong>{role.avatar} · {role.name}</strong><p>{role.responsibility}</p><p>{role.capabilities.join(" · ")}</p>
-      </article>)}</div>
-    </details>
-  </div>;
-}
-
-export function RoleWorkspace({ turn, roles, onEvidence, onRetry }: {
+export function RoleWorkspace({ turn, roles, onEvidence, onRetry, onCollaboration, defaultExpanded = false }: {
   turn: ConversationTurn; roles: ResearchRole[]; onEvidence: (turn: ConversationTurn) => void;
-  onRetry: (question: string) => void;
+  onRetry: (question: string) => void; onCollaboration?: () => void; defaultExpanded?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const events = (turn.events ?? []).filter((event): event is RoleEvent => event.type === "role_event");
   if (!events.length && !turn.task_id) return null;
   const latest = new Map<string, RoleEvent>();
@@ -39,6 +23,7 @@ export function RoleWorkspace({ turn, roles, onEvidence, onRetry }: {
       <strong>角色协作</strong><span>{active.length ? `${active.length} 项执行中` : statusLabels[turn.status || "completed"]}
         {failed.length > 0 ? ` · ${failed.length} 项失败` : ""} · {expanded ? "收起" : "展开"}</span>
     </button>
+    {onCollaboration && <button type="button" className="role-inspector-link" onClick={onCollaboration}>在研究详情中查看协作记录 →</button>}
     {!expanded && <div className="role-active" aria-live="polite">{active.map(event => <span key={event.step_id}>
       {rolesById.get(event.role_id)?.name || event.role_id}：{event.summary}
     </span>)}</div>}

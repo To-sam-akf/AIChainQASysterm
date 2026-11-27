@@ -53,6 +53,7 @@ class ConversationSummary:
     updated_at: str
     turn_count: int
     preview: str
+    pinned: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -62,6 +63,7 @@ class ConversationSummary:
             "updated_at": self.updated_at,
             "turn_count": self.turn_count,
             "preview": self.preview,
+            "pinned": self.pinned,
         }
 
 
@@ -154,7 +156,7 @@ class ConversationStore:
                 conversations.append(self._load_path(path))
             except (InvalidConversationError, OSError, json.JSONDecodeError):
                 continue
-        conversations.sort(key=lambda item: str(item.get("updated_at") or item.get("created_at") or ""), reverse=True)
+        conversations.sort(key=lambda item: (item.get("pinned") is True, str(item.get("updated_at") or item.get("created_at") or "")), reverse=True)
         if limit is not None:
             conversations = conversations[:limit]
         return [self._summary(item).to_dict() for item in conversations]
@@ -168,6 +170,7 @@ class ConversationStore:
             "title": title.strip() or "新对话",
             "created_at": created_at,
             "updated_at": created_at,
+            "pinned": False,
             "turns": [],
         }
         self._write(self._new_path(conversation_id), conversation)
@@ -188,6 +191,13 @@ class ConversationStore:
         conversation, path = self._load_with_path(conversation_id)
         conversation["title"] = short_text(title, 80)
         conversation["updated_at"] = now_iso()
+        self._write(path, conversation)
+        return conversation
+
+    @conversation_locked
+    def update_pinned(self, conversation_id: str, pinned: bool) -> dict[str, Any]:
+        conversation, path = self._load_with_path(conversation_id)
+        conversation["pinned"] = pinned
         self._write(path, conversation)
         return conversation
 
@@ -303,6 +313,7 @@ class ConversationStore:
             updated_at=str(conversation.get("updated_at") or conversation.get("created_at") or ""),
             turn_count=len(turns),
             preview=preview_from_turns(turns),
+            pinned=conversation.get("pinned") is True,
         )
 
     def _load_path(self, path: Path) -> dict[str, Any]:
@@ -337,6 +348,7 @@ class ConversationStore:
                 "created_at": created_at,
                 "updated_at": updated_at,
                 "turns": turns,
+                "pinned": payload.get("pinned") is True,
             }
         )
         return normalized
