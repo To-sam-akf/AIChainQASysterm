@@ -1,0 +1,199 @@
+{
+  "as_of": "2026-11-28",
+  "scope": "本地工作树，包含用户已有未提交修改；状态不是发布验收。",
+  "status_definitions": {
+    "implemented": "有代码实现",
+    "partially_implemented": "仅部分目标实现",
+    "verified_with_warnings": "命令完成但存在告警",
+    "partially_verified": "部分自动测试通过，仍有未验证范围",
+    "blocked": "依赖条件未满足"
+  },
+  "features": [
+    {
+      "id": "F01",
+      "name": "会话问答与引用",
+      "priority": "P0",
+      "dependencies": [],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "会话请求生成结果并保留引用、失败状态和事件",
+      "verification_command": "init.sh check; init.sh eval-smoke",
+      "verification_evidence": "pytest 通过；离线 QA 5 题 3 通过、2 告警",
+      "blocker": "真实模型与完整检索未验"
+    },
+    {
+      "id": "F02",
+      "name": "LangGraph 多角色与任务恢复",
+      "priority": "P0",
+      "dependencies": [
+        "F01"
+      ],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "角色事件反映真实执行且支持恢复",
+      "verification_command": "init.sh check",
+      "verification_evidence": "定向测试及全量 pytest 通过",
+      "blocker": "真实外部服务场景未验"
+    },
+    {
+      "id": "F03",
+      "name": "RAG 与 GraphRAG",
+      "priority": "P0",
+      "dependencies": [],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "可检索证据并保留来源",
+      "verification_command": "init.sh test; init.sh eval-smoke",
+      "verification_evidence": "相关自动化测试通过；离线 smoke 使用 CSV",
+      "blocker": "PostgreSQL、语义服务及 Neo4j 未验"
+    },
+    {
+      "id": "F04",
+      "name": "动态知识库生命周期",
+      "priority": "P0",
+      "dependencies": [
+        "F03"
+      ],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "收录、索引、引用、删除及失败重试可追踪",
+      "verification_command": "init.sh test",
+      "verification_evidence": "动态知识库测试通过",
+      "blocker": "真实 PostgreSQL 端到端未验"
+    },
+    {
+      "id": "F05",
+      "name": "MCP、SQLite 与 Skill",
+      "priority": "P1",
+      "dependencies": [],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "工具和示例包可提供可追溯证据",
+      "verification_command": "init.sh test",
+      "verification_evidence": "MCP、安装、Skill 和 SQLite 测试通过",
+      "blocker": "真实宿主与用户私有知识库未验"
+    },
+    {
+      "id": "F06",
+      "name": "React 工作台",
+      "priority": "P1",
+      "dependencies": [
+        "F01"
+      ],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "页面可构建且浏览器交互正常",
+      "verification_command": "init.sh check; init.sh e2e",
+      "verification_evidence": "lint 和 build 成功",
+      "blocker": "浏览器测试本次跳过；真实后端联调未验"
+    },
+    {
+      "id": "F07",
+      "name": "离线 demo 与 QA/Agent 评测",
+      "priority": "P1",
+      "dependencies": [
+        "F01"
+      ],
+      "implementation_status": "implemented",
+      "verification_status": "verified_with_warnings",
+      "acceptance_criteria": "离线 demo 完成且 smoke 保留逐题状态",
+      "verification_command": "init.sh eval-smoke",
+      "verification_evidence": "demo 完成；QA 5 题 3 通过 2 告警；Agent 1 题 2/2",
+      "blocker": "结果不代表真实模型效果"
+    },
+    {
+      "id": "F08",
+      "name": "正式量化对照与独立测试集",
+      "priority": "P1",
+      "dependencies": [
+        "F07"
+      ],
+      "implementation_status": "partially_implemented",
+      "verification_status": "blocked",
+      "acceptance_criteria": "冻结独立题集、配置、原始输出和人工复核并报告待核项",
+      "verification_command": "参见 docs/quantitative-evaluation-guide.md",
+      "verification_evidence": "历史 20 题为探索性开发题；本次未执行付费实验",
+      "blocker": "独立题集、人工复核及授权的模型服务未就绪"
+    },
+    {
+      "id": "F09",
+      "name": "Harness 入口与交接",
+      "priority": "P0",
+      "dependencies": [],
+      "implementation_status": "implemented",
+      "verification_status": "partially_verified",
+      "acceptance_criteria": "命令入口、架构、状态、交接和验证记录可供下一会话使用",
+      "verification_command": "init.sh verify-task; bash -n docs/project-tracking/init.sh",
+      "verification_evidence": "最终定向复审 H01、H02、H04 通过；H03 在 REVIEW-02 通过；定向回归 39 passed、1 skipped",
+      "blocker": "等待人工确认 Harness V1.0 checkpoint 范围；真实集成未验"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "H01",
+      "name": "防止离线数据库连接；破坏性测试显式启用且验证隔离",
+      "dependencies": [],
+      "status": "done",
+      "history": [
+        "planned",
+        "in_progress",
+        "done"
+      ],
+      "acceptance_contract": "防止离线数据库连接；破坏性测试显式启用且验证隔离",
+      "verification_command": "pytest tests/test_database_test_safety.py tests/test_postgres_retrieval.py",
+      "evidence": "收尾定向回归 17 passed、1 skipped；地址别名及未知普通目标在连接前拒绝",
+      "blocker": ""
+    },
+    {
+      "id": "H02",
+      "name": "区分诊断、回归和验收；拒绝缺失或不合格报告",
+      "dependencies": [
+        "H01"
+      ],
+      "status": "done",
+      "history": [
+        "planned",
+        "in_progress",
+        "done"
+      ],
+      "acceptance_contract": "区分诊断、回归和验收；拒绝缺失或不合格报告",
+      "verification_command": "pytest tests/test_eval_quality_gate.py tests/test_eval_platform.py",
+      "evidence": "收尾定向回归 19 passed；离线 QA 2 题报告通过完整性校验",
+      "blocker": ""
+    },
+    {
+      "id": "H03",
+      "name": "隔离安装器测试的项目、用户及 skill 环境",
+      "dependencies": [
+        "H02"
+      ],
+      "status": "done",
+      "history": [
+        "planned",
+        "in_progress",
+        "done"
+      ],
+      "acceptance_contract": "隔离安装器测试的项目、用户及 skill 环境",
+      "verification_command": "pytest tests/test_aika_mcp_install.py",
+      "evidence": "28 passed",
+      "blocker": ""
+    },
+    {
+      "id": "H04",
+      "name": "检查 ID、依赖环、WIP、转换、证据和阻塞原因并接入入口",
+      "dependencies": [
+        "H03"
+      ],
+      "status": "done",
+      "history": [
+        "planned",
+        "in_progress",
+        "done"
+      ],
+      "acceptance_contract": "检查 ID、依赖环、WIP、转换、证据和阻塞原因并接入入口",
+      "verification_command": "TEST_DATABASE_URL='' DATABASE_URL='' .venv/bin/python -m pytest -q tests/test_task_gate.py; ./docs/project-tracking/init.sh task-gate",
+      "evidence": "pytest 3 passed；实际清单门禁退出 0，重复 ID 副本退出 1；CI 已调用门禁",
+      "blocker": ""
+    }
+  ]
+}

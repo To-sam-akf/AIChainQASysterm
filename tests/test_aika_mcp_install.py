@@ -523,6 +523,16 @@ def test_mcp_install_with_skill_dry_run_reports_both_steps(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    import aika.aika_skills as skills
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CODEX_HOME", str(tmp_path / "user-codex"))
+    source = tmp_path / "bundled-skill"
+    (source / "agents").mkdir(parents=True)
+    (source / "SKILL.md").write_text("---\nname: aika-research\n---\n")
+    (source / "agents" / "openai.yaml").write_text("interface: {}\n")
+    monkeypatch.setattr(skills, "resolve_bundled_skill", lambda name: source)
     monkeypatch.setattr(installer, "build_mcp_config", lambda host: stable_codex_config(tmp_path))
     monkeypatch.setattr(installer.shutil, "which", lambda name: None)
 

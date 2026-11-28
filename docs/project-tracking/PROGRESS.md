@@ -110,3 +110,11 @@
 ## 记录目录调整
 
 按用户要求，四个跟进文件统一迁入 `docs/project-tracking/`，根目录通过 README 提供入口。脚本从自身位置定位仓库根目录，调用命令更新为 `./docs/project-tracking/init.sh`。本次仅调整文件组织及路径，验证脚本语法、状态命令和文档链接，不重复运行功能测试。
+
+### 2026-11-28 Brownfield Harness 初始化
+
+新增统一入口、架构/质量/审计、功能清单和当前交接，扩展既有命令入口；未改业务代码或提交。隔离副本全量 pytest 525 passed、3 skipped；定向回归 38 passed，前端 lint/build、离线 demo、QA/Agent smoke 和 Compose 配置命令退出 0。QA smoke 有 2 条告警；真实服务与浏览器集成未完成。首次无 Git 元数据的隔离副本导致 15 个实验快照测试失败，补齐独立 Git 元数据后复测通过。完整边界、用户原有改动及后续审查见 `HANDOFF.md`、`AUDIT.md`。
+
+### 2026-11-28 Harness 审查修复
+
+H01–H04 的实现及各项定向验证见 `HANDOFF.md`；独立审查仍待重新执行。真实数据库和外部服务未经调用。

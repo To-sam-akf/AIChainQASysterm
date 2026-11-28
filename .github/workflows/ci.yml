@@ -27,6 +27,9 @@ jobs:
       - name: Python tests
         run: UV_CACHE_DIR=/tmp/uv-cache uv run pytest -q
 
+      - name: Validate task manifest
+        run: UV_CACHE_DIR=/tmp/uv-cache uv run python docs/project-tracking/task_gate.py
+
       - name: Offline demo smoke
         env:
           DATABASE_URL: ""

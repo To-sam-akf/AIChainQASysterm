@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     eval_parser = subparsers.add_parser("eval", help="Run QA, RAG retrieval, or Agent evaluations.")
     eval_parser.add_argument("--suite", choices=["qa", "rag", "agent"], default="qa")
+    eval_parser.add_argument("--mode", choices=["diagnostic", "regression", "acceptance"], default="diagnostic", help="QA quality policy; other suites support diagnostic only.")
     eval_parser.add_argument("--limit", type=int, default=0)
     eval_parser.add_argument("--task-dir", default=str(DEFAULT_AGENT_TASK_DIR))
     eval_parser.add_argument("--benchmark", default="", help="Benchmark JSONL file; defaults depend on --suite.")
@@ -144,6 +145,9 @@ def run_agent(args: argparse.Namespace) -> int:
 
 
 def run_eval(args: argparse.Namespace) -> int:
+    if getattr(args, "mode", "diagnostic") != "diagnostic" and args.suite != "qa":
+        print("Quality gates are currently defined only for QA", file=sys.stderr)
+        return 2
     if args.suite == "agent":
         return run_agent_eval(args)
     if args.suite == "rag":
@@ -152,9 +156,14 @@ def run_eval(args: argparse.Namespace) -> int:
 
 
 def run_qa_eval(args: argparse.Namespace) -> int:
-    from aika.eval.runner import run_qa_benchmark
+    from aika.eval.runner import run_qa_benchmark, file_sha256
+    from aika.eval.dataset import load_eval_cases
     from aika.eval.store import EvalRunStore
 
+    mode = getattr(args, "mode", "diagnostic")
+    if mode == "acceptance" and (args.no_save or args.limit):
+        print("Acceptance requires a saved full dataset report", file=sys.stderr)
+        return 2
     engine = build_engine(args)
     try:
         report = run_qa_benchmark(
@@ -167,7 +176,21 @@ def run_qa_eval(args: argparse.Namespace) -> int:
         )
     finally:
         engine.close()
-    return print_qa_eval_report(report, args.json)
+    print_qa_eval_report(report, args.json)
+    saved = False
+    if not args.no_save and report.get("run_id"):
+        try:
+            saved = EvalRunStore(Path(args.report_dir)).get(report["run_id"]) == report
+        except (KeyError, ValueError, OSError):
+            pass
+    path = Path(args.benchmark or DEFAULT_QA_BENCHMARK)
+    try:
+        cases = load_eval_cases(path, limit=args.limit)
+        if report.get('dataset', {}).get('hash') != file_sha256(path):
+            return 1
+    except (OSError, ValueError):
+        return 1
+    return qa_quality_exit(report, mode, saved=saved, expected_cases=cases)
 
 
 def run_rag_eval(args: argparse.Namespace) -> int:
@@ -327,6 +350,62 @@ def print_eval_results(title: str, results: list[dict[str, Any]], as_json: bool)
             failures = ",".join(item.get("failures", [])) or "-"
             print(f"[{status}] {label} | failures={failures}")
     return 0 if total >= max_score * 0.6 else 1
+
+
+def qa_quality_exit(report: dict[str, Any], mode: str, *, saved: bool, expected_cases=None) -> int:
+    """Validate execution completeness separately from QA quality."""
+    if not isinstance(report, dict):
+        return 1
+    summary, dataset, results = report.get("summary"), report.get("dataset"), report.get("results")
+    if not isinstance(summary, dict) or not isinstance(dataset, dict) or not isinstance(results, list) or not results:
+        return 1
+    if any(not isinstance(report.get(k), str) or not report[k].strip() for k in ('run_id', 'created_at')):
+        return 1
+    if any(not isinstance(dataset.get(k), str) or not dataset[k].strip() for k in ('name', 'path', 'hash', 'version')):
+        return 1
+    environment = report.get('environment')
+    if not isinstance(environment, dict) or not {'git_commit', 'k', 'limit', 'engine_status'} <= environment.keys() or not isinstance(environment['engine_status'], dict):
+        return 1
+    if not expected_cases:
+        return 1
+    expected = {case.case_id: (case.question, case.category) for case in expected_cases}
+    if len(expected) != len(expected_cases):
+        return 1
+    ids = []
+    for row in results:
+        if not isinstance(row, dict):
+            return 1
+        case_id = row.get('case_id')
+        if not isinstance(case_id, str) or case_id not in expected or (row.get('question'), row.get('category')) != expected[case_id]:
+            return 1
+        score = row.get('score')
+        metrics = row.get('metrics')
+        if isinstance(score, bool) or not isinstance(score, (int, float)) or not 0 <= score <= 1 or not isinstance(metrics, dict):
+            return 1
+        if any(isinstance(metrics.get(k), bool) or not isinstance(metrics.get(k), (int, float)) or not 0 <= metrics[k] <= 1 for k in ('claim_recall@k', 'evidence_precision@k', 'citation_validity', 'answer_groundedness', 'unsupported_claim_rate')):
+            return 1
+        if 'human_score' not in metrics or (metrics['human_score'] is not None and (isinstance(metrics['human_score'], bool) or not isinstance(metrics['human_score'], (int, float)) or not 0 <= metrics['human_score'] <= 5)):
+            return 1
+        ids.append(case_id)
+    if len(ids) != len(set(ids)) or set(ids) != set(expected):
+        return 1
+    statuses = [row.get("status") if isinstance(row, dict) else None for row in results]
+    if any(status not in {"pass", "warn", "fail"} for status in statuses):
+        return 1
+    if dataset.get("cases") != len(results) or summary.get("cases") != len(results):
+        return 1
+    if any(summary.get(key) != statuses.count(status) for key, status in (("passed", "pass"), ("warned", "warn"), ("failed", "fail"))):
+        return 1
+    from aika.eval.runner import summarize_results
+    if summary != summarize_results(results):
+        return 1
+    if mode == "diagnostic":
+        return 0
+    if mode == "regression":
+        return int("fail" in statuses or float(summary.get("overall_score") or 0) < 0.35)
+    if mode == "acceptance":
+        return int(not saved or any(status != "pass" for status in statuses) or float(summary.get("overall_score") or 0) < 0.35)
+    return 1
 
 
 def print_qa_eval_report(report: dict[str, Any], as_json: bool) -> int:

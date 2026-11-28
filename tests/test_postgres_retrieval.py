@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from types import SimpleNamespace
 
 import pytest
@@ -71,10 +70,8 @@ def test_postgres_semantic_index_rejects_wrong_query_dimension() -> None:
 
 
 @pytest.mark.integration
-def test_postgres_retrieval_end_to_end() -> None:
-    database_url = os.getenv("TEST_DATABASE_URL", "").strip()
-    if not database_url:
-        pytest.skip("TEST_DATABASE_URL is not configured")
+def test_postgres_retrieval_end_to_end(destructive_postgres_url: str) -> None:
+    database_url = destructive_postgres_url
 
     migrate_database(database_url)
     assert migrate_database(database_url) == []
